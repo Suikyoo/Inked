@@ -112,8 +112,19 @@ describe('SemanticStore', () => {
     app.set({ bodies: { a: 'alpha', b: 'beta' }, bodiesReady: { v: true } });
     await flushN(10);
     expect(d.api.putVector.mock.calls.map((c: any) => c[0])).toEqual(['b', 'a']);
-    expect(d.api.putVector.mock.calls[0][1]).toEqual({ model: 'bge@1', encVec: 'v1.b.1', sourceUpdatedAt: '2026-10-02T00:00:00.000Z' });
+    expect(d.api.putVector.mock.calls[0][1]).toEqual({ model: 'bge@1/wasm', encVec: 'v1.b.1', sourceUpdatedAt: '2026-10-02T00:00:00.000Z' });
     expect(s.getState().coverage.v).toEqual({ done: 2, total: 2 });
+  });
+
+  it('re-embeds vectors stored under the model id alone (before the device was pinned)', async () => {
+    const app = fakeApp();
+    const { d } = deps();
+    d.api.listVectors = vi.fn(async () => ({ vectors: [{ noteId: 'a', model: 'bge@1', encVec: 'x', sourceUpdatedAt: '2026-10-05T00:00:00.000Z' }] }));
+    const s = new SemanticStore(app as any, d as any);
+    app.set({ phase: 'unlocked', trees: tree([{ id: 'a', updatedAt: '2026-10-01T00:00:00.000Z' }]), bodies: { a: 'alpha' }, bodiesReady: { v: true } });
+    await flushN(10);
+    expect(d.api.putVector.mock.calls.map((c: any) => [c[0], c[1].model])).toEqual([['a', 'bge@1/wasm']]);
+    expect(s.getState().coverage.v).toEqual({ done: 1, total: 1 });
   });
 
   it('re-queues on 422 instead of storing a stale vector', async () => {
@@ -318,7 +329,7 @@ describe('SemanticStore', () => {
   it('keeps vectors for Related when the toggle is off, without loading a model', async () => {
     const app = fakeApp();
     const { d, embedder } = deps({ account: fakeAccount({ semantic: false }), prefs: fakePrefs(null) });
-    d.api.listVectors = vi.fn(async () => ({ vectors: [{ noteId: 'a', model: 'bge@1', encVec: 'x', sourceUpdatedAt: '2026-10-01T00:00:00.000Z' }, { noteId: 'b', model: 'bge@1', encVec: 'y', sourceUpdatedAt: '2026-10-01T00:00:00.000Z' }] }));
+    d.api.listVectors = vi.fn(async () => ({ vectors: [{ noteId: 'a', model: 'bge@1/wasm', encVec: 'x', sourceUpdatedAt: '2026-10-01T00:00:00.000Z' }, { noteId: 'b', model: 'bge@1/wasm', encVec: 'y', sourceUpdatedAt: '2026-10-01T00:00:00.000Z' }] }));
     const s = new SemanticStore(app as any, d as any);
     app.set({ phase: 'unlocked', trees: tree([{ id: 'a', updatedAt: '2026-10-01T00:00:00.000Z' }, { id: 'b', updatedAt: '2026-10-01T00:00:00.000Z' }]), bodies: { a: 'alpha', b: 'beta' }, bodiesReady: { v: true } });
     await flushN(5);
@@ -339,7 +350,7 @@ describe('SemanticStore', () => {
   it('turning off clears the model cache and keeps vectors', async () => {
     const app = fakeApp();
     const { d, embedder } = deps();
-    d.api.listVectors = vi.fn(async () => ({ vectors: [{ noteId: 'a', model: 'bge@1', encVec: 'x', sourceUpdatedAt: '2026-10-01T00:00:00.000Z' }, { noteId: 'b', model: 'bge@1', encVec: 'y', sourceUpdatedAt: '2026-10-01T00:00:00.000Z' }] }));
+    d.api.listVectors = vi.fn(async () => ({ vectors: [{ noteId: 'a', model: 'bge@1/wasm', encVec: 'x', sourceUpdatedAt: '2026-10-01T00:00:00.000Z' }, { noteId: 'b', model: 'bge@1/wasm', encVec: 'y', sourceUpdatedAt: '2026-10-01T00:00:00.000Z' }] }));
     const s = new SemanticStore(app as any, d as any);
     app.set({ phase: 'unlocked', trees: tree([{ id: 'a', updatedAt: '2026-10-01T00:00:00.000Z' }, { id: 'b', updatedAt: '2026-10-01T00:00:00.000Z' }]), bodiesReady: { v: true } });
     await flushN(3);

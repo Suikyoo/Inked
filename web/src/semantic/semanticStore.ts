@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { prefs, type SemanticChoice } from '../lib/prefs';
 import type { AccountSettingsStore } from '../state/accountSettings';
 import type { AppStore } from '../state/store';
+import { EMBED_DEVICE } from './device';
 import type { Embedder } from './embedderClient';
 import { fetchManifest, modelBytes, transformerBytes, type Manifest } from './manifest';
 import { clearModelCache, requestPersist, verifyModelCache } from './modelCache';
@@ -70,6 +71,9 @@ const defaultDeps: Omit<SemanticDeps, 'account'> = {
   cache: { verify: (m) => verifyModelCache(m), clear: () => clearModelCache(), persist: requestPersist },
   delay: (ms) => new Promise((r) => setTimeout(r, ms)),
 };
+
+/** What stored vectors are tagged with: the model and the device, since devices put the same text in different places. */
+const vectorSpace = (m: Manifest) => `${m.id}/${EMBED_DEVICE}`;
 
 const statusOf = (e: unknown) => (e as { status?: unknown } | null)?.status;
 
@@ -429,7 +433,7 @@ export class SemanticStore {
     const m = this.manifest;
     const head = this.app.noteHead(noteId);
     const v = this.vectors.get(noteId);
-    return m && head && !head.broken && isFresh(v, head, m.id) ? v : undefined;
+    return m && head && !head.broken && isFresh(v, head, vectorSpace(m)) ? v : undefined;
   }
 
   private coverage(): SemanticState['coverage'] {
@@ -542,7 +546,7 @@ export class SemanticStore {
       const vecs = await emb.embed(texts, 'passage');
       if (ep !== this.epoch) return;
       q = vecs.map(quantize);
-      encVec = await this.app.encryptVector(vaultId, id, m.id, q);
+      encVec = await this.app.encryptVector(vaultId, id, vectorSpace(m), q);
     } catch {
       // Worker stopped, crashed or paused: the note waits for its next save or unlock.
       return;
@@ -550,7 +554,7 @@ export class SemanticStore {
     for (let attempt = 0; ; attempt++) {
       if (ep !== this.epoch) return;
       try {
-        await this.deps.api.putVector(id, { model: m.id, encVec, sourceUpdatedAt: snapshot });
+        await this.deps.api.putVector(id, { model: vectorSpace(m), encVec, sourceUpdatedAt: snapshot });
       } catch (e) {
         if (ep !== this.epoch) return;
         if (statusOf(e) === 422) {
@@ -566,7 +570,7 @@ export class SemanticStore {
       }
       if (ep !== this.epoch) return;
       this.staleRequeues.delete(id);
-      this.storeVector(id, vaultId, m.id, snapshot, q);
+      this.storeVector(id, vaultId, vectorSpace(m), snapshot, q);
       this.refreshCoverage(true);
       return;
     }

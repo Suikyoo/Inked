@@ -1,17 +1,6 @@
-export type Device = 'webgpu' | 'wasm';
-/** The one WebGPU call we need; avoids depending on @webgpu/types. */
-export interface GpuLike {
-  requestAdapter(): Promise<unknown>;
-}
-
 /**
- * WebGPU only when the browser can actually hand out an adapter. `navigator.gpu` exists in Chromium browsers even on
- * machines without a usable GPU, where `requestAdapter()` resolves to null.
+ * The embedding device, the same on every browser. Stored vectors sync across browsers, so all of them must come from
+ * one numeric path: with the q8 model, WebGPU output is far from WASM's (cosine ~0.3 for the same text), and a
+ * query embedded on one device then misses every note embedded on the other.
  */
-export async function pickDevice(gpu: GpuLike | undefined): Promise<Device> {
-  try {
-    return gpu && (await gpu.requestAdapter()) ? 'webgpu' : 'wasm';
-  } catch {
-    return 'wasm';
-  }
-}
+export const EMBED_DEVICE = 'wasm';
