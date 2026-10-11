@@ -52,7 +52,8 @@ function ResultMeta({ state, entry }: { state: AppState; entry: SearchEntry }) {
   );
 }
 
-export function HomePage() {
+/** `focusVault`: opened from a vault, so the map frames that vault and the preview starts on its hub. */
+export function HomePage({ focusVault }: { focusVault?: string } = {}) {
   const state = useAppState();
   const store = useStore();
   const navigate = useNavigate();
@@ -175,7 +176,7 @@ export function HomePage() {
     });
   }, [store]);
   // The map rings and inks the selected node; the right column previews it.
-  const [selected, setSelected] = useState<MapSelection | null>(null);
+  const [selected, setSelected] = useState<MapSelection | null>(() => (focusVault ? { kind: 'hub', vaultId: focusVault } : null));
   const [fitRequest, setFitRequest] = useState<{ sel: MapSelection; n: number } | null>(null);
   const column = asking ? 'ask' : homeColumn(state, query, selected);
   const hotFrom = (t: EventTarget) => (t instanceof Element ? t.closest('a.res')?.getAttribute('data-note') ?? null : null);
@@ -362,7 +363,7 @@ export function HomePage() {
       <div className="home-body">
         {(state.vaultsStatus !== 'ready' || vaults.length > 0) && (
           <section className="map" aria-label="Concept map">
-            <ConceptMap entries={mapEntries} neighbours={neighbours} hits={asking ? litIds : hitIds} hot={hot} loading={treesPending} selected={selected} onSelect={setSelected} fitRequest={fitRequest} saves={saves} onSavesPlayed={onSavesPlayed} searching={asking || q.length > 0} />
+            <ConceptMap entries={mapEntries} neighbours={neighbours} hits={asking ? litIds : hitIds} hot={hot} loading={treesPending} selected={selected} onSelect={setSelected} fitRequest={fitRequest} focusVault={focusVault} saves={saves} onSavesPlayed={onSavesPlayed} searching={asking || q.length > 0} />
           </section>
         )}
 
@@ -397,7 +398,7 @@ export function HomePage() {
               <p>Use the + next to “Vaults” in the sidebar to create one.</p>
             </div>
           ) : column === 'ask' ? (
-            <AskAnswer entries={entries} onSelect={setSelected} />
+            <AskAnswer entries={entries} onSelect={setSelected} onClear={leaveAsk} />
           ) : column === 'search' ? (
             <>
               <h2 className="results-title" aria-live="polite">

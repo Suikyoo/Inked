@@ -432,44 +432,6 @@ a.crumb:hover {
   color: var(--muted-2);
 }
 
-/* ---- Vault overview ------------------------------------------------------------------------ */
-.vault-page {
-  max-width: 760px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 28px 24px 48px;
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-}
-.vault-head {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.vault-title-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.vault-title {
-  margin: 0;
-  font: italic 600 28px/1.1 var(--font-serif);
-  color: var(--text-strong);
-  letter-spacing: -0.01em;
-}
-.vault-sub {
-  margin: 0;
-  font-size: 12px;
-  color: var(--muted-2);
-}
-.vault-actions-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-}
-
 @media (max-width: 1080px) {
   .ctx {
     border-left: 0;
@@ -498,8 +460,5 @@ a.crumb:hover {
   }
   .md {
     font-size: 14.5px;
-  }
-  .vault-page {
-    padding: 20px 16px 40px;
   }
 }

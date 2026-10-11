@@ -47,6 +47,7 @@ afterEach(() => {
 
 function render(state: Partial<AskState>, methods = {}) {
   const onSelect = vi.fn();
+  const onClear = vi.fn();
   const createNote = vi.fn(async () => ({ id: 'new' }));
   const appState = {
     vaults: { v: { id: 'v', name: 'Work' } },
@@ -68,18 +69,23 @@ function render(state: Partial<AskState>, methods = {}) {
         <StoreProvider store={app}>
           <AccountSettingsProvider store={accountStub()}>
             <AskProvider store={askStub(state, methods)}>
-              <AskAnswer entries={[]} onSelect={onSelect} />
+              <AskAnswer entries={[]} onSelect={onSelect} onClear={onClear} />
             </AskProvider>
           </AccountSettingsProvider>
         </StoreProvider>
       </MemoryRouter>,
     ),
   );
-  return { onSelect, createNote };
+  return { onSelect, onClear, createNote };
 }
 const button = (name: string) => [...host!.querySelectorAll('button')].find((b) => b.textContent === name)!;
 
 describe('AskAnswer', () => {
+  it('Clear empties the conversation', () => {
+    const { onClear } = render({ turns: [turn({})] });
+    act(() => button('Clear').click());
+    expect(onClear).toHaveBeenCalledTimes(1);
+  });
   it('renders the answer with citations that select the note on the map', () => {
     const { onSelect } = render({ turns: [turn({})] });
     const link = host!.querySelector<HTMLAnchorElement>('a.wl')!;

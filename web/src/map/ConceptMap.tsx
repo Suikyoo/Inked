@@ -70,6 +70,8 @@ export interface ConceptMapProps {
   onSelect: (s: MapSelection | null) => void;
   /** When `n` changes, the map fits that folder or hub with the animated fit (the preview's "Zoom to folder"). */
   fitRequest?: { sel: MapSelection; n: number } | null;
+  /** Opened from a vault: until the user moves the map, it frames this vault instead of every vault, easing in. */
+  focusVault?: string | null;
   /** Notes close in meaning to a note, nearest first. Feeds the lit state (and later the meaning threads). */
   neighbours?: (noteId: string) => { id: string; similarity: number }[];
   /** Notes just saved. Each new `seq` ripples its ids (capped), flashes the rest and ticks their folders. */
@@ -90,7 +92,7 @@ const NO_TICKS: ReadonlyMap<string, { seq: number; delay: number }> = new Map();
 const similarityText = (s: number) => s.toFixed(2).replace(/^0/, '');
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
-export function ConceptMap({ entries, hits, hot, searching: queryActive = false, loading, selected, onSelect, fitRequest = null, neighbours = NO_NEIGHBOURS, saves = null, onSavesPlayed, now = Date.now() }: ConceptMapProps) {
+export function ConceptMap({ entries, hits, hot, searching: queryActive = false, loading, selected, onSelect, fitRequest = null, focusVault = null, neighbours = NO_NEIGHBOURS, saves = null, onSavesPlayed, now = Date.now() }: ConceptMapProps) {
   const navigate = useNavigate();
   const uid = 'cm' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const frameRef = useRef<HTMLDivElement>(null);
@@ -268,9 +270,13 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
     touched.current = false;
   }, [idKey]);
   useEffect(() => {
-    if (!touched.current) setView(fit(scene.bounds, size));
+    if (touched.current) return;
+    // The focused vault once it has a layout (until then, every vault): the map starts on all of them and eases in.
+    const vault = focusVault ? scene.vaultBounds[focusVault] : undefined;
+    if (vault) animateTo(fit(vault, size));
+    else setView(fit(scene.bounds, size));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusKey, size.w, size.h]);
+  }, [statusKey, size.w, size.h, focusVault]);
 
   // Wheel zoom needs a non-passive listener so the page does not scroll.
   useEffect(() => {
@@ -382,7 +388,8 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
     animateTo(zoomAt(view, factor, size.w / 2, size.h / 2));
   };
   const fitAll = () => {
-    touched.current = false;
+    // With a focused vault, "fit all" is a choice to keep: a vault finishing its load must not pull the view back.
+    touched.current = !!focusVault;
     animateTo(fit(scene.bounds, size));
   };
   const fitTo = (b: Bounds | undefined) => {

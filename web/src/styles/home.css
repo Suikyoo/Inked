@@ -4,7 +4,9 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  min-height: 100%;
+  /* Fills the route, so the map can take the window's height rather than a ratio of its width. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .home-head {
   display: flex;
@@ -69,18 +71,42 @@
 }
 
 .home-body {
+  flex: 1 1 auto;
   display: flex;
   flex-wrap: wrap;
   gap: 20px;
-  align-items: flex-start;
+  align-items: stretch;
 }
 
+/*
+ * The column is as tall as the map and scrolls inside it: size containment keeps a long list from growing the row,
+ * and the bottom edge fades so rows run out gently rather than at a hard line. The padding gives the last row room
+ * to leave the fade.
+ */
 .results {
   flex: 1 1 260px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  contain: size;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 8px 32px;
+  padding-bottom: 32px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+}
+/* Children keep their own height; the column scrolls instead of squeezing them. */
+.results > * {
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .results {
+    scroll-behavior: smooth;
+  }
 }
 .results-title {
   margin: 0 0 6px;
@@ -242,10 +268,15 @@
   .search kbd {
     display: none;
   }
-  /* Results first on narrow screens; the map can wait. */
+  /* Results first on narrow screens; the map can wait. Stacked, the column cannot borrow the map's height. */
+  .home-body {
+    flex: none;
+  }
   .results {
     order: 1;
     flex-basis: 100%;
+    contain: none;
+    max-height: 60vh;
   }
   .map {
     order: 2;
@@ -295,6 +326,20 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+/* The answer's title row: the title, and Clear at the far end. */
+.ask-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ask-head .results-title {
+  margin-bottom: 0;
+}
+.ask-clear {
+  padding: 0 8px;
+  font-size: 11.5px;
 }
 .ask-turn + .ask-turn {
   padding-top: 12px;

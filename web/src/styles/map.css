@@ -6,9 +6,10 @@
   flex-direction: column;
   gap: 8px;
 }
+/* Takes the height left under the search bar; the ratio only returns on narrow screens, where the map stacks. */
 .cmap {
   position: relative;
-  aspect-ratio: 100 / 60;
+  flex: 1 1 auto;
   min-height: 320px;
   background: var(--canvas);
   border: 1px solid var(--side-border);
@@ -473,4 +474,11 @@
 @keyframes cmap-fan-in { from { stroke-opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   .cmap-fan path { animation: none; }
+}
+
+@media (max-width: 760px) {
+  .cmap {
+    flex: none;
+    aspect-ratio: 100 / 60;
+  }
 }

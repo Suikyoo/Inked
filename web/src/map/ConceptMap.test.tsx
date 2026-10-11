@@ -470,6 +470,22 @@ describe('ConceptMap', () => {
       expect(gap()).toBeGreaterThan(before * 1.5);
     });
 
+    it('focusVault frames that vault instead of every vault', () => {
+      const a = entry(folders(), 'v1');
+      const b = entry(tree([folder('g1', null, 'Home')], [note('x', 'g1', 'Xray'), note('y', null, 'Yankee')]), 'v2');
+      const gap = () => {
+        const x = translate(node('x'))!;
+        const y = translate(node('y'))!;
+        return Math.hypot(x.x - y.x, x.y - y.y);
+      };
+      render({ entries: [a, b] });
+      const all = gap();
+      act(() => root!.unmount());
+      host!.remove();
+      render({ entries: [a, b], focusVault: 'v2' });
+      expect(gap()).toBeGreaterThan(all * 1.3);
+    });
+
     it('a changed fitRequest.n fits that folder or hub; the same n does not', () => {
       const e = entry(folders());
       const { rerender } = render({ entries: [e], fitRequest: null });

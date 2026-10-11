@@ -77,6 +77,7 @@ const currentPath = () => path;
 interface Extra {
   account?: AccountSettingsStore;
   ask?: AskStore;
+  focusVault?: string;
 }
 
 function mount(initial: AppState, semantic?: SemanticStore, saves = savesFake(), extra: Extra = {}) {
@@ -103,7 +104,7 @@ function mount(initial: AppState, semantic?: SemanticStore, saves = savesFake(),
           <SemanticProvider store={semantic ?? semanticStub()}>
             <AccountSettingsProvider store={extra.account ?? accountStub()}>
               <AskProvider store={extra.ask ?? askStub()}>
-                <HomePage />
+                <HomePage focusVault={extra.focusVault} />
               </AskProvider>
             </AccountSettingsProvider>
           </SemanticProvider>
@@ -137,6 +138,12 @@ describe('HomePage right column', () => {
     mount(baseState());
     expect(column().textContent).toContain('Select a folder or note on the map.');
     expect(host!.textContent).not.toContain('Recently edited');
+  });
+
+  it('opened for a vault, previews the hub of that vault', () => {
+    mount(baseState(), undefined, undefined, { focusVault: 'v1' });
+    expect(column().querySelector('.preview')).not.toBeNull();
+    expect(column().textContent).not.toContain('Select a folder or note on the map.');
   });
 
   it('previews the selected note, and returns to the hint when it is deleted', () => {

@@ -1,5 +1,5 @@
 import { answerToNote, llmOrigin, type SearchEntry } from 'inked-core';
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { MapSelection } from '../map/ConceptMap';
 import { renderUntrustedMarkdown } from '../markdown/render';
@@ -128,8 +128,14 @@ function Turn({ turn, last, entries, onSelect }: { turn: AskTurnView; last: bool
     setTimeout(() => setCopied(null), 2000);
   };
   const done = turn.status === 'done' || turn.status === 'stopped';
+  // A new question lands at the end of the scrolling column: bring it into view once, then leave the scroll to the reader.
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (last) ref.current?.scrollIntoView?.({ block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
-    <article className="ask-turn" aria-busy={turn.status === 'retrieving' || turn.status === 'streaming'}>
+    <article ref={ref} className="ask-turn" aria-busy={turn.status === 'retrieving' || turn.status === 'streaming'}>
       <h3 className="ask-q">{turn.question}</h3>
       {turn.status === 'retrieving' && <p className="results-note">Finding sources…</p>}
       {turn.status === 'empty' && <p className="empty">No notes match closely enough.</p>}
@@ -169,12 +175,17 @@ function Turn({ turn, last, entries, onSelect }: { turn: AskTurnView; last: bool
 }
 
 /** The conversation that replaces Home's results column while asking. */
-export function AskAnswer({ entries, onSelect }: { entries: readonly SearchEntry[]; onSelect: (s: MapSelection) => void }) {
+export function AskAnswer({ entries, onSelect, onClear }: { entries: readonly SearchEntry[]; onSelect: (s: MapSelection) => void; onClear: () => void }) {
   const ask = useAsk();
   const last = ask.turns[ask.turns.length - 1];
   return (
     <div className="ask" aria-live="polite" aria-atomic="false" aria-busy={ask.busy}>
-      <h2 className="results-title">{ask.busy ? 'Asking your notes…' : 'Answer'}</h2>
+      <div className="ask-head">
+        <h2 className="results-title">{ask.busy ? 'Asking your notes…' : 'Answer'}</h2>
+        <button type="button" className="linkish ask-clear" onClick={onClear}>
+          Clear
+        </button>
+      </div>
       {ask.turns.map((t) => (
         <Turn key={t.id} turn={t} last={t === last} entries={entries} onSelect={onSelect} />
       ))}
