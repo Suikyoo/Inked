@@ -12,6 +12,9 @@ import { buildVaultGraph } from './graph';
 import { layoutVault } from './layout';
 import { buildScene, nearestInDirection } from './scene';
 import type { MapEntry } from './useVaultGraphs';
+import { cssRules } from '../styles/cssRules';
+
+const mapCss = readFileSync(join(import.meta.dirname, '../styles/map.css'), 'utf8');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -110,6 +113,25 @@ describe('ConceptMap', () => {
     expect(host!.querySelector('.cmap-ink path[data-ink="n1"]')).not.toBeNull();
     expect(host!.querySelector('.cmap-slip')).toBeNull();
     expect(host!.querySelector('.cmap-legend')).toBeNull();
+  });
+
+  it('the selected note is on, its linked notes lit, and the resting notes stay dimmer than both', () => {
+    render({ entries: [entry(base())] });
+    expect(nodes().some((n) => n.classList.contains('is-on'))).toBe(false);
+    click(node('n1'));
+    expect(nodes().filter((n) => n.classList.contains('is-on')).map((n) => n.dataset.note)).toEqual(['n1']);
+    expect(node('n1').classList.contains('is-lit')).toBe(false);
+    const op = (sel: string) => Number(/opacity:([\d.]+)/.exec(cssRules(mapCss, sel).join(';'))?.[1] ?? 1);
+    expect(op('.cmap-node')).toBeLessThanOrEqual(0.6);
+    expect(op('.cmap-node.is-lit')).toBeGreaterThan(op('.cmap-node'));
+    expect(op('.cmap-node.is-on')).toBe(1);
+    expect(op('.cmap-node.is-dim')).toBeLessThan(op('.cmap-node'));
+  });
+
+  it('a search hit is on at full strength', () => {
+    render({ entries: [entry(base())], hits: new Set(['n1']) });
+    expect(node('n1').classList.contains('is-on')).toBe(true);
+    expect(node('n2').classList.contains('is-on')).toBe(false);
   });
 
   it('Enter on a dot opens the note', () => {

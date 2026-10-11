@@ -773,11 +773,14 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
             const r = dens === 'hollow' ? 3.4 : big ? 5 : 4;
             const when = relativeTime(dot.updatedAt, now);
             const showLabel = view.scale >= LABEL_SCALE || inkedNotes.has(dot.id) || active || (lit.notes.has(dot.id) && !folderFocus);
+            // Opacity steps: the note in hand (or a search hit) is on, what it touches is lit, the rest rests dimmer.
+            const on = big || dot.id === focus || (faded && inkedNotes.has(dot.id));
+            const litNote = !on && dimming && lit.notes.has(dot.id);
             return (
               <g
                 key={dot.id}
                 ref={nodeRef(dot.id)}
-                className={`cmap-node tier-${tier}${dens === 'hollow' ? ' is-orphan' : ''}${faded && !inkedNotes.has(dot.id) ? ' is-faded' : ''}${dimming && !lit.notes.has(dot.id) ? ' is-dim' : ''}`}
+                className={`cmap-node tier-${tier}${dens === 'hollow' ? ' is-orphan' : ''}${faded && !inkedNotes.has(dot.id) ? ' is-faded' : ''}${dimming && !lit.notes.has(dot.id) ? ' is-dim' : ''}${on ? ' is-on' : litNote ? ' is-lit' : ''}`}
                 data-note={dot.id}
                 transform={`translate(${f1(x)} ${f1(y)})`}
                 style={writing ? { animationDelay: ms(dot.folderIds.length * WRITE_STEP_MS + NODE_LAG_MS) } : undefined}

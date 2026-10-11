@@ -100,7 +100,7 @@
   transition: opacity var(--dur-3) var(--ease-std);
 }
 .cmap-node.is-faded {
-  opacity: 0.3;
+  opacity: 0.2;
 }
 .cmap-hit {
   fill: transparent;
@@ -345,8 +345,18 @@
 .cmap-links {
   transition: opacity var(--dur-3) var(--ease-std);
 }
+/* Notes rest a step back so the one in hand stands out: on (selected, hovered, a hit) > lit (linked) > resting > dim. */
+.cmap-node {
+  opacity: 0.6;
+}
+.cmap-node.is-lit {
+  opacity: 0.85;
+}
+.cmap-node.is-on {
+  opacity: 1;
+}
 .cmap-node.is-dim {
-  opacity: 0.3;
+  opacity: 0.2;
 }
 .cmap-folder.is-dim-soft,
 .cmap-pencil path.is-dim-soft {
