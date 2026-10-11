@@ -176,7 +176,7 @@ describe('key wrapping', () => {
 
     const again = await unwrapUserKey(uk.wrappedUserKey, pw.passwordKEK, USER);
     expect(again.extractable).toBe(false);
-    expect(again.usages.sort()).toEqual(['unwrapKey', 'wrapKey']);
+    expect(again.usages.sort()).toEqual(['decrypt', 'encrypt', 'unwrapKey', 'wrapKey']);
 
     // A vault key wrapped with the original userKey opens with the unwrapped copy.
     const vk = await generateVaultKey(VAULT_A, uk.userKey);

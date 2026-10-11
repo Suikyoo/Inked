@@ -6,7 +6,7 @@ import { CryptoError } from './errors';
 export type KeyRole = 'userKey' | 'vaultKey';
 
 const USAGES: Record<KeyRole, KeyUsage[]> = {
-  userKey: ['wrapKey', 'unwrapKey'],
+  userKey: ['wrapKey', 'unwrapKey', 'encrypt', 'decrypt'],
   vaultKey: ['encrypt', 'decrypt'],
 };
 
