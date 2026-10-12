@@ -43,7 +43,7 @@ describe('inked-mcp CLI', () => {
     const text = s.out.join('\n');
     expect(text).toContain(`Signed in as jude at ${srv.baseUrl}`);
     expect(text).toContain('Vaults: all (*)');
-    expect(text).toContain('Actions: note.read, search, tree.read, vault.list');
+    expect(text).toContain('Actions: config.change, note.read, search, tree.read, vault.list');
     expect(text).toContain('Writes per minute: 120');
   });
 

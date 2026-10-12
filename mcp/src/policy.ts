@@ -5,6 +5,7 @@ export const ACTIONS = [
   'vault.list', 'tree.read', 'note.read', 'search',
   'folder.create', 'note.create', 'note.append', 'note.update',
   'note.move', 'folder.rename', 'folder.move',
+  'vault.create', 'config.change',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
@@ -12,9 +13,13 @@ export const GROUPS: Readonly<Record<string, readonly Action[]>> = {
   '@read': ['vault.list', 'tree.read', 'note.read', 'search'],
   '@write': ['folder.create', 'note.create', 'note.append', 'note.update'],
   '@organize': ['note.move', 'folder.rename', 'folder.move'],
+  '@manage': ['vault.create'],
 };
 
-export const WRITE_ACTIONS: ReadonlySet<Action> = new Set([...GROUPS['@write'], ...GROUPS['@organize']]);
+export const WRITE_ACTIONS: ReadonlySet<Action> = new Set([...GROUPS['@write'], ...GROUPS['@organize'], ...GROUPS['@manage']]);
+
+/** What applies with no config file: read everything, and the AI may open the settings page for the user to approve. */
+export const DEFAULT_CONFIG = { version: 1, vaults: '*', actions: ['@read', 'config.change'] } as const;
 
 export const DEFAULT_WRITES_PER_MINUTE = 120;
 
@@ -31,7 +36,7 @@ export interface ParsedConfig {
   writesPerMinute: number;
 }
 
-const isAction = (s: string): s is Action => (ACTIONS as readonly string[]).includes(s);
+export const isAction = (s: string): s is Action => (ACTIONS as readonly string[]).includes(s);
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Validates a config strictly: a typo must stop the server, never change access silently. */
@@ -81,13 +86,14 @@ export function loadConfig(file?: string): ParsedConfig {
   const target = file ?? configPath();
   if (!existsSync(target)) {
     if (file) throw new ConfigError(`Config file not found: ${file}`);
-    return parseConfig({ version: 1, vaults: '*', actions: ['@read'] });
+    return parseConfig(DEFAULT_CONFIG);
   }
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(target, 'utf8'));
   } catch {
-    throw new ConfigError(`Config file is not valid JSON: ${target}`);
+    // The default location stays out of messages: they can reach the AI.
+    throw new ConfigError(file ? `Config file is not valid JSON: ${file}` : 'Config file is not valid JSON');
   }
   return parseConfig(raw);
 }
