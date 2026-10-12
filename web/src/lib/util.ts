@@ -1,13 +1,7 @@
 import { isApiError } from '../api/client';
 import { isCryptoError } from 'inked-core';
 
-export const VAULT_COLORS = ['#45A89E', '#D19C3C', '#6F95D6', '#D9768F'] as const;
-
-export function nextVaultColor(used: string[]): string {
-  const counts = VAULT_COLORS.map((c) => used.filter((u) => u.toUpperCase() === c).length);
-  const min = Math.min(...counts);
-  return VAULT_COLORS[counts.indexOf(min)];
-}
+export { nextVaultColor, VAULT_COLORS } from 'inked-core';
 
 export const USERNAME_RE = /^[a-z0-9_.-]{3,32}$/;
 export const MIN_PASSWORD = 10;
