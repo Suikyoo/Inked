@@ -216,12 +216,15 @@ export class Flows {
     const file = this.runtime.configFile;
     const cfg = readConfigFile(file);
     if (cfg && Array.isArray(cfg.vaults)) {
-      const s = this.runtime.state;
-      // Rewrite every entry: the new vault may share a name with one already allowed, so names become ids where needed.
-      const allowed = s.kind === 'ready' ? [...s.policy.vaultIds] : [];
       const all = await listAllVaults(this.runtime.session());
-      writeConfigFile({ ...cfg, vaults: [...allowed, id].map((x) => vaultRef(x, all)) }, file);
+      // Resolve the file's own entries without the new vault (a shared name would be ambiguous), then rewrite
+      // every entry through vaultRef over the full list so shared names become ids.
+      const before = all.filter((v) => v.id !== id);
+      const ids = [...resolvePolicy(parseConfig(cfg), before).vaultIds, id];
+      writeConfigFile({ ...cfg, vaults: ids.map((x) => vaultRef(x, all)) }, file);
     }
     await this.runtime.reload();
+    const now = this.runtime.state;
+    if (now.kind === 'config-error') throw new ConfigError(now.message);
   }
 }

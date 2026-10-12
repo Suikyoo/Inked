@@ -184,6 +184,22 @@ describe('Flows', () => {
     expect(runtime.state.kind === 'ready' && runtime.state.policy.vaultAllowed(r.vault.id)).toBe(true);
   });
 
+  it('create_vault grants from the file as it is now, keeping edits made after start', async () => {
+    const start = { version: 1, vaults: [adaWorkId], actions: ['@read', '@manage'] };
+    const { flows, browser } = await setup({ user: 'ada', config: start });
+    await addVault(srv.baseUrl, 'ada', PW, 'Extra');
+    writeFileSync(
+      path.join(home, 'config.json'),
+      JSON.stringify({ ...start, vaults: [adaWorkId, 'Extra'], actions: ['@read', '@manage', 'note.create'] }),
+    );
+    const pending = flows.createVault('Grown');
+    await submitPage(await browser.next(), { name: 'Grown', color: '#45A89E' });
+    await pending;
+    const disk = configOnDisk();
+    expect(disk.actions).toEqual(['@read', '@manage', 'note.create']);
+    expect(disk.vaults).toEqual([adaWorkId, 'Extra', 'Grown']);
+  });
+
   it('create_vault leaves a "*" config alone', async () => {
     const config = { version: 1, vaults: '*', actions: ['@read', '@manage'] };
     const { flows, browser } = await setup({ config });
