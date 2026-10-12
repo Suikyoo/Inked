@@ -1,12 +1,12 @@
 import { nextVaultColor } from 'inked-core';
 import { PageError, type ApprovalPage, type ApprovalServer, type PageOutcome } from './approval';
 import type { Audit } from './audit';
-import { readConfigFile, toConfigFile, vaultRef, viewOf, writeConfigFile, type ConfigView } from './config-file';
+import { readConfigFile, toConfigFile, vaultRef, viewOf, writeConfigFile, type ConfigView, type NamedVault } from './config-file';
 import { loadCredential, type Credential } from './credential';
 import { ApiError, ToolError } from './errors';
 import { toToolMessage } from './messages';
 import { configPage, createVaultPage, signInPage } from './pages';
-import { ConfigError, DEFAULT_CONFIG, parseConfig, resolvePolicy } from './policy';
+import { ConfigError, DEFAULT_CONFIG, parseConfig, resolvePolicy, type ParsedConfig } from './policy';
 import type { Runtime, RuntimeState } from './runtime';
 import { createCredential } from './session';
 import { listAllVaults } from './vault-model';
@@ -40,6 +40,36 @@ function access(s: Extract<RuntimeState, { kind: 'ready' }>) {
   };
 }
 
+/**
+ * Where the settings page starts when the config is broken: what the file still says, never wider.
+ * A file that cannot be read starts from the defaults with no vault ticked.
+ */
+function brokenConfigView(file: string | undefined, vaults: NamedVault[]): ConfigView {
+  let cfg: ParsedConfig | null = null;
+  try {
+    const raw = readConfigFile(file);
+    if (raw) cfg = parseConfig(raw);
+  } catch {
+    cfg = null;
+  }
+  if (!cfg) {
+    const d = parseConfig(DEFAULT_CONFIG);
+    return { allVaults: false, vaultIds: new Set(), actions: new Set(d.actions), writesPerMinute: d.writesPerMinute };
+  }
+  const vaultIds = new Set<string>();
+  if (cfg.vaults !== '*') {
+    // One entry at a time, so a renamed or deleted vault does not drop the others.
+    for (const ref of cfg.vaults) {
+      try {
+        for (const id of resolvePolicy({ ...cfg, vaults: [ref] }, vaults).vaultIds) vaultIds.add(id);
+      } catch {
+        // unknown or ambiguous: left unticked
+      }
+    }
+  }
+  return { allVaults: cfg.vaults === '*', vaultIds, actions: new Set(cfg.actions), writesPerMinute: cfg.writesPerMinute };
+}
+
 /** The user-facing steps: each opens a local page, waits for the user, and applies the result to the runtime. */
 export class Flows {
   constructor(
@@ -61,7 +91,17 @@ export class Flows {
   }
 
   async status() {
-    if (this.runtime.state.kind === 'signed-out' && this.runtime.state.retry) await this.runtime.start();
+    const before = this.runtime.state;
+    if (before.kind === 'signed-out') {
+      if (before.retry) await this.runtime.start();
+    } else {
+      // Picks up config changes made elsewhere (`inked-mcp config`, a hand edit) without a restart.
+      try {
+        await this.runtime.guard(() => this.runtime.reload());
+      } catch {
+        // a network problem: answer from the state as it is
+      }
+    }
     const s = this.runtime.state;
     if (s.kind === 'signed-out') {
       return {
@@ -136,7 +176,7 @@ export class Flows {
       throw new ToolError('denied', 'Not permitted by the Inked MCP config: config.change.');
     }
     const vaults = (await listAllVaults(session)).filter((v) => !v.broken);
-    const current: ConfigView = s.kind === 'ready' ? viewOf(s.policy) : viewOf(resolvePolicy(parseConfig(DEFAULT_CONFIG), vaults));
+    const current: ConfigView = s.kind === 'ready' ? viewOf(s.policy) : brokenConfigView(this.runtime.configFile, vaults);
     let proposed: ConfigView | undefined;
     if (p.vaults !== undefined || p.actions !== undefined || p.writesPerMinute !== undefined) {
       try {
@@ -160,8 +200,10 @@ export class Flows {
         problem: s.kind === 'config-error' ? `The current settings are invalid: ${s.message}.` : undefined,
         onSubmit: async (view) => {
           try {
-            writeConfigFile(toConfigFile(view, vaults), this.runtime.configFile);
-            await this.runtime.reload();
+            await this.runtime.guard(async () => {
+              writeConfigFile(toConfigFile(view, vaults), this.runtime.configFile);
+              await this.runtime.reload();
+            });
           } catch (e) {
             throw new PageError(e instanceof ConfigError ? e.message : toToolMessage(e));
           }
@@ -191,14 +233,14 @@ export class Flows {
         onSubmit: async (v) => {
           let made: { id: string; name: string; color: string };
           try {
-            made = await this.runtime.ops().createVault(v.name, v.color);
+            made = await this.runtime.guard(() => this.runtime.ops().createVault(v.name, v.color));
           } catch (e) {
             throw new PageError(toToolMessage(e));
           }
           this.audit.write({ tool: 'vault_created', ok: true, vaultId: made.id });
           // The vault exists now: a failed grant is reported, never retried by a second Create.
           try {
-            await this.grantNewVault(made.id);
+            await this.runtime.guard(() => this.grantNewVault(made.id));
             return made;
           } catch (e) {
             return { ...made, accessProblem: e instanceof ConfigError ? e.message : toToolMessage(e) };

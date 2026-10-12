@@ -5,9 +5,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { ApprovalServer } from '../src/approval';
 import { Audit } from '../src/audit';
 import { saveCredential } from '../src/credential';
+import { CredentialStale } from '../src/errors';
 import { Flows } from '../src/flows';
 import { Runtime } from '../src/runtime';
-import { createCredential } from '../src/session';
+import { createCredential, type Session } from '../src/session';
 import { listAllVaults } from '../src/vault-model';
 import { addVault, seedUser, startInked } from './helpers/inked';
 import { fakeBrowser, loadPage, submitPage } from './helpers/page';
@@ -167,6 +168,55 @@ describe('Flows', () => {
     expect(await pending).toMatchObject({ outcome: 'config_applied' });
     expect(runtime.state.kind).toBe('ready');
     expect(configOnDisk().vaults).toEqual(['Work']);
+  });
+
+  it('change_config on a broken config starts from that file, never wider', async () => {
+    const { runtime, flows, browser } = await setup({ config: { version: 1, vaults: ['Work', 'Gone'], actions: ['@read', '@write'] } });
+    expect(runtime.state.kind).toBe('config-error');
+    const pending = flows.changeConfig();
+    const url = await browser.next();
+    const { html } = await loadPage(url);
+    expect(html).toContain(`name="vault" value="${workId}" checked>`);
+    expect(html).toContain('name="all" value="on">');
+    expect(html).toContain('name="action" value="note.create" checked>');
+    expect(html).toContain('name="action" value="note.update" checked>');
+    expect(html).toContain('name="action" value="config.change">');
+    await submitPage(url, {}, 'cancel');
+    expect(await pending).toEqual({ outcome: 'cancelled' });
+  });
+
+  it('change_config on a config that is not JSON ticks no vault', async () => {
+    writeFileSync(path.join(home, 'config.json'), '{oops');
+    const { runtime, flows, browser } = await setup();
+    expect(runtime.state.kind).toBe('config-error');
+    const pending = flows.changeConfig();
+    const url = await browser.next();
+    const { html } = await loadPage(url);
+    expect(html).toContain('name="all" value="on">');
+    expect(html).not.toMatch(/name="vault" value="[^"]+" checked/);
+    await submitPage(url, {}, 'cancel');
+    await pending;
+  });
+
+  it('status picks up a config changed on disk', async () => {
+    const { flows } = await setup();
+    expect(await flows.status()).not.toHaveProperty('settings');
+    writeFileSync(path.join(home, 'config.json'), JSON.stringify({ version: 1, vaults: ['Work'], actions: ['@read'] }));
+    expect(await flows.status()).toMatchObject({ vaults: ['Work'], settings: expect.stringContaining('inked-mcp config') });
+  });
+
+  it('a credential that goes stale while applying settings signs out', async () => {
+    const { runtime, flows, browser } = await setup();
+    const pending = flows.changeConfig();
+    const url = await browser.next();
+    runtime.session().call = (async () => {
+      throw new CredentialStale();
+    }) as Session['call'];
+    const { html } = await submitPage(url, { all: 'on', action: ['vault.list'], wpm: '120' });
+    expect(html).toContain('Your Inked password changed, so the saved sign-in stopped working. Call sign_in.');
+    expect(runtime.state).toMatchObject({ kind: 'signed-out' });
+    await submitPage(url, {}, 'cancel');
+    await pending;
   });
 
   it('create_vault: Cancel creates nothing; Create makes it and grants it, switching shared names to ids', async () => {

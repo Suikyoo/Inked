@@ -5,7 +5,7 @@ import { isCryptoError } from 'inked-core';
 import { ApprovalServer } from './approval';
 import { Audit } from './audit';
 import { deleteCredential, loadCredential, saveCredential } from './credential';
-import { ApiError, NonApiResponse, ToolError } from './errors';
+import { ApiError, CredentialStale, NonApiResponse, ToolError } from './errors';
 import { Flows } from './flows';
 import { credentialPath } from './home';
 import { toToolMessage } from './messages';
@@ -23,7 +23,6 @@ const USAGE = `Usage: inked-mcp <command>
   status [--config F] Show who you are signed in as and what the config allows
   config [--config F] Open the access settings page in your browser
   logout              Delete the saved credential`;
-
 
 export interface CliIO {
   out(s: string): void;
@@ -97,6 +96,8 @@ async function prepare(argv: string[], fetchImpl?: typeof fetch) {
 
 function describeFailure(e: unknown): string {
   if (e instanceof ConfigError) return `Config error: ${e.message}`;
+  // The terminal wording (run `inked-mcp login`), not the AI client's (call sign_in).
+  if (e instanceof CredentialStale) return e.message;
   if (e instanceof ApiError || e instanceof NonApiResponse || e instanceof ToolError || isCryptoError(e)) return toToolMessage(e);
   // CredentialStale, credential-file problems, a bad URL: their messages are written for the user.
   return e instanceof Error ? e.message : String(e);
@@ -202,7 +203,8 @@ export async function main(
       try {
         const s = runtime.state;
         if (s.kind === 'signed-out') {
-          io.err(`${s.reason ? `${s.reason} ` : ''}Run \`inked-mcp login\` first.`);
+          // An unreachable server is not fixed by logging in again.
+          io.err(s.retry && s.reason ? s.reason : `${s.reason ? `${s.reason} ` : ''}Run \`inked-mcp login\` first.`);
           return 1;
         }
         const flows = new Flows(runtime, new ApprovalServer({ openBrowser: deps.openBrowser }), new Audit(), {
@@ -212,7 +214,7 @@ export async function main(
         });
         const r = await flows.changeConfig({}, { byUser: true });
         if (r.outcome === 'config_applied') {
-          io.out('Saved.');
+          io.out('Saved. A running AI client picks this up at its next status check, or reconnect inked in /mcp.');
           return 0;
         }
         io.err(r.outcome === 'cancelled' ? 'Cancelled; nothing changed.' : 'The page timed out; nothing changed.');

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { deleteCredential, loadCredential, saveCredential, type Credential } from './credential';
 import { CredentialStale, ToolError } from './errors';
 import { credentialPath } from './home';
-import { toToolMessage } from './messages';
+import { STALE_TOOL, toToolMessage } from './messages';
 import { Ops } from './ops';
 import { ConfigError, loadConfig, resolvePolicy, type ParsedConfig, type Policy } from './policy';
 import { Session } from './session';
@@ -16,7 +16,6 @@ export type RuntimeState =
 export const STALE_REASON = 'Your Inked password changed, so the saved sign-in stopped working. Sign in again.';
 export const NOT_SIGNED_IN = 'Not signed in to Inked. Call sign_in.';
 const DAMAGED_REASON = 'The saved Inked sign-in could not be read. Sign in again.';
-const STALE_TOOL = 'Your Inked password changed, so the saved sign-in stopped working. Call sign_in.';
 
 /** The server's live state. Every change goes through here, one at a time, and is announced to subscribers. */
 export class Runtime {
@@ -58,7 +57,7 @@ export class Runtime {
     try {
       cfg = loadConfig(this.deps.configFile);
     } catch (e) {
-      if (e instanceof ConfigError) return { kind: 'config-error', session, message: e.message };
+      if (e instanceof ConfigError) return { kind: 'config-error', session, message: this.withoutPath(e.message) };
       throw e;
     }
     const vaults = await listAllVaults(session);
@@ -72,6 +71,12 @@ export class Runtime {
     // Keep the write budget across a reload, so a reload never resets the rate limit.
     const limiter = prev && prev.policy.writesPerMinute === policy.writesPerMinute ? prev.limiter : undefined;
     return { kind: 'ready', session, policy, ops: new Ops(session, new VaultModel(session, policy), policy, limiter), vaults };
+  }
+
+  /** Config messages can reach the AI: drop the --config path that loadConfig appends. */
+  private withoutPath(message: string): string {
+    const file = this.deps.configFile;
+    return file && message.endsWith(`: ${file}`) ? message.slice(0, -(file.length + 2)) : message;
   }
 
   private sessionOf(s: RuntimeState): Session | null {
@@ -125,7 +130,12 @@ export class Runtime {
         await this.closeSession(session);
         throw e;
       }
-      saveCredential(cred);
+      try {
+        saveCredential(cred);
+      } catch (e) {
+        await this.closeSession(session);
+        throw e;
+      }
       const old = this.sessionOf(this.current);
       this.set(next);
       await this.closeSession(old);
@@ -171,14 +181,16 @@ export class Runtime {
 
   /** Runs a tool body. A credential that goes stale mid-session signs the server out instead of failing on every call. */
   async guard<T>(fn: () => Promise<T>): Promise<T> {
+    const before = this.sessionOf(this.current);
     try {
       return await fn();
     } catch (e) {
       if (!(e instanceof CredentialStale)) throw e;
       await this.exclusive(async () => {
-        const old = this.sessionOf(this.current);
+        // A sign-in that happened meanwhile brought a fresh session: keep it.
+        if (this.sessionOf(this.current) !== before) return;
         this.set({ kind: 'signed-out', reason: STALE_REASON });
-        await this.closeSession(old);
+        await this.closeSession(before);
       });
       throw new ToolError('signed_out', STALE_TOOL);
     }

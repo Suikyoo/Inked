@@ -1,9 +1,13 @@
 import { isCryptoError } from 'inked-core';
 import { ApiError, CredentialStale, NonApiResponse, ToolError } from './errors';
 
+/** A stale credential, worded for the AI client (the CLI keeps CredentialStale's own message). */
+export const STALE_TOOL = 'Your Inked password changed, so the saved sign-in stopped working. Call sign_in.';
+
 /** One short sentence the model can act on. Never includes keys, cookies or content. */
 export function toToolMessage(e: unknown): string {
-  if (e instanceof ToolError || e instanceof CredentialStale || e instanceof NonApiResponse) return e.message;
+  if (e instanceof CredentialStale) return STALE_TOOL;
+  if (e instanceof ToolError || e instanceof NonApiResponse) return e.message;
   if (e instanceof ApiError) {
     if (e.status === 0) return 'Can’t reach the Inked server.';
     if (e.status === 429) return `Inked is refusing sign-ins for now. Try again in ${e.retryAfter ?? 60} s.`;

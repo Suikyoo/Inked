@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { toBase64Url } from 'inked-core';
@@ -102,6 +102,48 @@ describe('Runtime', () => {
       }),
     ).rejects.toThrow('Call sign_in.');
     expect(rt.state).toEqual({ kind: 'signed-out', reason: STALE_REASON });
+  });
+
+  it('guard keeps a session that was signed in while the call ran', async () => {
+    saveCredential(await cred());
+    const rt = new Runtime();
+    await rt.start();
+    await expect(
+      rt.guard(async () => {
+        await rt.signIn(await cred());
+        throw new CredentialStale();
+      }),
+    ).rejects.toThrow('Call sign_in.');
+    expect(rt.state.kind).toBe('ready');
+    await rt.close();
+  });
+
+  it('signIn closes the new session and changes nothing when the credential cannot be saved', async () => {
+    mkdirSync(path.join(home, 'credential.json')); // a folder in its place: saving throws
+    const logouts: string[] = [];
+    const spy: typeof fetch = (input, init) => {
+      if (String(input).endsWith('/api/auth/logout')) logouts.push(String(input));
+      return fetch(input, init);
+    };
+    const rt = new Runtime({ fetch: spy });
+    await expect(rt.signIn(await cred())).rejects.toThrow();
+    expect(rt.state).toEqual({ kind: 'signed-out' });
+    expect(logouts).toHaveLength(1);
+  });
+
+  it('a config error for a --config file never names the path', async () => {
+    saveCredential(await cred());
+    const missing = path.join(home, 'missing.json');
+    const a = new Runtime({ configFile: missing });
+    await a.start();
+    expect(a.state).toMatchObject({ kind: 'config-error', message: 'Config file not found' });
+    await a.close();
+    const bad = path.join(home, 'bad.json');
+    writeFileSync(bad, '{oops');
+    const b = new Runtime({ configFile: bad });
+    await b.start();
+    expect(b.state).toMatchObject({ kind: 'config-error', message: 'Config file is not valid JSON' });
+    await b.close();
   });
 
   it('an unreachable server signs out with retry, and a later start recovers', async () => {

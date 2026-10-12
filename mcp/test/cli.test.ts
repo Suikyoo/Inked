@@ -105,6 +105,38 @@ describe('inked-mcp CLI', () => {
     expect(c.err.join('\n')).toContain('inked-mcp login');
   });
 
+  it('config with the server unreachable gives the reason only', async () => {
+    await main(['login'], fakeIO([srv.baseUrl, 'jude'], PW).io);
+    const down = (async () => {
+      throw new TypeError('fetch failed');
+    }) as unknown as typeof fetch;
+    const c = fakeIO([], '');
+    expect(await main(['config'], c.io, { fetch: down })).toBe(1);
+    expect(c.err).toEqual(['Can’t reach the Inked server.']);
+  });
+
+  it('config tells the user when a running AI client picks up the change', async () => {
+    await main(['login'], fakeIO([srv.baseUrl, 'jude'], PW).io);
+    const browser = fakeBrowser();
+    const c = fakeIO([], '');
+    const pending = main(['config'], c.io, { openBrowser: browser.open });
+    await submitPage(await browser.next(), { all: 'on', action: ['vault.list'], wpm: '120' });
+    expect(await pending).toBe(0);
+    expect(c.out).toContain('Saved. A running AI client picks this up at its next status check, or reconnect inked in /mcp.');
+  });
+
+  it('status after a password change tells the user to log in again', async () => {
+    await main(['login'], fakeIO([srv.baseUrl, 'jude'], PW).io);
+    await changePassword(srv.baseUrl, 'jude', PW, 'another password here');
+    try {
+      const s = fakeIO([], '');
+      expect(await main(['status'], s.io)).toBe(1);
+      expect(s.err.join('\n')).toContain('Run `inked-mcp login`');
+    } finally {
+      await changePassword(srv.baseUrl, 'jude', 'another password here', PW);
+    }
+  });
+
   it('serve closes the session and exits 1 when connect throws', async () => {
     await main(['login'], fakeIO([srv.baseUrl, 'jude'], PW).io);
     const logouts: string[] = [];
