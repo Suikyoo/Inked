@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { VaultIcon } from '../brand/VaultIcon';
 import { FitIcon, MinusIcon, PlusIcon, ResetIcon } from '../components/Icons';
 import { relativeTime } from '../lib/util';
-import { prefersReducedMotion, usePresence } from '../motion';
+import { DUR, prefersReducedMotion, usePresence } from '../motion';
 import { folderLit, litSet, mapFocus } from './lit';
 import { inkTier } from './recency';
 import { planRipples } from './ripples';
@@ -30,19 +30,19 @@ const EDGE = 16;
 /** Write-on: each level of edges starts this much after the one above it. */
 const WRITE_STEP_MS = 140;
 /** Write-on: a folder square or dot fades in once its edge has finished drawing (--dur-ink). */
-const NODE_LAG_MS = 750;
-/** Live ripples: the write-on has run this long after its last node fades in (the node's own fade is --dur-3). */
-const WRITE_SETTLE_MS = 750;
+const NODE_LAG_MS = DUR.ink;
+/** Live ripples: wait this long after the last node starts fading in; --dur-ink comfortably outlasts its --dur-3 fade. */
+const WRITE_SETTLE_MS = DUR.ink;
 /** Live ripples: the second ring follows the first by this much. */
 const RING_GAP_MS = 200;
 /** Meaning threads: how many neighbours, the wait after a new selection's ink path, and the stagger between them. */
 const THREAD_COUNT = 3;
-const THREAD_BASE_MS = 560;
+const THREAD_BASE_MS = DUR.ink + 40;
 const THREAD_STEP_MS = 90;
 /** A neighbour's dot pulses as its thread arrives, after the 640 ms draw-in has mostly run. */
 const PULSE_LAG_MS = 520;
 /** The pending-links caption fades out over --dur-2. */
-const CAPTION_EXIT_MS = 320;
+const CAPTION_EXIT_MS = DUR[2];
 
 export const noteHref = (vaultId: string, noteId: string) => `/v/${vaultId}/n/${noteId}`;
 
@@ -393,7 +393,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
 
   const zoomBy = (factor: number) => {
     touched.current = true;
-    animateTo(zoomAt(view, factor, size.w / 2, size.h / 2));
+    animateTo((v) => zoomAt(v, factor, size.w / 2, size.h / 2));
   };
   const fitAll = () => {
     // With a focused vault, "fit all" is a choice to keep: a vault finishing its load must not pull the view back.

@@ -76,18 +76,25 @@ export function useViewport(initial: View | (() => View)) {
     [stop],
   );
 
+  // Where a running glide is headed; a step given as a function builds on it, so quick clicks each land in full.
+  const pending = useRef<View | null>(null);
   const animateTo = useCallback(
-    (target: View) => {
+    (next: View | ((v: View) => View)) => {
+      const base = frame.current && pending.current ? pending.current : current.current;
+      const target = typeof next === 'function' ? next(base) : next;
       stop();
       if (reducedMotion() || typeof requestAnimationFrame !== 'function') {
         setRaw(target);
         return;
       }
+      pending.current = target;
       const from = current.current;
       const t0 = performance.now();
       const step = (t: number) => {
         const k = Math.min(1, (t - t0) / VIEW_ANIM_MS);
-        setRaw(lerpView(from, target, 1 - (1 - k) ** 3));
+        const v = lerpView(from, target, 1 - (1 - k) ** 3);
+        current.current = v;
+        setRaw(v);
         frame.current = k < 1 ? requestAnimationFrame(step) : 0;
       };
       frame.current = requestAnimationFrame(step);

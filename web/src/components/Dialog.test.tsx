@@ -45,7 +45,10 @@ describe('Dialog body presence', () => {
     expect(body()).not.toBeNull();
     render(false);
     expect(body()).not.toBeNull();
-    tick(300);
+    // The box fades out over --dur-2 (320ms); the body stays until then.
+    tick(320);
+    expect(body()).not.toBeNull();
+    tick(100);
     expect(body()).toBeNull();
   });
 

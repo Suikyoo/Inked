@@ -11,7 +11,7 @@ import { ConceptMap, type MapSelection } from '../map/ConceptMap';
 import { useVaultGraphs } from '../map/useVaultGraphs';
 import { highlightSegments, searchBodies, searchTitles, type SearchEntry, type SemanticInput } from 'inked-core';
 import { ProgressBar } from '../components/ProgressBar';
-import { usePresence } from '../motion';
+import { DUR, usePresence } from '../motion';
 import { useSemantic, useSemanticStore } from '../semantic/SemanticContext';
 import { buildRows, type SearchRow } from './searchRows';
 import { describeError, relativeTime } from '../lib/util';
@@ -185,6 +185,9 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
     setQuery('');
     setError(null);
   }
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [focusVault]);
   const [fitRequest, setFitRequest] = useState<{ sel: MapSelection; n: number } | null>(null);
   const column = asking ? 'ask' : homeColumn(state, query, selected);
   const hotFrom = (t: EventTarget) => (t instanceof Element ? t.closest('a.res')?.getAttribute('data-note') ?? null : null);
@@ -275,7 +278,7 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
   const barNow = downloading
     ? { label: `Downloading model · ${toMB(sem.download!.loaded)} / ${toMB(sem.download!.total)} MB`, value: sem.download!.loaded, max: sem.download!.total }
     : { label: `Indexing by meaning · ${cov.done} / ${cov.total}`, value: cov.done, max: cov.total };
-  const bar = usePresence(indexing || downloading, 300);
+  const bar = usePresence(indexing || downloading, DUR[3]);
   // The label outlives the state that earned it while the bar fades out.
   const lastBar = useRef(barNow);
   if (indexing || downloading) lastBar.current = barNow;

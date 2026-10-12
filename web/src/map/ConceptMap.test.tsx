@@ -532,6 +532,32 @@ describe('ConceptMap', () => {
       expect(gap()).toBeCloseTo(all, 3);
     });
 
+    it('leaving a vault for Home glides the camera back out instead of snapping', () => {
+      window.matchMedia = vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+      try {
+        const a = entry(folders(), 'v1');
+        const b = entry(tree([folder('g1', null, 'Home')], [note('x', 'g1', 'Xray'), note('y', null, 'Yankee')]), 'v2');
+        const gap = () => {
+          const x = translate(node('x'))!;
+          const y = translate(node('y'))!;
+          return Math.hypot(x.x - y.x, x.y - y.y);
+        };
+        const { rerender } = render({ entries: [a, b], focusVault: 'v2' });
+        act(() => void vi.advanceTimersByTime(2000));
+        const framed = gap();
+        rerender({ entries: [a, b], focusVault: null });
+        act(() => void vi.advanceTimersByTime(100));
+        const mid = gap();
+        act(() => void vi.advanceTimersByTime(2000));
+        const all = gap();
+        expect(all).toBeLessThan(framed);
+        expect(mid).toBeLessThan(framed);
+        expect(mid).toBeGreaterThan(all);
+      } finally {
+        delete (window as { matchMedia?: unknown }).matchMedia;
+      }
+    });
+
     it('a changed fitRequest.n fits that folder or hub; the same n does not', () => {
       const e = entry(folders());
       const { rerender } = render({ entries: [e], fitRequest: null });
@@ -987,8 +1013,8 @@ describe('meaning threads', () => {
   it('waits for the ink path after a click, and starts at once on hover', () => {
     render({ entries: [entry(t())], neighbours: near });
     click(node('a'));
-    expect(firstMask().style.animationDelay).toBe('560ms');
-    expect(node('b').querySelector<SVGElement>('.cmap-dot')!.style.animationDelay).toBe('1080ms');
+    expect(firstMask().style.animationDelay).toBe('790ms');
+    expect(node('b').querySelector<SVGElement>('.cmap-dot')!.style.animationDelay).toBe('1310ms');
     hoverDot('d');
     expect(firstMask().style.animationDelay).toBe('0ms');
   });

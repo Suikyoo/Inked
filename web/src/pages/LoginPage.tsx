@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { InkFill } from '../brand/InkFill';
-import { prefersReducedMotion, setWipeOrigin, withViewTransition } from '../motion';
+import { DUR, prefersReducedMotion, setWipeOrigin, withViewTransition } from '../motion';
 import { isApiError } from '../api/client';
 import { FormError, PasswordField, TextField } from '../components/Fields';
 import { UnlockIcon } from '../components/Icons';
@@ -13,7 +13,7 @@ import { AuthLayout } from './AuthLayout';
 
 const MAX_TRIES = 5;
 /** Lets the drop finish filling before the swap; mirrors --dur-2. */
-const DROP_DONE_MS = 320;
+const DROP_DONE_MS = DUR[2];
 
 export function LoginPage() {
   const store = useStore();

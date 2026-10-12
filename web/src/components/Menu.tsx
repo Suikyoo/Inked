@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { usePresence } from '../motion';
+import { DUR, usePresence } from '../motion';
 
 export interface MenuItem {
   label: string;
@@ -32,7 +32,7 @@ export function Menu({
   const [pos, setPos] = useState<{ top: number; left: number; origin: string } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLUListElement | null>(null);
-  const presence = usePresence(open, 140);
+  const presence = usePresence(open, DUR[1]);
   const presenceRef = presence.ref;
   const setMenuEl = useCallback(
     (el: HTMLUListElement | null) => {

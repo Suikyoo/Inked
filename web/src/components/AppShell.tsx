@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Logo, Wordmark } from '../brand/Logo';
 import { useAppState, useStore } from '../state/StoreContext';
 import type { AppStore } from '../state/store';
-import { usePresence } from '../motion';
+import { DUR, usePresence } from '../motion';
 import { CloseIcon, LockIcon, MenuIcon } from './Icons';
 import { ModelBanner } from './ModelBanner';
 import { Sidebar } from './Sidebar';
@@ -50,7 +50,7 @@ function useIdleLock(store: AppStore, onIdle: () => void) {
 
 /** Animates a banner in and out, holding its last content while it collapses. */
 function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
-  const { mounted, state, ref } = usePresence(open, 220);
+  const { mounted, state, ref } = usePresence(open, DUR[2]);
   const last = useRef(children);
   if (open) last.current = children;
   if (!mounted) return null;

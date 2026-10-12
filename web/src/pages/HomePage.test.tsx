@@ -163,6 +163,13 @@ describe('HomePage right column', () => {
     expect(column().textContent).toContain('Select a folder or note on the map.');
   });
 
+  it('switching the focused vault starts the column at the top', () => {
+    const h = mount(baseState(), undefined, undefined, { focusVault: 'v1' });
+    column().scrollTop = 200;
+    h.focus(undefined);
+    expect(column().scrollTop).toBe(0);
+  });
+
   it('opened for a vault, previews the hub of that vault', () => {
     mount(baseState(), undefined, undefined, { focusVault: 'v1' });
     expect(column().querySelector('.preview')).not.toBeNull();

@@ -68,7 +68,9 @@ describe('AppShell banner and sync bar', () => {
     expect(wrap('.banner')?.getAttribute('data-state')).toBe('exit');
     expect(wrap('.banner')?.textContent).toContain('Locked after a while.');
     expect(wrap('.banner')?.hasAttribute('inert')).toBe(true);
-    tick(300);
+    tick(320);
+    expect(wrap('.banner')).not.toBeNull();
+    tick(100);
     expect(host.querySelector('.banner')).toBeNull();
   });
 
@@ -79,7 +81,9 @@ describe('AppShell banner and sync bar', () => {
     ctl.set({ pendingCount: 0 });
     expect(wrap('.sync-bar')?.getAttribute('data-state')).toBe('exit');
     expect(wrap('.sync-bar')?.textContent).toContain('2 changes');
-    tick(300);
+    tick(320);
+    expect(wrap('.sync-bar')).not.toBeNull();
+    tick(100);
     expect(host.querySelector('.sync-bar')).toBeNull();
   });
 });
