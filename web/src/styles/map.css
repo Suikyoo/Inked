@@ -214,6 +214,15 @@
 .cmap-hub {
   cursor: pointer;
 }
+/* The vault icon's dial turn (see shell.css), on the hub. */
+.cmap-hub:is(:hover, :focus-visible) .vault-icon .vi-out {
+  transform: rotate(60deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cmap-hub:is(:hover, :focus-visible) .vault-icon .vi-out {
+    transform: none;
+  }
+}
 /* Lit when its root Index is a search hit or selected. */
 .cmap-hub-ink {
   fill: var(--selection);

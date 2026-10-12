@@ -433,6 +433,13 @@ describe('ConceptMap', () => {
       expect(host!.querySelector('g.cmap-hub .cmap-sel')).not.toBeNull();
     });
 
+    it('clicking the hub rushes ink through its vault icon', () => {
+      render({ entries: [entry(folders())] });
+      expect(host!.querySelector('g.cmap-hub .vi-rush')).toBeNull();
+      click(host!.querySelector('g.cmap-hub')!);
+      expect(host!.querySelector('g.cmap-hub .vi-rush')).not.toBeNull();
+    });
+
     it('the hub is a keyboard node: a named button that Enter or Space selects', () => {
       render({ entries: [entry(folders())] });
       const hub = host!.querySelector<SVGGElement>('g.cmap-hub')!;

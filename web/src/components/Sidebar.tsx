@@ -21,6 +21,8 @@ export function Sidebar({ id, onLock }: { id: string; onLock: () => void }) {
   const [newVaultOpen, setNewVaultOpen] = useState(false);
   const [folderSignal, setFolderSignal] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // Ink rush: a click on a vault flashes its icon's spokes.
+  const [rush, setRush] = useState({ vaultId: '', seq: 0 });
 
   const setExpanded = (fn: (s: Set<string>) => Set<string>) => setExpandedState(fn);
 
@@ -90,8 +92,9 @@ export function Sidebar({ id, onLock }: { id: string; onLock: () => void }) {
                   aria-current={open && !activeNote ? 'page' : undefined}
                   aria-expanded={v.broken ? undefined : open}
                   title={`${v.name} · ${inkLevelLabel(stats.level)}`}
+                  onClick={() => setRush((r) => ({ vaultId: v.id, seq: r.seq + 1 }))}
                 >
-                  <VaultIcon color={v.color} level={stats.level} />
+                  <VaultIcon color={v.color} level={stats.level} rush={rush.vaultId === v.id ? rush.seq : 0} />
                   <span className={v.broken ? 'vault-name is-broken' : 'vault-name'}>{v.name}</span>
                   <span className="count">{stats.noteCount}</span>
                 </Link>

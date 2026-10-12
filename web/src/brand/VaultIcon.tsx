@@ -30,8 +30,9 @@ const SPOKE_STEP_MS = 45;
  * edited this week (`level`, activeNoteCount7d / max(noteCount, 1)) grows: none at 0, all six at 100%.
  * All six are always in the DOM: an unlit spoke is a stroke with nothing drawn, so a change in level draws the
  * spokes in (or out) one after another, and the core gives one pulse when ink is added. Nothing animates on mount.
+ * Each new `rush` value (a click on the vault) flashes the unlit spokes in and back out, and pulses the core.
  */
-export function VaultIcon({ color, level, size = 14 }: { color: string; level: number; size?: number }) {
+export function VaultIcon({ color, level, size = 14, rush = 0 }: { color: string; level: number; size?: number; rush?: number }) {
   const lvl = Math.max(0, Math.min(1, Number.isFinite(level) ? level : 0));
   const n = spokeCount(lvl);
   const last = useRef(n);
@@ -41,25 +42,28 @@ export function VaultIcon({ color, level, size = 14 }: { color: string; level: n
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className="vault-icon" aria-hidden="true" focusable="false">
       <title>{inkLevelLabel(lvl)}</title>
-      <path d={HEX} fill="none" stroke={color} strokeWidth="1.3" strokeLinejoin="round" />
-      {SPOKES.map((d, k) => (
-        <path
-          key={k}
-          d={d}
-          pathLength={1}
-          data-lit={k < n ? '' : undefined}
-          className={`vi-spoke${k < n ? ' is-lit' : ''}`}
-          style={{ transitionDelay: `${(k < n ? k : SPOKES.length - 1 - k) * SPOKE_STEP_MS}ms` }}
-          fill="none"
-          stroke={color}
-          strokeWidth="1.1"
-          strokeLinecap="round"
-        />
-      ))}
+      <path className="vi-out" d={HEX} fill="none" stroke={color} strokeWidth="1.3" strokeLinejoin="round" />
+      {/* Keyed by `rush`, so each click mounts the group afresh and its animation plays again. */}
+      <g key={rush} className={rush > 0 ? 'vi-rush' : undefined}>
+        {SPOKES.map((d, k) => (
+          <path
+            key={k}
+            d={d}
+            pathLength={1}
+            data-lit={k < n ? '' : undefined}
+            className={`vi-spoke${k < n ? ' is-lit' : ''}`}
+            style={{ transitionDelay: `${(k < n ? k : SPOKES.length - 1 - k) * SPOKE_STEP_MS}ms` }}
+            fill="none"
+            stroke={color}
+            strokeWidth="1.1"
+            strokeLinecap="round"
+          />
+        ))}
+      </g>
       <path
-        key={pulses.current}
+        key={`${pulses.current}-${rush}`}
         d={CORE}
-        className={`vi-core${pulses.current > 0 ? ' is-pulse' : ''}`}
+        className={`vi-core${pulses.current > 0 || rush > 0 ? ' is-pulse' : ''}`}
         fill={color}
         stroke={color}
         strokeWidth="1"

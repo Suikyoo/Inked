@@ -144,6 +144,8 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
   // Click ring: plays whenever a note becomes the selection, whatever set it.
   const ringSeq = useRef(0);
   const [ring, setRing] = useState<{ id: string; seq: number } | null>(null);
+  // Ink rush: a click on a hub flashes its vault icon's spokes.
+  const [rush, setRush] = useState({ vaultId: '', seq: 0 });
   // Keyed on the selection itself, not on selNote, so mounting with a selection, or its dot arriving later, does not play it.
   const selectedNoteId = selected?.kind === 'note' ? selected.id : null;
   const lastSelectedNote = useRef(selectedNoteId);
@@ -515,6 +517,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
     if (consumeDrag()) return;
     onSelect({ kind: 'hub', vaultId });
     setFocusId(hubKey(vaultId));
+    setRush((r) => ({ vaultId, seq: r.seq + 1 }));
   };
   const onBackgroundClick = () => {
     if (consumeDrag()) return;
@@ -749,7 +752,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
                   {inkedHubs.has(h.vaultId) && <circle className="cmap-hub-ink" r={HUB_HALF + 2.5} />}
                   {h.vaultId === selHub && <circle className="cmap-sel" r={HUB_HALF + 5.5} />}
                   <g transform={`translate(${-HUB_HALF} ${-HUB_HALF})`}>
-                    <VaultIcon color={e.vault.color} level={e.level} size={HUB_ICON} />
+                    <VaultIcon color={e.vault.color} level={e.level} size={HUB_ICON} rush={rush.vaultId === h.vaultId ? rush.seq : 0} />
                   </g>
                 </g>
                 <text className="cmap-hub-name" x={0} y={f1(-(HUB_HALF * k + 5))} textAnchor="middle">

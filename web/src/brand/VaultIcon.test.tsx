@@ -26,8 +26,9 @@ afterEach(() => {
 describe('VaultIcon', () => {
   it('draws the outline hexagon, six spokes and the core in the vault colour', () => {
     const el = render(0, '#ff0000');
-    const paths = [...el.querySelectorAll('svg > path')];
+    const paths = [...el.querySelectorAll('svg path')];
     expect(paths).toHaveLength(8);
+    expect(el.querySelector('svg > path.vi-out')!.getAttribute('d')).toBe('M12 2.5L20.23 7.25V16.75L12 21.5L3.77 16.75V7.25z');
     expect(paths.every((p) => [p.getAttribute('stroke'), p.getAttribute('fill')].includes('#ff0000'))).toBe(true);
   });
 
@@ -66,6 +67,25 @@ describe('VaultIcon', () => {
     const key = el.querySelector('.vi-core');
     act(() => root!.render(<VaultIcon color="#2dd4bf" level={0.2} />));
     expect(el.querySelector('.vi-core')).toBe(key);
+  });
+
+  it('rushes the spokes and pulses the core each time `rush` changes, never on mount', () => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    const at = (rush: number) => act(() => root!.render(<VaultIcon color="#2dd4bf" level={0.5} rush={rush} />));
+    at(0);
+    expect(host.querySelector('.vi-rush')).toBeNull();
+    expect(host.querySelector('.vi-core')!.classList.contains('is-pulse')).toBe(false);
+    at(1);
+    const first = host.querySelector('g.vi-rush')!;
+    expect(first.querySelectorAll('.vi-spoke')).toHaveLength(6);
+    expect(first.querySelectorAll('.vi-spoke.is-lit')).toHaveLength(3);
+    expect(host.querySelector('.vi-core')!.classList.contains('is-pulse')).toBe(true);
+    const core = host.querySelector('.vi-core');
+    at(2);
+    expect(host.querySelector('g.vi-rush')).not.toBe(first);
+    expect(host.querySelector('.vi-core')).not.toBe(core);
   });
 
   it('labels the level for assistive tech', () => {

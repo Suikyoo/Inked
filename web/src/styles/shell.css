@@ -309,12 +309,38 @@
     transform: scale(1.4);
   }
 }
+/* Hover: the outline turns 60deg like a dial. A hexagon looks the same after 60deg, so it lands where it began. */
+.vault-icon .vi-out {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+  transition: transform var(--dur-3) var(--ease-std);
+}
+.vault-link:is(:hover, :focus-visible) .vault-icon .vi-out {
+  transform: rotate(60deg);
+}
+/* Click: the unlit spokes rush in and draw back to the real level. */
+.vault-icon .vi-rush .vi-spoke:not(.is-lit) {
+  animation: vi-rush 760ms var(--ease-std);
+}
+@keyframes vi-rush {
+  35%,
+  55% {
+    stroke-dashoffset: 0;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .vault-icon .vi-spoke {
     transition: none;
   }
-  .vault-icon .vi-core.is-pulse {
+  .vault-icon .vi-core.is-pulse,
+  .vault-icon .vi-rush .vi-spoke:not(.is-lit) {
     animation: none;
+  }
+  .vault-icon .vi-out {
+    transition: none;
+  }
+  .vault-link:is(:hover, :focus-visible) .vault-icon .vi-out {
+    transform: none;
   }
 }
 
