@@ -110,4 +110,31 @@ describe('AppShell route wrapper', () => {
     expect(second?.getAttribute('data-route')).toBe('/b');
     expect(second).not.toBe(first);
   });
+
+  it('keeps one wrapper across Home and vault maps, so the map glides instead of remounting', () => {
+    let go!: (to: string) => void;
+    function Nav() {
+      go = useNavigate();
+      return null;
+    }
+    act(() => root.unmount());
+    root = createRoot(host);
+    act(() =>
+      root.render(
+        <MemoryRouter initialEntries={['/']}>
+          <StoreProvider store={ctl.store}>
+            <Nav />
+            <AppShell />
+          </StoreProvider>
+        </MemoryRouter>,
+      ),
+    );
+    const home = host.querySelector('.route');
+    act(() => go('/v/a'));
+    expect(host.querySelector('.route')).toBe(home);
+    act(() => go('/v/b'));
+    expect(host.querySelector('.route')).toBe(home);
+    act(() => go('/v/b/n/x'));
+    expect(host.querySelector('.route')).not.toBe(home);
+  });
 });

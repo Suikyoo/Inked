@@ -5,7 +5,6 @@ import type { AskStore } from './ask/askStore';
 import { Logo } from './brand/Logo';
 import { AppShell } from './components/AppShell';
 import { Spinner } from './components/Fields';
-import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { RecoverPage } from './pages/RecoverPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -116,7 +115,7 @@ export function App({ store, semantic, account, ask }: { store: AppStore; semant
                       </RequireUnlocked>
                     }
                   >
-                    <Route index element={<HomePage />} />
+                    <Route index element={<VaultPage />} />
                     <Route path="v/:vaultId" element={<VaultPage />} />
                     <Route path="v/:vaultId/n/:noteId" element={<VaultPage />} />
                     <Route path="settings" element={<SettingsPage />} />

@@ -12,6 +12,11 @@ const IDLE_MS = 15 * 60 * 1000;
 
 export const FOCUS_SEARCH_EVENT = 'inked:focus-search';
 
+/** Home and a vault are one map page; sharing a key lets the map glide between them instead of remounting. */
+function routeKey(pathname: string): string {
+  return pathname === '/' || /^\/v\/[^/]+\/?$/.test(pathname) ? 'map' : pathname;
+}
+
 function isEditable(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
   return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
@@ -134,7 +139,7 @@ export function AppShell() {
             </button>
           </div>
         </Collapse>
-        <div key={location.pathname} className="route" data-route={location.pathname}>
+        <div key={routeKey(location.pathname)} className="route" data-route={location.pathname}>
           <Outlet />
         </div>
       </div>

@@ -515,6 +515,23 @@ describe('ConceptMap', () => {
       expect(gap()).toBeGreaterThan(all * 1.3);
     });
 
+    it('a new focusVault reframes the mounted map, even after the user zoomed; none frames every vault', () => {
+      const a = entry(folders(), 'v1');
+      const b = entry(tree([folder('g1', null, 'Home')], [note('x', 'g1', 'Xray'), note('y', null, 'Yankee')]), 'v2');
+      const gap = () => {
+        const x = translate(node('x'))!;
+        const y = translate(node('y'))!;
+        return Math.hypot(x.x - y.x, x.y - y.y);
+      };
+      const { rerender } = render({ entries: [a, b] });
+      const all = gap();
+      fire(host!.querySelector('button[aria-label="Zoom out"]')!, new MouseEvent('click', { bubbles: true }));
+      rerender({ entries: [a, b], focusVault: 'v2' });
+      expect(gap()).toBeGreaterThan(all * 1.3);
+      rerender({ entries: [a, b], focusVault: null });
+      expect(gap()).toBeCloseTo(all, 3);
+    });
+
     it('a changed fitRequest.n fits that folder or hub; the same n does not', () => {
       const e = entry(folders());
       const { rerender } = render({ entries: [e], fitRequest: null });

@@ -268,14 +268,20 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
   // Fit on mount, when the vault set changes, and when a vault finishes loading, unless the user has moved the map.
   const idKey = entries.map((e) => e.vaultId).join(',');
   const statusKey = entries.map((e) => `${e.vaultId}:${e.status}`).join(',');
+  // Picking another vault (or Home) is a fresh request to frame it, whatever the user did to the view before.
+  const shownFocus = useRef(focusVault);
   useEffect(() => {
     touched.current = false;
-  }, [idKey]);
+  }, [idKey, focusVault]);
   useEffect(() => {
     if (touched.current) return;
     // The focused vault once it has a layout (until then, every vault): the map starts on all of them and eases in.
     const vault = focusVault ? scene.vaultBounds[focusVault] : undefined;
+    const leftVault = shownFocus.current !== focusVault && !focusVault;
+    shownFocus.current = focusVault;
     if (vault) animateTo(fit(vault, size));
+    // Leaving a vault for Home glides back out; a first paint or a resize just frames.
+    else if (leftVault) animateTo(fit(scene.bounds, size));
     else setView(fit(scene.bounds, size));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusKey, size.w, size.h, focusVault]);

@@ -8,6 +8,8 @@ export function VaultPage() {
   const state = useAppState();
   const vault = state.vaults[vaultId];
 
+  // Home and every vault render the same HomePage here, so switching between them keeps the map mounted.
+  if (!vaultId) return <HomePage />;
   if (!vault) {
     if (state.vaultsStatus !== 'ready') {
       return <div className="doc-loading">Decrypting vaults…</div>;

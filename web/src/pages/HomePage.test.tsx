@@ -96,23 +96,27 @@ function mount(initial: AppState, semantic?: SemanticStore, saves = savesFake(),
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() =>
-    root!.render(
-      <MemoryRouter>
-        <LocationProbe />
-        <StoreProvider store={store}>
-          <SemanticProvider store={semantic ?? semanticStub()}>
-            <AccountSettingsProvider store={extra.account ?? accountStub()}>
-              <AskProvider store={extra.ask ?? askStub()}>
-                <HomePage focusVault={extra.focusVault} />
-              </AskProvider>
-            </AccountSettingsProvider>
-          </SemanticProvider>
-        </StoreProvider>
-      </MemoryRouter>,
-    ),
+  const sem = semantic ?? semanticStub();
+  const account = extra.account ?? accountStub();
+  const ask = extra.ask ?? askStub();
+  const ui = (focusVault?: string) => (
+    <MemoryRouter>
+      <LocationProbe />
+      <StoreProvider store={store}>
+        <SemanticProvider store={sem}>
+          <AccountSettingsProvider store={account}>
+            <AskProvider store={ask}>
+              <HomePage focusVault={focusVault} />
+            </AskProvider>
+          </AccountSettingsProvider>
+        </SemanticProvider>
+      </StoreProvider>
+    </MemoryRouter>
   );
+  act(() => root!.render(ui(extra.focusVault)));
   return {
+    /** Re-renders the same page with another focused vault, as switching vaults in the sidebar does. */
+    focus: (focusVault?: string) => act(() => root!.render(ui(focusVault))),
     set: (next: AppState) => {
       state = next;
       act(() => listeners.forEach((l) => l()));
@@ -138,6 +142,25 @@ describe('HomePage right column', () => {
     mount(baseState());
     expect(column().textContent).toContain('Select a folder or note on the map.');
     expect(host!.textContent).not.toContain('Recently edited');
+  });
+
+  it('switching the focused vault previews the new vault and clears the query', () => {
+    const base = baseState();
+    const two = {
+      ...base,
+      vaults: { v1: vault('v1', 'Work'), v2: vault('v2', 'Garden') },
+      vaultOrder: ['v1', 'v2'],
+      trees: { ...base.trees, v2: tree([], [note('g1', null, 'Fern')]) },
+      bodies: { ...base.bodies, g1: '' },
+      bodiesReady: { v1: true, v2: true },
+    } as unknown as AppState;
+    const h = mount(two, undefined, undefined, { focusVault: 'v1' });
+    type('Alpha');
+    h.focus('v2');
+    expect(host!.querySelector<HTMLInputElement>('input#q')!.value).toBe('');
+    expect(column().textContent).toContain('Garden');
+    h.focus(undefined);
+    expect(column().textContent).toContain('Select a folder or note on the map.');
   });
 
   it('opened for a vault, previews the hub of that vault', () => {

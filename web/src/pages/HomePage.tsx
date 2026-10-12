@@ -177,6 +177,14 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
   }, [store]);
   // The map rings and inks the selected node; the right column previews it.
   const [selected, setSelected] = useState<MapSelection | null>(() => (focusVault ? { kind: 'hub', vaultId: focusVault } : null));
+  // Switching vaults keeps this page mounted (so the map glides); start the new vault as a fresh page would.
+  const [shownFocus, setShownFocus] = useState(focusVault);
+  if (shownFocus !== focusVault) {
+    setShownFocus(focusVault);
+    setSelected(focusVault ? { kind: 'hub', vaultId: focusVault } : null);
+    setQuery('');
+    setError(null);
+  }
   const [fitRequest, setFitRequest] = useState<{ sel: MapSelection; n: number } | null>(null);
   const column = asking ? 'ask' : homeColumn(state, query, selected);
   const hotFrom = (t: EventTarget) => (t instanceof Element ? t.closest('a.res')?.getAttribute('data-note') ?? null : null);
