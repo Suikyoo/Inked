@@ -86,6 +86,9 @@ describe('MCP tools', () => {
     const now = await names(client);
     expect(now).toContain('list_vaults');
     expect(now).not.toContain('sign_in');
+    const lines = auditLines();
+    expect(lines.filter((l) => l.tool === 'signed_in' && l.ok === true)).toHaveLength(1);
+    expect(lines.filter((l) => l.tool === 'sign_in' && l.ok === true)).toHaveLength(1);
   });
 
   it('a sign-in finished after the client gave up still takes effect', async () => {

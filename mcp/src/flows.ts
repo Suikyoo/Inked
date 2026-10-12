@@ -104,7 +104,7 @@ export class Flows {
           } catch (e) {
             throw new PageError(signInMessage(e));
           }
-          this.audit.write({ tool: 'sign_in', ok: true });
+          this.audit.write({ tool: 'signed_in', ok: true });
           return { user: cred.username, server: cred.baseUrl };
         },
         done: (v) => `Signed in as ${v.user}.`,
