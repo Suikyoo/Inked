@@ -319,6 +319,41 @@ describe('HomePage search by meaning', () => {
     expect(host!.querySelectorAll('aside.results a.res')).toHaveLength(0);
   });
 
+  it('Enter opens the top text match while meaning is still answering', () => {
+    const { store } = sem(() => new Promise<SemanticInput[]>(() => undefined));
+    mount(baseState(), store);
+    type('beta');
+    act(() => void host!.querySelector('input#q')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+    expect(currentPath()).toBe('/v/v1/n/n3');
+  });
+
+  it('keeps the map on the last answered hits while the next term is searching', async () => {
+    const pending: ((r: SemanticInput[]) => void)[] = [];
+    const { store } = sem(() => new Promise<SemanticInput[]>((r) => pending.push(r)));
+    mount(baseState(), store);
+    const faded = () => [...host!.querySelectorAll('g.cmap-node.is-faded')].map((n) => n.getAttribute('data-note')).sort();
+    type('beta');
+    await advance(250);
+    await act(async () => pending[0]([]));
+    const answered = faded();
+    expect(answered.length).toBeGreaterThan(0);
+    type('gamma');
+    expect(faded()).toEqual(answered);
+  });
+
+  it('offers nothing to focus while searching, then shows the real count and the Ask row with the set', async () => {
+    const pending: ((r: SemanticInput[]) => void)[] = [];
+    const { store } = sem(() => new Promise<SemanticInput[]>((r) => pending.push(r)));
+    mount(baseState(), store, undefined, { account: accountStub({ llmOrigins: ['https://api.openai.com'] }) });
+    type('beta');
+    await advance(250);
+    // Nothing to land on while searching: the Ask row waits for the set too, so it cannot move under the pointer.
+    expect(host!.querySelector('#results .res-ask')).toBeNull();
+    await act(async () => pending[0]([]));
+    expect(column().querySelector('.results-title')?.textContent).toMatch(/^1 match/);
+    expect(host!.querySelector('#results .res-ask')).not.toBeNull();
+  });
+
   it('shows text matches at once when meaning cannot answer the term', async () => {
     const { store } = sem(() => new Promise<SemanticInput[]>(() => undefined));
     mount(baseState(), store);

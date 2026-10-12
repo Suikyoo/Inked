@@ -91,6 +91,9 @@ describe('AskAnswer', () => {
     expect(head.querySelector('.ask-clear')).not.toBeNull();
     expect(head.querySelector('.ask-q')!.textContent).toBe('How do I roll back?');
     expect(scroll.querySelector('.ask-q')).toBeNull();
+    // The only scroller while asking: reachable by keyboard, so the answer can be paged from Clear or the input.
+    expect(scroll.getAttribute('tabindex')).toBe('0');
+    expect(scroll.getAttribute('aria-label')).toBe('Answer text');
   });
 
   it('shows only the newest question and answer', () => {

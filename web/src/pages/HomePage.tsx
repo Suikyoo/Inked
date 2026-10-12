@@ -131,12 +131,17 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
   // While focus is inside the list the rows hold still, so a late meaning result cannot move what the reader is
   // about to open. The new rows wait in liveRows and apply when focus leaves the list or the query changes. The
   // hold is read from the document at render time, so a focused row that unmounts releases it by itself.
-  const shown = useRef<{ q: string; rows: SearchRow[] } | null>(null);
+  // Only an answered set is held: the empty "Searching…" placeholder must never outlive the search.
+  const shown = useRef<{ q: string; rows: SearchRow[]; searching: boolean } | null>(null);
   const [, setTick] = useState(0);
   const browsing = !!listRef.current?.contains(document.activeElement);
-  const held = browsing && shown.current?.q === q ? shown.current.rows : null;
+  const held = browsing && shown.current?.q === q && !shown.current.searching ? shown.current.rows : null;
   const rows = held ?? liveRows;
-  shown.current = { q, rows };
+  shown.current = { q, rows, searching: !held && searching };
+  // The map keeps the last answered hits while the next term searches, so it does not un-fade and re-ink per keystroke.
+  const answeredRows = useRef(rows);
+  if (!searching) answeredRows.current = rows;
+  const mapRows = searching ? answeredRows.current : rows;
   const mapEntries = useVaultGraphs(state);
   // The notes that have a dot on the map, kept as one Set while its members do not change (a body edit rebuilds
   // mapEntries but not the dots), so the meaning-neighbour lookup below keeps its identity.
@@ -155,7 +160,7 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
     (id: string) => semanticStore.neighbours(id, 3, dotIds),
     [semanticStore, semVersion, dotIds],
   );
-  const hitIds = useMemo(() => new Set(rows.map((r) => r.entry.noteId)), [rows]);
+  const hitIds = useMemo(() => new Set(mapRows.map((r) => r.entry.noteId)), [mapRows]);
   const litIds = useMemo(() => askLitIds(askState), [askState]);
   const [hot, setHot] = useState<string | null>(null);
   // Saves for the map's ripples. Saves made while Home was away are consumed once on mount (the store forgets them,
@@ -239,7 +244,8 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
       e.preventDefault();
       if (asking) startAsk(query);
       else {
-        const first = rows[0]?.entry;
+        // While meaning is still answering, Enter does not wait: it opens the top text match.
+        const first = (searching ? buildRows(titleHits, bodyHits, NO_MEANING, entries, q) : rows)[0]?.entry;
         if (first) navigate(hrefFor(first));
       }
     }
@@ -298,7 +304,8 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
   shownIds.forEach((id, i) => flags.set(id, rowFlags.current.get(id) ?? { fresh: true, stagger: wasIdle.current ? Math.min(i, STAGGER_ROWS - 1) : null }));
   useEffect(() => {
     rowFlags.current = flags;
-    wasIdle.current = !q;
+    // A first term that is still searching shows no rows yet; its set should still stagger in when it lands.
+    wasIdle.current = !q || (searching && shownIds.length === 0);
   });
   const rowMotion = (id: string) => {
     const f = flags.get(id);
@@ -449,7 +456,7 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
                     </li>
                   );
                 })}
-                {askAvailable && q && (
+                {askAvailable && q && !searching && (
                   <li>
                     <button type="button" className="res res-ask" onClick={() => startAsk(query)}>
                       <SparkIcon size={13} />

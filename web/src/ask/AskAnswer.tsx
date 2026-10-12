@@ -187,7 +187,7 @@ export function AskAnswer({ entries, onSelect, onClear }: { entries: readonly Se
         {last && <h3 className="ask-q">{last.question}</h3>}
       </div>
       {last && (
-        <div key={last.id} className="ask-scroll">
+        <div key={last.id} className="ask-scroll" tabIndex={0} aria-label="Answer text">
           <Turn turn={last} last entries={entries} onSelect={onSelect} />
         </div>
       )}
