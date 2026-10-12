@@ -4,9 +4,13 @@ import { mergeRank, semanticScore, MAX_MEANING_ONLY, MAX_RESULTS } from './rank'
 describe('semanticScore', () => {
   it('maps the floor to 0, the ceiling and above to 1', () => {
     expect(semanticScore(0.55)).toBe(0);
-    expect(semanticScore(0.7)).toBeCloseTo(0.5);
     expect(semanticScore(0.95)).toBe(1);
     expect(semanticScore(0.3)).toBe(0);
+  });
+  it('lifts the middle of the range on a square-root curve, keeping order', () => {
+    expect(semanticScore(0.7)).toBeCloseTo(Math.SQRT1_2);
+    expect(semanticScore(0.65)).toBeGreaterThan(0.5);
+    expect(semanticScore(0.8)).toBeGreaterThan(semanticScore(0.75));
   });
 });
 
@@ -29,7 +33,7 @@ describe('mergeRank', () => {
   });
   it('combines both signals with a bonus for agreement', () => {
     const [x] = mergeRank([{ noteId: 'a', kind: 'title', score: 10 }], [{ noteId: 'a', similarity: 0.7, chunk: 2 }], new Set());
-    expect(x.score).toBeCloseTo(1 + 0.15 * 0.5);
+    expect(x.score).toBeCloseTo(1 + 0.15 * Math.SQRT1_2);
     expect(x.why).toBe('title');
     expect(x.chunk).toBe(2);
   });
@@ -100,6 +104,10 @@ describe('mergeRank', () => {
     );
     expect(r.find((x) => x.noteId === 'low')).toBeDefined();
     expect(r.filter((x) => x.noteId.startsWith('s'))).toHaveLength(MAX_MEANING_ONLY);
+  });
+  it('ranks a mid-range meaning-only hit above a text hit', () => {
+    const r = mergeRank([{ noteId: 't', kind: 'text', score: 0 }], [{ noteId: 'm', similarity: 0.68, chunk: 0 }], new Set());
+    expect(r.map((x) => x.noteId)).toEqual(['m', 't']);
   });
   it('drops semantic hits at exactly the floor', () => {
     expect(mergeRank([], [{ noteId: 'x', similarity: 0.55, chunk: 0 }], new Set())).toEqual([]);

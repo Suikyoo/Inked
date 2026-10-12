@@ -30,8 +30,12 @@ export interface Ranked {
   chunk: number | null;
 }
 
+/**
+ * Similarity rescaled to [0, 1] between the floor and the ceiling, then lifted on a square-root curve: the
+ * embedding model's related notes bunch in the middle of the range, and a linear scale left them under text hits.
+ */
 export const semanticScore = (similarity: number) =>
-  Math.max(0, Math.min(1, (similarity - SEM_FLOOR) / (SEM_CEIL - SEM_FLOOR)));
+  Math.sqrt(Math.max(0, Math.min(1, (similarity - SEM_FLOOR) / (SEM_CEIL - SEM_FLOOR))));
 
 export function mergeRank(
   fuzzy: readonly FuzzyInput[],
