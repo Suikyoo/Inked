@@ -155,6 +155,15 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
     if (selectedNoteId && !prefersReducedMotion()) setRing({ id: selectedNoteId, seq: ++ringSeq.current });
     else setRing(null);
   }, [selectedNoteId]);
+  // Selection ring: a new selection of any kind inks its ring in and sends a wave out from it. Same mount rule as above.
+  const selectedKey = !selected ? null : selected.kind === 'hub' ? hubKey(selected.vaultId) : selected.id;
+  const lastSelectedKey = useRef(selectedKey);
+  const [selWave, setSelWave] = useState<{ id: string; seq: number } | null>(null);
+  useEffect(() => {
+    if (lastSelectedKey.current === selectedKey) return;
+    lastSelectedKey.current = selectedKey;
+    setSelWave(selectedKey && !prefersReducedMotion() ? { id: selectedKey, seq: ++ringSeq.current } : null);
+  }, [selectedKey]);
 
   // Write-on: decided at the first paint that has edges to draw, so a map that opens on
   // "Decrypting…" still writes on when the notes arrive. Reduced motion skips it.
@@ -464,6 +473,21 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
     if (el) nodeRefs.current.set(id, el);
     else nodeRefs.current.delete(id);
   };
+  /**
+   * The white ring around a node: solid when selected (inked in, with a wave, when the selection is new), a faint
+   * turning dashed ghost when merely pointed at. `pathLength` 1 lets the CSS draw and dash it at any radius.
+   */
+  const selRing = (id: string, r: number, isSel: boolean) => {
+    const fresh = selWave?.id === id;
+    return (
+      <>
+        {isSel && <circle key={fresh ? `sel${selWave.seq}` : 'sel'} className={`cmap-sel${fresh ? ' is-inking' : ''}`} r={r} pathLength={1} />}
+        {!isSel && hover === id && <circle className="cmap-ghost" r={r} pathLength={1} />}
+        {fresh && <circle key={`wave${selWave.seq}`} className="cmap-sel-wave" r={r} onAnimationEnd={() => setSelWave(null)} />}
+      </>
+    );
+  };
+
   const nodeFocusProps = (id: string) => ({
     tabIndex: id === rovingId ? 0 : -1,
     onFocus: () => {
@@ -718,7 +742,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
               >
                 <circle className="cmap-hit" r={11} />
                 <g transform={nodeScale}>
-                  {f.id === selFolder && <circle className="cmap-sel" r={10} />}
+                  {selRing(f.id, 10, f.id === selFolder)}
                   <rect key={ticks.get(f.id)?.seq ?? 0} className="cmap-sq" style={ticks.has(f.id) ? { animationDelay: ms(ticks.get(f.id)!.delay) } : undefined} x={-4.75} y={-4.75} width={9.5} height={9.5} rx={2.25} />
                 </g>
                 <text className={`cmap-folder-label${showLabel ? '' : ' is-hidden'}`} x={0} y={f1(4.75 * k + 14)} textAnchor="middle" aria-hidden="true">
@@ -751,12 +775,14 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
                 onKeyDown={(ev) => {
                   if (activates(ev)) onSelect({ kind: 'hub', vaultId: h.vaultId });
                 }}
+                onPointerEnter={() => setHoverSoon(hubKey(h.vaultId))}
+                onPointerLeave={() => hoverNext.current === hubKey(h.vaultId) && setHoverSoon(null)}
               >
                 <circle className="cmap-hit" r={HUB_HALF + 5} />
                 <g transform={nodeScale}>
                   {/* The hub stands for the root Index: a hit on it lights the hub, as a diamond does for a folder. */}
                   {inkedHubs.has(h.vaultId) && <circle className="cmap-hub-ink" r={HUB_HALF + 2.5} />}
-                  {h.vaultId === selHub && <circle className="cmap-sel" r={HUB_HALF + 5.5} />}
+                  {selRing(hubKey(h.vaultId), HUB_HALF + 5.5, h.vaultId === selHub)}
                   <g transform={`translate(${-HUB_HALF} ${-HUB_HALF})`}>
                     <VaultIcon color={e.vault.color} level={e.level} size={HUB_ICON} rush={rush.vaultId === h.vaultId ? rush.seq : 0} />
                   </g>
@@ -818,7 +844,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
                     r={r}
                     style={nearIndex.has(dot.id) ? { animationDelay: ms(threadBase + PULSE_LAG_MS + nearIndex.get(dot.id)! * THREAD_STEP_MS) } : undefined}
                   />
-                  {dot.id === selNote && <circle className="cmap-sel" r={selRingRadius(dot.degree)} />}
+                  {selRing(dot.id, selRingRadius(dot.degree), dot.id === selNote)}
                   {rings.has(dot.id) &&
                     [0, 1].map((k) => (
                       <circle

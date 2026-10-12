@@ -1157,3 +1157,73 @@ describe('live ripples', () => {
     cancel.mockRestore();
   });
 });
+
+describe('selection ring motion', () => {
+  const t = () => tree([folder('f1', null, 'Ops')], [note('a', 'f1', 'Alpha'), note('b', null, 'Beta')]);
+  const hub = () => host!.querySelector<SVGGElement>('g.cmap-hub')!;
+  const hover = (el: Element) => {
+    fire(el, new MouseEvent('pointerover', { bubbles: true }));
+    act(() => void vi.advanceTimersByTime(40));
+  };
+  const unhover = (el: Element) => {
+    fire(el, new MouseEvent('pointerout', { bubbles: true }));
+    act(() => void vi.advanceTimersByTime(40));
+  };
+  const ended = (el: Element) => act(() => void el.dispatchEvent(new Event('animationend', { bubbles: true })));
+  const motion = (on: boolean) => {
+    window.matchMedia = vi.fn(() => ({ matches: !on, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+  };
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('shows a ghost ring on the hovered note, folder or hub, and drops it on leave', () => {
+    render({ entries: [entry(t())] });
+    expect(host!.querySelector('.cmap-ghost')).toBeNull();
+    for (const el of [node('a'), folderNode('f1'), hub()]) {
+      hover(el);
+      expect(el.querySelector('.cmap-ghost')).not.toBeNull();
+      expect(host!.querySelectorAll('.cmap-ghost')).toHaveLength(1);
+      unhover(el);
+      expect(host!.querySelector('.cmap-ghost')).toBeNull();
+    }
+  });
+
+  it('shows no ghost on the node that is already selected', () => {
+    render({ entries: [entry(t())], selected: { kind: 'note', vaultId: 'v1', id: 'a' } });
+    hover(node('a'));
+    expect(node('a').querySelector('.cmap-sel')).not.toBeNull();
+    expect(node('a').querySelector('.cmap-ghost')).toBeNull();
+  });
+
+  it('inks the ring in and sends a wave from it when a note, folder or hub becomes the selection', () => {
+    motion(true);
+    render({ entries: [entry(t())] });
+    for (const el of [node('a'), folderNode('f1'), hub()]) {
+      click(el);
+      expect(el.querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(true);
+      expect(el.querySelector('.cmap-sel')!.getAttribute('pathLength')).toBe('1');
+      const wave = el.querySelector('.cmap-sel-wave');
+      expect(wave).not.toBeNull();
+      ended(wave!);
+      expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
+    }
+  });
+
+  it('plays nothing for a selection the map mounts with, then plays when it changes', () => {
+    motion(true);
+    const { rerender } = render({ entries: [entry(t())], selected: { kind: 'hub', vaultId: 'v1' } });
+    expect(hub().querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(false);
+    expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
+    rerender({ entries: [entry(t())], selected: { kind: 'folder', vaultId: 'v1', id: 'f1' } });
+    expect(folderNode('f1').querySelector('.cmap-sel-wave')).not.toBeNull();
+  });
+
+  it('under reduced motion, the ring just appears: no ink-in, no wave', () => {
+    motion(false);
+    render({ entries: [entry(t())] });
+    click(node('b'));
+    expect(node('b').querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(false);
+    expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
+  });
+});

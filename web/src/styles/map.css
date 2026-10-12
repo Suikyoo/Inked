@@ -495,6 +495,49 @@
   .cmap-fan path { animation: none; }
 }
 
+/* Selection ring. Pointing at a node shows a faint ghost of it: dashed, turning slowly like the vault dial.
+   A new selection inks its ring in with one clockwise stroke from 12 o'clock, then a white wave leaves it.
+   The circles carry pathLength="1", so the dashes and the stroke read the same at every radius. */
+.cmap-ghost {
+  fill: none;
+  stroke: var(--map-sel);
+  stroke-width: 1.5;
+  stroke-dasharray: 0.07 0.055;
+  opacity: 0.35;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cmap-ghost-in var(--dur-2) var(--ease-out) both, cmap-ghost-turn 9s linear infinite;
+  pointer-events: none;
+}
+@keyframes cmap-ghost-in { from { opacity: 0; } }
+@keyframes cmap-ghost-turn { to { transform: rotate(360deg); } }
+.cmap-sel.is-inking {
+  stroke-dasharray: 1;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: rotate(-90deg);
+  animation: cmap-sel-ink var(--dur-3) var(--ease-out) both;
+}
+@keyframes cmap-sel-ink { from { stroke-dashoffset: 1; } }
+.cmap-sel-wave {
+  fill: none;
+  stroke: var(--map-sel);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  /* Starts as the stroke is a little over halfway round, so the wave reads as the ring's echo. */
+  animation: cmap-sel-wave 900ms var(--ease-out) 180ms forwards;
+  pointer-events: none;
+}
+@keyframes cmap-sel-wave { from { opacity: 0.65; transform: scale(1); } to { opacity: 0; transform: scale(2.4); } }
+@media (prefers-reduced-motion: reduce) {
+  .cmap-ghost { animation: none; }
+  .cmap-sel.is-inking { animation: none; stroke-dasharray: none; }
+  .cmap-sel-wave { display: none; }
+}
+
 @media (max-width: 760px) {
   .cmap {
     flex: none;
