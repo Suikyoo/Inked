@@ -81,7 +81,7 @@ One small HTTP server per request, using `node:http` only.
 - Response headers:
   - `Content-Security-Policy: default-src 'none'; style-src 'nonce-…'; form-action 'self'; frame-ancestors 'none'`
   - `Cache-Control: no-store`
-  - `Referrer-Policy: no-referrer`
+  - `Referrer-Policy: same-origin` (not `no-referrer`: with it, browsers send `Origin: null` on the form POST, which the Origin check refuses)
   - `X-Content-Type-Options: nosniff`
 - No scripts. Plain HTML forms only.
 - The server closes after the first successful submit, after Cancel, or after 5 minutes. The token dies with it.

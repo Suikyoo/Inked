@@ -68,7 +68,7 @@ The config file is `~/.inked-mcp/config.json`. If it does not exist, the default
 ```
 
 - `version` must be `1`.
-- `vaults` is `"*"` for all vaults, or a non-empty list of vault names or ids. Names are matched exactly after decryption. An unknown name, or a name shared by two vaults, stops the server with a clear error (use the id instead).
+- `vaults` is `"*"` for all vaults, or a non-empty list of vault names or ids. Names are matched exactly after decryption. An unknown name, or a name shared by two vaults, is a config error (use the id instead): `status` stops, and `serve` keeps running with only `inked_status`, `change_config` and `sign_out` until it is fixed.
 - `actions` is a non-empty list of actions or groups.
 - `limits.writesPerMinute` is optional, a whole number from 1 to 1000. The default is 120.
 
@@ -78,7 +78,7 @@ The config is checked strictly. A typo or an unknown key is an error, never a qu
 
 You rarely need to edit this file. Ask the AI for the access you want. Its `change_config` tool opens a settings page in your browser, pre-filled with its proposal and with each proposed change marked. Nothing changes until you click Apply. The server then writes the file and reloads at once, with no restart.
 
-The AI can only open that page while the config grants `config.change`. If you remove it, run `inked-mcp config` in a terminal to open the same page yourself.
+The AI can only open that page while the config grants `config.change`. If you remove it, run `inked-mcp config` in a terminal to open the same page yourself. What you apply there reaches a running AI client the next time it checks its status, or after you reconnect inked in /mcp.
 
 ### Actions
 
@@ -153,7 +153,7 @@ inked-mcp serve --config ~/.inked-mcp/capture.json
 
 Put that command and its arguments in the client's MCP settings (see below). A file given with `--config` that does not exist is an error, not a fallback to the default.
 
-After you edit a config file by hand, restart the AI client so it starts `serve` again. Changes made on the settings page apply at once.
+Changes made on the settings page the AI opens apply at once. Changes made with `inked-mcp config` in a terminal, or by editing the file by hand, reach a running AI client the next time it checks its status, or after you reconnect inked in /mcp.
 
 ## Connect a client
 
