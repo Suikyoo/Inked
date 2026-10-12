@@ -81,6 +81,26 @@ function render(state: Partial<AskState>, methods = {}) {
 const button = (name: string) => [...host!.querySelectorAll('button')].find((b) => b.textContent === name)!;
 
 describe('AskAnswer', () => {
+  it('keeps the title, Clear and the question above the scrolling answer', () => {
+    render({ turns: [turn({})] });
+    const scroll = host!.querySelector('.ask-scroll')!;
+    expect(scroll.querySelector('.ask-a')).not.toBeNull();
+    expect(scroll.textContent).toContain('1 source lit on the map');
+    const head = host!.querySelector('.ask-top')!;
+    expect(head.contains(scroll)).toBe(false);
+    expect(head.querySelector('.ask-clear')).not.toBeNull();
+    expect(head.querySelector('.ask-q')!.textContent).toBe('How do I roll back?');
+    expect(scroll.querySelector('.ask-q')).toBeNull();
+  });
+
+  it('shows only the newest question and answer', () => {
+    render({ turns: [turn({ id: 1, question: 'First?', answer: 'Old answer.' }), turn({ id: 2, question: 'Second?', answer: 'New answer.' })] });
+    expect(host!.querySelectorAll('.ask-q')).toHaveLength(1);
+    expect(host!.querySelector('.ask-q')!.textContent).toBe('Second?');
+    expect(host!.textContent).not.toContain('Old answer.');
+    expect(host!.textContent).toContain('New answer.');
+  });
+
   it('Clear empties the conversation', () => {
     const { onClear } = render({ turns: [turn({})] });
     act(() => button('Clear').click());

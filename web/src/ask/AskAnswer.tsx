@@ -1,5 +1,5 @@
 import { answerToNote, llmOrigin, type SearchEntry } from 'inked-core';
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useMemo, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { MapSelection } from '../map/ConceptMap';
 import { renderUntrustedMarkdown } from '../markdown/render';
@@ -128,15 +128,8 @@ function Turn({ turn, last, entries, onSelect }: { turn: AskTurnView; last: bool
     setTimeout(() => setCopied(null), 2000);
   };
   const done = turn.status === 'done' || turn.status === 'stopped';
-  // A new question lands at the end of the scrolling column: bring it into view once, then leave the scroll to the reader.
-  const ref = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (last) ref.current?.scrollIntoView?.({ block: 'nearest' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   return (
-    <article ref={ref} className="ask-turn" aria-busy={turn.status === 'retrieving' || turn.status === 'streaming'}>
-      <h3 className="ask-q">{turn.question}</h3>
+    <article className="ask-turn" aria-busy={turn.status === 'retrieving' || turn.status === 'streaming'}>
       {turn.status === 'retrieving' && <p className="results-note">Finding sources…</p>}
       {turn.status === 'empty' && <p className="empty">No notes match closely enough.</p>}
       {turn.answer && <div className="ask-a md" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />}
@@ -174,21 +167,30 @@ function Turn({ turn, last, entries, onSelect }: { turn: AskTurnView; last: bool
   );
 }
 
-/** The conversation that replaces Home's results column while asking. */
+/**
+ * The answer that replaces Home's results column while asking. Only the newest question shows; earlier turns still
+ * go to the model as context. The title, Clear and the question stay put above the scrolling answer, which starts
+ * at the top for each new question.
+ */
 export function AskAnswer({ entries, onSelect, onClear }: { entries: readonly SearchEntry[]; onSelect: (s: MapSelection) => void; onClear: () => void }) {
   const ask = useAsk();
   const last = ask.turns[ask.turns.length - 1];
   return (
     <div className="ask" aria-live="polite" aria-atomic="false" aria-busy={ask.busy}>
-      <div className="ask-head">
-        <h2 className="results-title">{ask.busy ? 'Asking your notes…' : 'Answer'}</h2>
-        <button type="button" className="linkish ask-clear" onClick={onClear}>
-          Clear
-        </button>
+      <div className="ask-top">
+        <div className="ask-head">
+          <h2 className="results-title">{ask.busy ? 'Asking your notes…' : 'Answer'}</h2>
+          <button type="button" className="linkish ask-clear" onClick={onClear}>
+            Clear
+          </button>
+        </div>
+        {last && <h3 className="ask-q">{last.question}</h3>}
       </div>
-      {ask.turns.map((t) => (
-        <Turn key={t.id} turn={t} last={t === last} entries={entries} onSelect={onSelect} />
-      ))}
+      {last && (
+        <div key={last.id} className="ask-scroll">
+          <Turn turn={last} last entries={entries} onSelect={onSelect} />
+        </div>
+      )}
     </div>
   );
 }

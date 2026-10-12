@@ -303,20 +303,38 @@ describe('HomePage search by meaning', () => {
     expect(host!.querySelector('[role="progressbar"]')).toBeNull();
   });
 
-  it('does not reorder rows under focus, and applies the new order on blur', async () => {
-    let resolve!: (r: SemanticInput[]) => void;
-    const { store } = sem(() => new Promise<SemanticInput[]>((r) => (resolve = r)));
+  it('clears the old rows on a new term and shows the new set together once meaning is in', async () => {
+    const pending: ((r: SemanticInput[]) => void)[] = [];
+    const { store } = sem(() => new Promise<SemanticInput[]>((r) => pending.push(r)));
     mount(baseState(), store);
+    type('beta');
+    await advance(250);
+    expect(host!.querySelectorAll('aside.results a.res')).toHaveLength(0);
+    expect(column().querySelector('.results-title')?.textContent).toBe('Searching…');
+    await act(async () => pending[0]([{ noteId: 'n4', similarity: 0.9, chunk: 0 }]));
+    const titles = rows().filter((r) => r.querySelector('a.res')).map(titleOf);
+    expect(titles.some((t) => t?.endsWith('Beta'))).toBe(true);
+    expect(titles.some((t) => t?.endsWith('Gamma'))).toBe(true);
+    type('alpha');
+    expect(host!.querySelectorAll('aside.results a.res')).toHaveLength(0);
+  });
+
+  it('shows text matches at once when meaning cannot answer the term', async () => {
+    const { store } = sem(() => new Promise<SemanticInput[]>(() => undefined));
+    mount(baseState(), store);
+    type('al');
+    expect(rows().some((r) => titleOf(r)?.endsWith('Alpha'))).toBe(true);
+    act(() => root!.unmount());
+    host!.remove();
+    mount(baseState(), sem(async () => [], { phase: 'off', enabled: false, available: true }).store);
+    type('alpha');
+    expect(rows().some((r) => titleOf(r)?.endsWith('Alpha'))).toBe(true);
+    act(() => root!.unmount());
+    host!.remove();
+    mount(baseState(), sem(async () => Promise.reject(new Error('boom'))).store);
     type('alpha');
     await advance(250);
-    const titles = () => rows().filter((r) => r.querySelector('a.res')).map(titleOf);
-    const before = titles();
-    expect(before.some((t) => t?.endsWith('Gamma'))).toBe(false);
-    act(() => host!.querySelector<HTMLAnchorElement>('a.res')!.focus());
-    await act(async () => resolve([{ noteId: 'n4', similarity: 0.9, chunk: 0 }]));
-    expect(titles()).toEqual(before);
-    act(() => host!.querySelector<HTMLInputElement>('input#q')!.focus());
-    expect(titles().some((t) => t?.endsWith('Gamma'))).toBe(true);
+    expect(rows().some((r) => titleOf(r)?.endsWith('Alpha'))).toBe(true);
   });
 
   it('shows no meaning row from the previous query while the new one is pending', async () => {

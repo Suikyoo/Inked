@@ -30,6 +30,7 @@ const STAGGER_ROWS = 8;
 /** Wait this long after the last keystroke before asking for meaning matches. */
 const SEMANTIC_DEBOUNCE_MS = 250;
 const NO_MEANING: SemanticInput[] = [];
+const NO_ROWS: SearchRow[] = [];
 const toMB = (bytes: number) => Math.round(bytes / 1e6);
 
 function Highlighted({ text, indices, offset }: { text: string; indices: number[]; offset: number }) {
@@ -122,7 +123,11 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
     };
   }, [q, semReady, semanticStore]);
   const meaning = semantic.q === q ? semantic.results : NO_MEANING;
-  const liveRows = useMemo(() => buildRows(titleHits, bodyHits, meaning, entries, q), [titleHits, bodyHits, meaning, entries, q]);
+  // A new term clears the old rows at once, and its rows arrive as one set once meaning has answered, so a late
+  // meaning hit never pushes in under the reader. When meaning can't answer (short term, model not ready), text
+  // rows show straight away; a failed meaning search answers with no results.
+  const searching = q.length >= 3 && semReady && semantic.q !== q;
+  const liveRows = useMemo(() => (searching ? NO_ROWS : buildRows(titleHits, bodyHits, meaning, entries, q)), [searching, titleHits, bodyHits, meaning, entries, q]);
   // While focus is inside the list the rows hold still, so a late meaning result cannot move what the reader is
   // about to open. The new rows wait in liveRows and apply when focus leaves the list or the query changes. The
   // hold is read from the document at render time, so a focused row that unmounts releases it by itself.
@@ -379,7 +384,7 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
         )}
 
         <aside
-          className="results"
+          className={column === 'ask' ? 'results is-ask' : 'results'}
           aria-label={column === 'ask' ? 'Answer' : column === 'search' ? 'Search results' : 'Preview'}
           id="results"
           ref={listRef}
@@ -413,7 +418,7 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
           ) : column === 'search' ? (
             <>
               <h2 className="results-title" aria-live="polite">
-                {treesPending ? 'Searching…' : `${total} ${total === 1 ? 'match' : 'matches'}${semReady && incomplete ? ` · meaning covers ${cov.done} of ${cov.total} notes` : ''}`}
+                {treesPending || searching ? 'Searching…' : `${total} ${total === 1 ? 'match' : 'matches'}${semReady && incomplete ? ` · meaning covers ${cov.done} of ${cov.total} notes` : ''}`}
               </h2>
               <ul className="res-list">
                 {rows.map(({ entry, why, titleMatch, snippet, chunk }) => {
@@ -453,7 +458,7 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
                   </li>
                 )}
               </ul>
-              {total === 0 && !treesPending && (
+              {total === 0 && !treesPending && !searching && (
                 <p className="empty">
                   No notes match “{q}”. Try fewer letters.
                   {askAvailable && ' You can still ask your notes.'}
