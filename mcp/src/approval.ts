@@ -166,8 +166,13 @@ export class ApprovalServer {
 
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
-      server.listen(0, '127.0.0.1', () => resolve());
+      server.listen(0, '127.0.0.1', () => {
+        server.off('error', reject);
+        resolve();
+      });
     });
+    // A later server error closes the page; unhandled, it would crash `serve`.
+    server.on('error', () => finish({ outcome: 'timed_out' }));
     const { port } = server.address() as AddressInfo;
     const origin = `http://127.0.0.1:${port}`;
     const pathname = `/t/${token}`;
@@ -201,6 +206,8 @@ export class ApprovalServer {
       if (from !== undefined && from !== origin) return send(res, 403, 'Refused', '<p>This form can only be sent from its own page.</p>');
       const raw = await readBody(req);
       if (raw === null) return send(res, 413, 'Too large', '<p>That was too much text.</p>');
+      // The page may have timed out or been cancelled while the body was arriving.
+      if (finished) return send(res, 410, 'Page closed', '<p>This page has closed. Go back to Claude Code.</p>');
       const form = new URLSearchParams(raw);
       if (!sameToken(form.get('csrf') ?? '', csrf)) return send(res, 403, 'Refused', '<p>This form expired. Reload the page.</p>');
       if (submitting) return send(res, 409, page.title, '<p>Still working on your last submit. Wait a moment.</p>');

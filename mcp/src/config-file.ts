@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { configPath } from './home';
 import { ACTIONS, ConfigError, GROUPS, parseConfig, type Action, type Policy } from './policy';
@@ -80,6 +80,15 @@ export function writeConfigFile(cfg: ConfigFile, file = configPath()): void {
   parseConfig(cfg); // never write a file the server would refuse
   mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(cfg, null, 2) + '\n');
-  renameSync(tmp, file);
+  try {
+    writeFileSync(tmp, JSON.stringify(cfg, null, 2) + '\n');
+    renameSync(tmp, file);
+  } catch (e) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // nothing to remove
+    }
+    throw e;
+  }
 }

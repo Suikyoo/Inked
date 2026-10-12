@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -46,6 +46,14 @@ describe('config file', () => {
     expect(readdirSync(dir)).toEqual(['config.json']);
     writeFileSync(file, '{oops');
     expect(() => readConfigFile(file)).toThrow(ConfigError);
+  });
+
+  it('removes its temp file when the write fails', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'inked-cfgfile-'));
+    const file = path.join(dir, 'config.json');
+    mkdirSync(file); // a folder in its place: the rename fails
+    expect(() => writeConfigFile({ version: 1, vaults: '*', actions: ['@read'] }, file)).toThrow();
+    expect(readdirSync(dir)).toEqual(['config.json']);
   });
 
   it('refuses to write a config the server would reject', () => {

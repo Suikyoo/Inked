@@ -1,3 +1,4 @@
+import { request } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import { ApprovalServer, esc, PageError, type ApprovalPage } from '../src/approval';
 import { fakeBrowser, loadPage, statusWithHost, submitPage } from './helpers/page';
@@ -38,6 +39,44 @@ describe('ApprovalServer', () => {
     expect((await submitPage(p.url, { name: 'x' }, 'submit', { csrf: 'nope' })).res.status).toBe(403);
     expect((await submitPage(p.url, { name: 'Ada' }, 'submit', { origin: null })).res.status).toBe(200);
     expect(await p.result).toEqual({ outcome: 'done', value: 'Ada' });
+  });
+
+  it('refuses "Origin: null", which is why the page sends Referrer-Policy same-origin', async () => {
+    const p = await new ApprovalServer({ openBrowser: fakeBrowser().open }).open(testPage());
+    expect((await submitPage(p.url, { name: 'x' }, 'submit', { origin: 'null' })).res.status).toBe(403);
+    await submitPage(p.url, {}, 'cancel');
+    expect(await p.result).toEqual({ outcome: 'cancelled' });
+  });
+
+  it('refuses a submit whose body arrives after the page closed', async () => {
+    let submitted = false;
+    const p = await new ApprovalServer({ timeoutMs: 150, openBrowser: fakeBrowser().open }).open(
+      testPage(async (f) => {
+        submitted = true;
+        return f.get('name') ?? '';
+      }),
+    );
+    const { csrf } = await loadPage(p.url);
+    const body = new URLSearchParams({ csrf, _action: 'submit', name: 'Ada' }).toString();
+    const u = new URL(p.url);
+    const status = new Promise<number>((resolve, reject) => {
+      const req = request(
+        {
+          host: u.hostname, port: u.port, path: u.pathname, method: 'POST',
+          headers: { Origin: u.origin, 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
+        },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        },
+      );
+      req.on('error', reject);
+      req.write(body.slice(0, 10));
+      void p.result.then(() => req.end(body.slice(10)));
+    });
+    expect(await p.result).toEqual({ outcome: 'timed_out' });
+    expect(await status).toBe(410);
+    expect(submitted).toBe(false);
   });
 
   it('accepts a submit from its own Origin and closes afterwards', async () => {

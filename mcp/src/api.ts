@@ -30,13 +30,16 @@ export class InkedApi {
   private session: string | null = null;
   private device: string | null;
   private readonly f: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(
     readonly baseUrl: string,
-    opts: { deviceCookie?: string | null; fetch?: typeof fetch } = {},
+    /** `timeoutMs` bounds each request, so a hung server never blocks a tool or a state change. */
+    opts: { deviceCookie?: string | null; fetch?: typeof fetch; timeoutMs?: number } = {},
   ) {
     this.device = opts.deviceCookie ?? null;
     this.f = opts.fetch ?? fetch;
+    this.timeoutMs = opts.timeoutMs ?? 15_000;
   }
 
   get deviceCookie(): string | null {
@@ -78,6 +81,7 @@ export class InkedApi {
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
         redirect: 'manual',
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
       text = await res.text();
     } catch {
