@@ -1,25 +1,29 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createInterface } from 'node:readline/promises';
+import { isCryptoError } from 'inked-core';
+import { ApprovalServer } from './approval';
 import { Audit } from './audit';
 import { deleteCredential, loadCredential, saveCredential } from './credential';
-import { isCryptoError } from 'inked-core';
 import { ApiError, NonApiResponse, ToolError } from './errors';
+import { Flows } from './flows';
 import { credentialPath } from './home';
 import { toToolMessage } from './messages';
-import { Ops } from './ops';
 import { ConfigError, loadConfig, resolvePolicy } from './policy';
+import { Runtime } from './runtime';
 import { createCredential, Session } from './session';
 import { createInkedServer } from './tools';
-import { listAllVaults, VaultModel } from './vault-model';
+import { listAllVaults } from './vault-model';
 
 const VERSION = '0.1.0';
 const USAGE = `Usage: inked-mcp <command>
 
-  login              Sign in once and save a credential (not your password) to ~/.inked-mcp
-  serve [--config F] Run the MCP server over stdio (what your AI client starts)
+  login               Sign in once and save a credential (not your password) to ~/.inked-mcp
+  serve [--config F]  Run the MCP server over stdio (what your AI client starts)
   status [--config F] Show who you are signed in as and what the config allows
-  logout             Delete the saved credential`;
+  config [--config F] Open the access settings page in your browser
+  logout              Delete the saved credential`;
+
 
 export interface CliIO {
   out(s: string): void;
@@ -101,7 +105,11 @@ function describeFailure(e: unknown): string {
 export async function main(
   argv: string[],
   io: CliIO = defaultIO,
-  deps: { fetch?: typeof fetch; connect?: (server: McpServer) => Promise<void> } = {},
+  deps: {
+    fetch?: typeof fetch;
+    connect?: (server: McpServer) => Promise<void>;
+    openBrowser?: (url: string) => Promise<boolean>;
+  } = {},
 ): Promise<number> {
   const cmd = argv[0] ?? 'serve';
   try {
@@ -150,18 +158,20 @@ export async function main(
     }
 
     if (cmd === 'serve') {
-      const { session, policy } = await prepare(argv, deps.fetch);
-      const ops = new Ops(session, new VaultModel(session, policy), policy);
-      const { server, registered } = createInkedServer({ ops, policy, audit: new Audit(), version: VERSION });
-      io.err(`inked-mcp ${VERSION}: ${session.username} at ${session.baseUrl}; tools: ${registered.join(', ')}`);
-      // Close the session, but never wait more than a few seconds: a hung logout must not keep the key in memory.
-      const closeSession = () =>
-        Promise.race([session.close().catch(() => undefined), new Promise<void>((r) => setTimeout(r, 3000))]);
+      // Never exits for a missing credential or a bad config: the AI fixes those through the tools.
+      const runtime = new Runtime({ fetch: deps.fetch, configFile: flag(argv, '--config') });
+      await runtime.start();
+      const audit = new Audit();
+      const flows = new Flows(runtime, new ApprovalServer({ openBrowser: deps.openBrowser }), audit, { fetch: deps.fetch });
+      const { server, registered } = createInkedServer({ runtime, flows, audit, version: VERSION });
+      const s = runtime.state;
+      const who = s.kind === 'signed-out' ? `signed out${s.reason ? ` (${s.reason})` : ''}` : `${s.session.username} at ${s.session.baseUrl}`;
+      io.err(`inked-mcp ${VERSION}: ${who}; tools: ${registered().join(', ')}`);
       let closing = false;
       const shutdown = async () => {
         if (closing) process.exit(0); // a second signal while closing: leave at once
         closing = true;
-        await closeSession();
+        await runtime.close();
         process.exit(0);
       };
       const signals = ['SIGINT', 'SIGTERM'] as const;
@@ -172,7 +182,7 @@ export async function main(
       try {
         if (deps.connect) {
           await deps.connect(server);
-          await session.close();
+          await runtime.close();
           return 0;
         }
         for (const sig of signals) process.on(sig, shutdown);
@@ -181,8 +191,34 @@ export async function main(
         return 0;
       } catch (e) {
         removeHandlers();
-        await closeSession();
+        await runtime.close();
         throw e;
+      }
+    }
+
+    if (cmd === 'config') {
+      const runtime = new Runtime({ fetch: deps.fetch, configFile: flag(argv, '--config') });
+      await runtime.start();
+      try {
+        const s = runtime.state;
+        if (s.kind === 'signed-out') {
+          io.err(`${s.reason ? `${s.reason} ` : ''}Run \`inked-mcp login\` first.`);
+          return 1;
+        }
+        const flows = new Flows(runtime, new ApprovalServer({ openBrowser: deps.openBrowser }), new Audit(), {
+          fetch: deps.fetch,
+          waitWithoutBrowser: true,
+          onPageOpen: (url) => io.out(`Opening the access settings in your browser. If nothing opens, go to:\n${url}`),
+        });
+        const r = await flows.changeConfig({}, { byUser: true });
+        if (r.outcome === 'config_applied') {
+          io.out('Saved.');
+          return 0;
+        }
+        io.err(r.outcome === 'cancelled' ? 'Cancelled; nothing changed.' : 'The page timed out; nothing changed.');
+        return 1;
+      } finally {
+        await runtime.close();
       }
     }
 

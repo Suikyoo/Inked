@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { main, type CliIO } from '../src/cli';
+import { fakeBrowser, submitPage } from './helpers/page';
 import { addVault, changePassword, seedUser, startInked } from './helpers/inked';
 
 const PW = 'correct horse battery';
@@ -54,23 +55,54 @@ describe('inked-mcp CLI', () => {
     expect(existsSync(path.join(home, 'credential.json'))).toBe(false);
   });
 
-  it('status and serve stop with a clear error on a bad config', async () => {
+  it('status stops with a clear error on a bad config; serve keeps running so the AI can fix it', async () => {
     await main(['login'], fakeIO([srv.baseUrl, 'jude'], PW).io);
     writeFileSync(path.join(home, 'config.json'), JSON.stringify({ version: 1, vaults: ['Nope'], actions: ['@read'] }));
     const s = fakeIO([], '');
     expect(await main(['status'], s.io)).toBe(1);
     expect(s.err.join('\n')).toContain('Vault "Nope" not found');
     const v = fakeIO([], '');
-    expect(await main(['serve'], v.io, { connect: async () => undefined })).toBe(1);
+    expect(await main(['serve'], v.io, { connect: async () => undefined })).toBe(0);
+    expect(v.err.join('\n')).toContain('tools: inked_status, sign_out, change_config');
   });
 
-  it('serve reports a stale credential after a password change', async () => {
+  it('serve starts signed out after a password change, with a plain reason', async () => {
     await main(['login'], fakeIO([srv.baseUrl, 'jude'], PW).io);
     await changePassword(srv.baseUrl, 'jude', PW, 'another password here');
+    try {
+      const v = fakeIO([], '');
+      expect(await main(['serve'], v.io, { connect: async () => undefined })).toBe(0);
+      expect(v.err.join('\n')).toContain('signed out (Your Inked password changed');
+      expect(v.err.join('\n')).toContain('tools: inked_status, sign_in');
+    } finally {
+      await changePassword(srv.baseUrl, 'jude', 'another password here', PW);
+    }
+  });
+
+  it('serve starts signed out when there is no credential', async () => {
     const v = fakeIO([], '');
-    expect(await main(['serve'], v.io, { connect: async () => undefined })).toBe(1);
-    expect(v.err.join('\n')).toContain('Inked credential is stale (password changed?). Run `inked-mcp login`, then restart the AI client.');
-    await changePassword(srv.baseUrl, 'jude', 'another password here', PW);
+    expect(await main(['serve'], v.io, { connect: async () => undefined })).toBe(0);
+    expect(v.err.join('\n')).toContain('signed out; tools: inked_status, sign_in');
+  });
+
+  it('config opens the settings page and saves what the user applies', async () => {
+    await main(['login'], fakeIO([srv.baseUrl, 'jude'], PW).io);
+    const browser = fakeBrowser();
+    const c = fakeIO([], '');
+    const pending = main(['config'], c.io, { openBrowser: browser.open });
+    const url = await browser.next();
+    await submitPage(url, { all: 'on', action: ['vault.list', 'tree.read', 'note.read', 'search'], wpm: '120' });
+    expect(await pending).toBe(0);
+    expect(JSON.parse(readFileSync(path.join(home, 'config.json'), 'utf8'))).toEqual({
+      version: 1, vaults: '*', actions: ['@read'], limits: { writesPerMinute: 120 },
+    });
+    expect(c.out.join('\n')).toContain(url);
+  });
+
+  it('config without a credential says to log in', async () => {
+    const c = fakeIO([], '');
+    expect(await main(['config'], c.io)).toBe(1);
+    expect(c.err.join('\n')).toContain('inked-mcp login');
   });
 
   it('serve closes the session and exits 1 when connect throws', async () => {
