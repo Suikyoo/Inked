@@ -30,9 +30,9 @@ const EDGE = 16;
 /** Write-on: each level of edges starts this much after the one above it. */
 const WRITE_STEP_MS = 140;
 /** Write-on: a folder square or dot fades in once its edge has finished drawing (--dur-ink). */
-const NODE_LAG_MS = 520;
-/** Live ripples: the write-on has run this long after its last node fades in (the node's own fade is 520 ms). */
-const WRITE_SETTLE_MS = 520;
+const NODE_LAG_MS = 750;
+/** Live ripples: the write-on has run this long after its last node fades in (the node's own fade is --dur-3). */
+const WRITE_SETTLE_MS = 750;
 /** Live ripples: the second ring follows the first by this much. */
 const RING_GAP_MS = 200;
 /** Meaning threads: how many neighbours, the wait after a new selection's ink path, and the stagger between them. */
@@ -42,7 +42,7 @@ const THREAD_STEP_MS = 90;
 /** A neighbour's dot pulses as its thread arrives, after the 640 ms draw-in has mostly run. */
 const PULSE_LAG_MS = 520;
 /** The pending-links caption fades out over --dur-2. */
-const CAPTION_EXIT_MS = 220;
+const CAPTION_EXIT_MS = 320;
 
 export const noteHref = (vaultId: string, noteId: string) => `/v/${vaultId}/n/${noteId}`;
 

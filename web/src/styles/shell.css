@@ -18,7 +18,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  animation: route-in var(--dur-2) var(--ease-out) backwards;
+  animation: route-in var(--dur-3) var(--ease-std) backwards;
 }
 @keyframes route-in {
   from {

@@ -107,8 +107,13 @@ describe('LoginPage motion', () => {
     // The drop completes first, then the swap runs inside the transition.
     expect(el.querySelector('svg.ink-fill')!.classList.contains('is-done')).toBe(true);
     expect(start).not.toHaveBeenCalled();
+    // The swap waits out --dur-2 (320ms), not a moment less.
     act(() => {
-      vi.advanceTimersByTime(220);
+      vi.advanceTimersByTime(300);
+    });
+    expect(start).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(20);
     });
     vi.useRealTimers();
     expect(start).toHaveBeenCalledWith(expect.any(Function));
@@ -176,7 +181,7 @@ describe('LoginPage motion', () => {
       // The session ends during the drop; the store has already delivered the held notification.
       current = states.locked;
       act(() => {
-        vi.advanceTimersByTime(220);
+        vi.advanceTimersByTime(320);
       });
       expect(start).not.toHaveBeenCalled();
       expect(document.documentElement.classList.contains('is-unlocking')).toBe(false);
@@ -203,7 +208,7 @@ describe('LoginPage motion', () => {
       await submitWith(el, 'right-pass');
       expect(submitBtn(el).disabled).toBe(true);
       act(() => {
-        vi.advanceTimersByTime(220);
+        vi.advanceTimersByTime(320);
       });
       expect(start).not.toHaveBeenCalled();
       expect(submitBtn(el).disabled).toBe(true);
@@ -222,7 +227,7 @@ describe('LoginPage motion', () => {
       act(() => store.unlockTransition!(notify));
       act(() => root!.unmount());
       root = null;
-      vi.advanceTimersByTime(220);
+      vi.advanceTimersByTime(320);
       expect(notify).not.toHaveBeenCalled();
       expect(start).not.toHaveBeenCalled();
     });

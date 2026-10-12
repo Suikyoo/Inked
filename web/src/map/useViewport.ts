@@ -20,7 +20,8 @@ export interface Size {
 
 export const MIN_SCALE = 0.4;
 export const MAX_SCALE = 4;
-const ANIM_MS = 200;
+/** Camera glide for fits and zooms; long enough to follow, short enough to keep up with clicks. */
+export const VIEW_ANIM_MS = 600;
 
 export const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
 export const toScreen = (v: View, p: Pt): Pt => ({ x: p.x * v.scale + v.tx, y: p.y * v.scale + v.ty });
@@ -85,7 +86,7 @@ export function useViewport(initial: View | (() => View)) {
       const from = current.current;
       const t0 = performance.now();
       const step = (t: number) => {
-        const k = Math.min(1, (t - t0) / ANIM_MS);
+        const k = Math.min(1, (t - t0) / VIEW_ANIM_MS);
         setRaw(lerpView(from, target, 1 - (1 - k) ** 3));
         frame.current = k < 1 ? requestAnimationFrame(step) : 0;
       };

@@ -584,10 +584,10 @@ describe('ConceptMap', () => {
       expect(edge('n2').style.animationDelay).toBe('280ms');
       expect(edge('n2').getAttribute('pathLength')).toBe('1');
       // Squares and dots fade in once their edge has finished drawing (edge delay + --dur-ink).
-      expect(host!.querySelector<SVGGElement>('g.cmap-folder[data-folder="f1"]')!.style.animationDelay).toBe('520ms');
-      expect(host!.querySelector<SVGGElement>('g.cmap-folder[data-folder="f2"]')!.style.animationDelay).toBe('660ms');
-      expect(node('n3').style.animationDelay).toBe('520ms');
-      expect(node('n2').style.animationDelay).toBe('800ms');
+      expect(host!.querySelector<SVGGElement>('g.cmap-folder[data-folder="f1"]')!.style.animationDelay).toBe('750ms');
+      expect(host!.querySelector<SVGGElement>('g.cmap-folder[data-folder="f2"]')!.style.animationDelay).toBe('890ms');
+      expect(node('n3').style.animationDelay).toBe('750ms');
+      expect(node('n2').style.animationDelay).toBe('1030ms');
       unmount();
       render({ entries: [entry(base())] });
       expect(svg().classList.contains('is-writing')).toBe(false);
