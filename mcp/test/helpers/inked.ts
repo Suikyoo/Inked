@@ -54,7 +54,12 @@ async function post(baseUrl: string, p: string, body: unknown, cookie?: string) 
   return { json, cookie: session ? session.split(';')[0] : undefined };
 }
 
-/** First-run setup for `username`, with the same key material the web client makes. */
+const admins = new Map<string, { username: string; password: string }>();
+
+/**
+ * Creates `username` with the same key material the web client makes: by first-run setup on a fresh
+ * server, or by an invite from the first user once the server is already set up.
+ */
 export async function seedUser(baseUrl: string, username: string, password: string) {
   const userId = crypto.randomUUID();
   const kdfSalt = generateKdfSalt();
@@ -62,11 +67,20 @@ export async function seedUser(baseUrl: string, username: string, password: stri
   const pw = await deriveFromPassword(password, kdfSalt, kdfParams);
   const rk = await deriveRecoveryKeys(generateRecoveryKey());
   const uk = await generateUserKey(userId, pw.passwordKEK, rk.recoveryKEK);
-  await post(baseUrl, '/api/setup', {
+  const fields = {
     userId, username, kdfSalt, kdfParams, authKey: pw.authKey,
     wrappedUserKey: uk.wrappedUserKey, recoveryAuth: rk.recoveryAuth,
-    wrappedUserKeyRecovery: uk.wrappedUserKeyRecovery, setupToken: SETUP_TOKEN,
-  });
+    wrappedUserKeyRecovery: uk.wrappedUserKeyRecovery,
+  };
+  const admin = admins.get(baseUrl);
+  if (!admin) {
+    await post(baseUrl, '/api/setup', { ...fields, setupToken: SETUP_TOKEN });
+    admins.set(baseUrl, { username, password });
+  } else {
+    const a = await signIn(baseUrl, admin.username, admin.password);
+    const invite = await post(baseUrl, '/api/invites', {}, a.cookie);
+    await post(baseUrl, '/api/auth/register', { ...fields, inviteToken: invite.json.token as string });
+  }
   return { userId };
 }
 
