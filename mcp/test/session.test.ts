@@ -109,4 +109,22 @@ describe('Session', () => {
     await expect(new Session(cred).start()).rejects.toBeInstanceOf(CredentialStale);
     await changePassword(srv.baseUrl, 'jude', 'a brand new password', PW); // restore for other tests
   });
+
+  it('close wipes the keys even while logout is still pending', async () => {
+    const cred = await createCredential({ baseUrl: srv.baseUrl, username: 'jude', password: PW });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const slow: typeof fetch = async (input, init) => {
+      if (String(input).includes('/api/auth/logout')) await gate;
+      return fetch(input, init);
+    };
+    const s = new Session(cred, { fetch: slow });
+    await s.start();
+    const closing = s.close();
+    await expect(s.newVaultKey('v1')).rejects.toThrow('Session not started');
+    release();
+    await closing;
+  });
 });

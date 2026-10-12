@@ -139,10 +139,11 @@ export class Session {
     return generateVaultKey(vaultId, this.userKey);
   }
 
+  /** Wipes the keys first, then logs out: a slow or hung logout never keeps them in memory. */
   async close(): Promise<void> {
-    await this.api.logout().catch(() => undefined);
     this.userKey = null;
     this.keys = null;
     this.vaultKeys.clear();
+    await this.api.logout().catch(() => undefined);
   }
 }
