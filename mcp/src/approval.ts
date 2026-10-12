@@ -203,11 +203,11 @@ export class ApprovalServer {
       if (raw === null) return send(res, 413, 'Too large', '<p>That was too much text.</p>');
       const form = new URLSearchParams(raw);
       if (!sameToken(form.get('csrf') ?? '', csrf)) return send(res, 403, 'Refused', '<p>This form expired. Reload the page.</p>');
+      if (submitting) return send(res, 409, page.title, '<p>Still working on your last submit. Wait a moment.</p>');
       if (form.get('_action') === 'cancel') {
         send(res, 200, 'Cancelled', '<p>Nothing changed. You can close this tab and go back to Claude Code.</p>');
         return finish({ outcome: 'cancelled' });
       }
-      if (submitting) return send(res, 409, page.title, '<p>Still working on your last submit. Wait a moment.</p>');
       submitting = true;
       try {
         const value = await page.submit(form);

@@ -112,4 +112,23 @@ describe('ApprovalServer', () => {
     expect((await submitPage(p.url, { name: 'x'.repeat(70_000) })).res.status).toBe(413);
     await submitPage(p.url, {}, 'cancel');
   });
+  it('refuses a cancel while a submit is still running', async () => {
+    let started!: () => void;
+    const running = new Promise<void>((r) => {
+      started = r;
+    });
+    const p = await new ApprovalServer({ timeoutMs: 30_000, openBrowser: fakeBrowser().open }).open(
+      testPage(async (f) => {
+        started();
+        await new Promise((r) => setTimeout(r, 300));
+        return f.get('name') ?? '';
+      }),
+    );
+    const { csrf } = await loadPage(p.url);
+    const first = submitPage(p.url, { name: 'Ada' }, 'submit', { csrf });
+    await running;
+    expect((await submitPage(p.url, {}, 'cancel', { csrf })).res.status).toBe(409);
+    await first;
+    expect(await p.result).toEqual({ outcome: 'done', value: 'Ada' });
+  });
 });
