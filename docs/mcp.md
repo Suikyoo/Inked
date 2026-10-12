@@ -72,7 +72,7 @@ The config file is `~/.inked-mcp/config.json`. If it does not exist, the default
 - `actions` is a non-empty list of actions or groups.
 - `limits.writesPerMinute` is optional, a whole number from 1 to 1000. The default is 120.
 
-The config is checked strictly. A typo or an unknown key stops the server rather than quietly changing what the AI can do. The vault allowlist is enforced inside the MCP process only.
+The config is checked strictly. A typo or an unknown key is an error, never a quiet change to what the AI can do: `status` stops, and `serve` keeps running with only `inked_status`, `change_config` and `sign_out` until the config is fixed. The vault allowlist is enforced inside the MCP process only.
 
 ### Change access from the AI client
 
@@ -261,4 +261,4 @@ More writes than `limits.writesPerMinute` in a minute. Wait a moment, or raise t
 
 ### Config error
 
-> `status` stops with `Config error: ...` when the config has a typo, an unknown action, or a vault name that is missing or ambiguous. `serve` keeps running with only `inked_status`, `change_config` and `sign_out`, so the AI can open the settings page and you can fix it there.
+`status` stops with `Config error: ...` when the config has a typo, an unknown action, or a vault name that is missing or ambiguous. `serve` keeps running with only `inked_status`, `change_config` and `sign_out`, so the AI can open the settings page and you can fix it there.

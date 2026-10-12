@@ -87,12 +87,12 @@ One small HTTP server per request, using `node:http` only.
 - The server closes after the first successful submit, after Cancel, or after 5 minutes. The token dies with it.
 - Single flight: while one page is open, another request gets `ToolError('busy', 'Finish or cancel the open Inked page first.')`.
 - The password is never logged, never put in a tool result and never written to disk. Only the derived credential is saved, exactly as `login` does today.
-- The URL is returned in the tool result and therefore reaches the model provider. That is acceptable. The page is reachable only from this machine, and a local process running as this user could already edit the config.
+- The URL is returned in the tool result only when no browser could be opened (outcome `open_link`), and then reaches the model provider. That is acceptable. The page is reachable only from this machine, and a local process running as this user could already edit the config.
 
 ### Opening the browser
 
 - Windows: `explorer.exe <url>`. macOS: `open <url>`. Linux: `xdg-open <url>`.
-- The call is fire-and-forget, and failure is ignored. When the opener reports a failure, the tool returns at once with `outcome: "open_link"`, the URL and the line "No browser could be opened. Ask the user to open this link on this computer and finish there, then call inked_status." The page stays live until it is submitted or times out.
+- The call is fire-and-forget. When the opener reports a failure, the tool returns at once with `outcome: "open_link"`, the URL and the line "No browser could be opened. Ask the user to open this link on this computer and finish there, then call inked_status." The page stays live until it is submitted or times out.
 
 ### Waiting
 
