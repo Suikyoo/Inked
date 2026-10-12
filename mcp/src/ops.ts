@@ -3,11 +3,13 @@ import {
   encryptFolderMeta,
   encryptNoteBody,
   encryptNoteMeta,
+  encryptVaultMeta,
   INDEX_TITLE,
   indexBody,
   searchBodies,
   searchTitles,
   type SearchEntry,
+  VAULT_COLORS,
 } from 'inked-core';
 import { ApiError, ToolError } from './errors';
 import { toToolMessage } from './messages';
@@ -59,7 +61,7 @@ export function appendJoin(body: string, text: string): string {
   return (body.endsWith('\n') ? body : body + '\n') + text;
 }
 
-function cleanName(name: string, what: 'Folder name' | 'Title'): string {
+function cleanName(name: string, what: 'Folder name' | 'Title' | 'Vault name'): string {
   const n = name.trim();
   if (!n) throw new ToolError('invalid', `${what} must not be empty.`);
   if (what === 'Folder name' && n.includes('/')) throw new ToolError('invalid', 'Folder names must not contain "/".');
@@ -104,6 +106,20 @@ export class Ops {
   async listVaults() {
     this.need('vault.list');
     return (await this.model.listVaults()).map((v) => ({ id: v.id, name: v.name, color: v.color }));
+  }
+
+  async createVault(name: string, color: string): Promise<{ id: string; name: string; color: string }> {
+    this.need('vault.create');
+    const clean = cleanName(name, 'Vault name');
+    if (!(VAULT_COLORS as readonly string[]).includes(color)) {
+      throw new ToolError('invalid', `Color must be one of ${VAULT_COLORS.join(', ')}.`);
+    }
+    this.spend(1);
+    const id = crypto.randomUUID();
+    const { vaultKey, wrappedKey } = await this.session.newVaultKey(id);
+    const encMeta = await encryptVaultMeta(vaultKey, id, { name: clean, color });
+    await this.session.call(() => this.session.api.createVault({ id, encMeta, wrappedKey }));
+    return { id, name: clean, color };
   }
 
   async getTree(vaultRef: string): Promise<TreeOut> {

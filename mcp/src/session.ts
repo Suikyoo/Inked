@@ -3,6 +3,7 @@ import {
   deriveFromMasterSecret,
   deriveMasterSecret,
   fromBase64Url,
+  generateVaultKey,
   isCryptoError,
   toBase64Url,
   unwrapUserKey,
@@ -130,6 +131,12 @@ export class Session {
     const key = await unwrapVaultKey(vault.wrappedKey, this.userKey, vault.id);
     this.vaultKeys.set(vault.id, key);
     return key;
+  }
+
+  /** A fresh vault key wrapped under this account's userKey, for creating a vault. */
+  async newVaultKey(vaultId: string) {
+    if (!this.userKey) throw new Error('Session not started');
+    return generateVaultKey(vaultId, this.userKey);
   }
 
   async close(): Promise<void> {

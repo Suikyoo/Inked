@@ -123,6 +123,8 @@ export class InkedApi {
   }
 
   listVaults = () => this.request<{ vaults: VaultDTO[] }>('GET', '/api/vaults', undefined, true);
+  createVault = (body: { id: string; encMeta: string; wrappedKey: string }) =>
+    this.request<{ vault: VaultDTO }>('POST', '/api/vaults', body, true);
   tree = (vaultId: string) =>
     this.request<{ folders: FolderDTO[]; notes: NoteHeadDTO[] }>('GET', `/api/vaults/${enc(vaultId)}/tree`, undefined, true);
   bodies = (vaultId: string) =>
