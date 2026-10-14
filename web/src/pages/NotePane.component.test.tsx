@@ -20,6 +20,7 @@ vi.mock('./useNoteEditor', () => ({
   }),
 }));
 import { NotePane } from './NotePane';
+import { mockPhone } from '../test/phone';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -75,5 +76,34 @@ describe('NotePane entry state', () => {
   it('plain entry opens in view mode', () => {
     mount(null);
     expect(host!.querySelector('textarea')).toBeNull();
+  });
+});
+
+describe('NotePane context panel on a phone', () => {
+  let phone: ReturnType<typeof mockPhone>;
+  afterEach(() => phone?.restore());
+
+  it('folds the context sections into closed details rows', () => {
+    phone = mockPhone(true);
+    mount(null);
+    const rows = host!.querySelectorAll('aside.ctx details.ctx-fold');
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    for (const d of rows) expect((d as HTMLDetailsElement).open).toBe(false);
+    expect(host!.querySelector('aside.ctx h2.ctx-title')).toBeNull();
+  });
+
+  it('keeps the Backlinks and Properties rows for a note that has no links', () => {
+    phone = mockPhone(true);
+    mount(null);
+    const titles = [...host!.querySelectorAll('aside.ctx summary')].map((s) => s.textContent);
+    expect(titles.some((t) => t?.startsWith('Backlinks'))).toBe(true);
+    expect(titles).toContain('Properties');
+  });
+
+  it('keeps plain sections on a wide screen', () => {
+    phone = mockPhone(false);
+    mount(null);
+    expect(host!.querySelector('aside.ctx details')).toBeNull();
+    expect(host!.querySelectorAll('aside.ctx section.ctx-section').length).toBeGreaterThanOrEqual(2);
   });
 });

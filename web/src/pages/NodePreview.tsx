@@ -92,7 +92,8 @@ export function NodePreview({
   onSelect,
 }: {
   selection: MapSelection;
-  onZoom: (s: MapSelection) => void;
+  /** Absent while there is no map to zoom (a phone before "Load map"): the Zoom button is not shown. */
+  onZoom?: (s: MapSelection) => void;
   onSelect: (s: MapSelection) => void;
 }) {
   const state = useAppState();
@@ -252,9 +253,11 @@ export function NodePreview({
         >
           New note here
         </button>
-        <button type="button" className="btn btn-sm" onClick={() => onZoom(selection)}>
-          Zoom to folder
-        </button>
+        {onZoom && (
+          <button type="button" className="btn btn-sm" onClick={() => onZoom(selection)}>
+            Zoom to folder
+          </button>
+        )}
       </div>
     </div>
   );

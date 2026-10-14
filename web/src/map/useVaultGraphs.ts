@@ -35,12 +35,15 @@ export function mapEntries(state: GraphState, cache: LayoutCache, now = Date.now
   return out;
 }
 
-export function useVaultGraphs(state: AppState): MapEntry[] {
+const NO_ENTRIES: MapEntry[] = [];
+
+/** `enabled` false builds nothing (a phone before "Load map"). */
+export function useVaultGraphs(state: AppState, enabled = true): MapEntry[] {
   const cache = useRef<LayoutCache>(new Map());
   const { vaultOrder, vaults, trees, bodies, bodiesReady } = state;
   return useMemo(
-    () => mapEntries({ vaultOrder, vaults, trees, bodies, bodiesReady }, cache.current),
-    [vaultOrder, vaults, trees, bodies, bodiesReady],
+    () => (enabled ? mapEntries({ vaultOrder, vaults, trees, bodies, bodiesReady }, cache.current) : NO_ENTRIES),
+    [enabled, vaultOrder, vaults, trees, bodies, bodiesReady],
   );
 }
 

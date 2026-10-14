@@ -3,6 +3,8 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Logo, Wordmark } from '../brand/Logo';
 import { useAppState, useStore } from '../state/StoreContext';
 import type { AppStore } from '../state/store';
+import { useEdgeSwipe } from '../lib/edgeSwipe';
+import { usePhone } from '../lib/usePhone';
 import { DUR, usePresence } from '../motion';
 import { CloseIcon, LockIcon, MenuIcon } from './Icons';
 import { ModelBanner } from './ModelBanner';
@@ -70,6 +72,8 @@ export function AppShell() {
   const menuBtn = useRef<HTMLButtonElement>(null);
 
   useIdleLock(store, () => void store.lock('Locked after 15 minutes without activity.'));
+  const phone = usePhone();
+  useEdgeSwipe(phone && !drawer, () => setDrawer(true));
 
   // Close the mobile drawer on navigation.
   useEffect(() => setDrawer(false), [location.pathname]);

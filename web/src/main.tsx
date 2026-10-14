@@ -16,6 +16,7 @@ import './styles/home.css';
 import './styles/map.css';
 import './styles/note.css';
 import './styles/settings.css';
+import './styles/phone.css';
 import { App } from './App';
 import { AppStore } from './state/store';
 import { SemanticStore } from './semantic/semanticStore';
