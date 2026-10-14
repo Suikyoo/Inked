@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Spinner } from '../components/Fields';
 import { renderMarkdown, toggleTaskAtLine } from '../markdown/render';
@@ -7,6 +7,7 @@ import { LocalMap } from '../map/LocalMap';
 import { isOnMap } from '../map/localGraph';
 import { useVaultGraph } from '../map/useVaultGraphs';
 import { prefs } from '../lib/prefs';
+import { usePhone } from '../lib/usePhone';
 import { describeError, formatDate, relativeTime, wordCount } from '../lib/util';
 import { folderPath, titleIndex, useAppState, useStore, vaultStats } from '../state/StoreContext';
 import type { VaultView } from '../state/store';
@@ -68,6 +69,24 @@ export function SaveIndicator({ status, ready }: { status: SaveStatus; ready: bo
   );
 }
 
+/** A context-panel section. On a phone it folds into a closed row so the note stays first. */
+function CtxSection({ title, fold, children }: { title: ReactNode; fold: boolean; children: ReactNode }) {
+  if (!fold) {
+    return (
+      <section className="ctx-section">
+        <h2 className="ctx-title">{title}</h2>
+        {children}
+      </section>
+    );
+  }
+  return (
+    <details className="ctx-section ctx-fold">
+      <summary className="ctx-title">{title}</summary>
+      {children}
+    </details>
+  );
+}
+
 export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }) {
   const state = useAppState();
   const store = useStore();
@@ -84,6 +103,7 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
    */
   const editBody = navState?.mode === 'edit';
 
+  const phone = usePhone();
   const [mode, setMode] = useState<'edit' | 'view'>('view');
   const [title, setTitle] = useState(head?.title ?? '');
   const [titleError, setTitleError] = useState<string | null>(null);
@@ -292,15 +312,11 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
 
       <aside className="ctx" aria-label="Note context">
         {graph && head && isOnMap(graph, noteId) && (
-          <section className="ctx-section">
-            <h2 className="ctx-title">Local map</h2>
+          <CtxSection title="Local map" fold={phone}>
             <LocalMap graph={graph} noteId={noteId} vaultName={vault.name} vaultColor={vault.color} level={vaultStats(vault, tree).level} />
-          </section>
+          </CtxSection>
         )}
-        <section className="ctx-section">
-          <h2 className="ctx-title">
-            Backlinks{state.bodiesReady[vault.id] ? ` · ${backlinks.length}` : ''}
-          </h2>
+        <CtxSection title={`Backlinks${state.bodiesReady[vault.id] ? ` · ${backlinks.length}` : ''}`} fold={phone}>
           {!state.bodiesReady[vault.id] ? (
             <p className="ctx-empty">Looking for notes that link here…</p>
           ) : backlinks.length === 0 ? (
@@ -312,10 +328,9 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
               </Link>
             ))
           )}
-        </section>
+        </CtxSection>
         {head && (
-          <section className="ctx-section">
-            <h2 className="ctx-title">Properties</h2>
+          <CtxSection title="Properties" fold={phone}>
             <dl className="props">
               <dt>Edited</dt>
               <dd title={head.updatedAt}>{relativeTime(head.updatedAt)}</dd>
@@ -328,7 +343,7 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
               <dt>Folder</dt>
               <dd>{crumbs.length ? crumbs.map((c) => c.name).join(' / ') : 'Vault root'}</dd>
             </dl>
-          </section>
+          </CtxSection>
         )}
       </aside>
     </div>
