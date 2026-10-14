@@ -81,18 +81,18 @@ One small HTTP server per request, using `node:http` only.
 - Response headers:
   - `Content-Security-Policy: default-src 'none'; style-src 'nonce-…'; form-action 'self'; frame-ancestors 'none'`
   - `Cache-Control: no-store`
-  - `Referrer-Policy: no-referrer`
+  - `Referrer-Policy: same-origin` (not `no-referrer`: with it, browsers send `Origin: null` on the form POST, which the Origin check refuses)
   - `X-Content-Type-Options: nosniff`
 - No scripts. Plain HTML forms only.
 - The server closes after the first successful submit, after Cancel, or after 5 minutes. The token dies with it.
 - Single flight: while one page is open, another request gets `ToolError('busy', 'Finish or cancel the open Inked page first.')`.
 - The password is never logged, never put in a tool result and never written to disk. Only the derived credential is saved, exactly as `login` does today.
-- The URL is returned in the tool result and therefore reaches the model provider. That is acceptable. The page is reachable only from this machine, and a local process running as this user could already edit the config.
+- The URL is returned in the tool result only when no browser could be opened (outcome `open_link`), and then reaches the model provider. That is acceptable. The page is reachable only from this machine, and a local process running as this user could already edit the config.
 
 ### Opening the browser
 
 - Windows: `explorer.exe <url>`. macOS: `open <url>`. Linux: `xdg-open <url>`.
-- The call is fire-and-forget, and failure is ignored. The tool result always includes the URL and the line "If no browser opened, open this link on this computer."
+- The call is fire-and-forget. When the opener reports a failure, the tool returns at once with `outcome: "open_link"`, the URL and the line "No browser could be opened. Ask the user to open this link on this computer and finish there, then call inked_status." The page stays live until it is submitted or times out.
 
 ### Waiting
 
@@ -141,8 +141,8 @@ All pages are inline HTML and CSS in the Inked palette, with no external assets.
 ### Other changes
 
 - `InkedApi.createVault(body)` is added. `VAULT_COLORS` and `nextVaultColor` move from `web/src/lib/util.ts` to `core`, so `web` and `mcp` share them.
-- Audit log entries, ids only: `sign_in`, `sign_out`, `config_applied`, `vault_created { vaultId }`, and `cancelled` or `timed_out` for any page.
-- New `ToolError` codes: `signed_out`, `busy`, `cancelled`, `timed_out`. Each has a plain message in `messages.ts`.
+- Audit log entries, ids only: `signed_in`, `sign_out`, `config_applied`, `vault_created { vaultId }`, and `cancelled` or `timed_out` for any page.
+- New `ToolError` kinds: `signed_out` and `busy`. `cancelled`, `timed_out` and `open_link` are outcomes in a normal result, not errors.
 
 ## 4. Skills
 

@@ -75,4 +75,15 @@ describe('InkedApi against odd responses', () => {
     });
     await expect(api.listVaults()).rejects.toMatchObject({ status: 0, code: 'network' });
   });
+
+  it('gives up on a server that never answers', async () => {
+    const hang = ((_input: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+      })) as unknown as typeof fetch;
+    const api = new InkedApi('https://x.example', { fetch: hang, timeoutMs: 50 });
+    const err = await api.listVaults().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 0, code: 'network', message: 'Can’t reach the Inked server.' });
+  });
 });

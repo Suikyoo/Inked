@@ -46,11 +46,11 @@ describe('parseConfig', () => {
 describe('loadConfig', () => {
   const dir = () => mkdtempSync(path.join(tmpdir(), 'inked-mcp-cfg-'));
 
-  it('defaults to @read on all vaults when the default file is missing', () => {
+  it('defaults to @read plus config.change on all vaults when the default file is missing', () => {
     process.env.INKED_MCP_HOME = dir();
     const c = loadConfig();
     expect(c.vaults).toBe('*');
-    expect([...c.actions].sort()).toEqual(['note.read', 'search', 'tree.read', 'vault.list']);
+    expect([...c.actions].sort()).toEqual(['config.change', 'note.read', 'search', 'tree.read', 'vault.list']);
   });
 
   it('fails when an explicitly named file is missing', () => {

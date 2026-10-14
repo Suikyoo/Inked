@@ -3,6 +3,7 @@ import {
   deriveFromMasterSecret,
   deriveMasterSecret,
   fromBase64Url,
+  generateVaultKey,
   isCryptoError,
   toBase64Url,
   unwrapUserKey,
@@ -132,10 +133,17 @@ export class Session {
     return key;
   }
 
+  /** A fresh vault key wrapped under this account's userKey, for creating a vault. */
+  async newVaultKey(vaultId: string) {
+    if (!this.userKey) throw new Error('Session not started');
+    return generateVaultKey(vaultId, this.userKey);
+  }
+
+  /** Wipes the keys first, then logs out: a slow or hung logout never keeps them in memory. */
   async close(): Promise<void> {
-    await this.api.logout().catch(() => undefined);
     this.userKey = null;
     this.keys = null;
     this.vaultKeys.clear();
+    await this.api.logout().catch(() => undefined);
   }
 }

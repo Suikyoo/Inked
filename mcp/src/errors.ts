@@ -27,7 +27,8 @@ export class CredentialStale extends Error {
   }
 }
 
-export type ToolErrorKind = 'denied' | 'not_found' | 'ambiguous' | 'invalid' | 'conflict' | 'rate_limited' | 'too_large';
+export type ToolErrorKind =
+  | 'denied' | 'not_found' | 'ambiguous' | 'invalid' | 'conflict' | 'rate_limited' | 'too_large' | 'signed_out' | 'busy';
 
 /** A failure whose message is written for the model and is safe to show as-is. */
 export class ToolError extends Error {

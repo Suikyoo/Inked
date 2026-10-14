@@ -34,6 +34,10 @@ Before you sign in, `status` tells you to run `inked-mcp login` first. After sig
 
 ## Sign in
 
+**In an AI client, ask it to sign you in to Inked.** The server starts even without a credential and offers a `sign_in` tool. The tool opens a page on `http://127.0.0.1` in your browser, where you type your Inked address, username and password. The password stays in that page and in the server process; it never reaches the AI. When you submit, the server saves the same credential `login` would, and the note tools appear without a restart. See [The local approval page](#approval-page).
+
+The rest of this section is the terminal alternative, for headless machines and clients without a browser.
+
 ```bash
 inked-mcp login
 ```
@@ -52,7 +56,7 @@ The default folder is `~/.inked-mcp`. Set the `INKED_MCP_HOME` environment varia
 
 ## Choose what the AI may do
 
-The config file is `~/.inked-mcp/config.json`. If it does not exist, the default is read-only access to every vault.
+The config file is `~/.inked-mcp/config.json`. If it does not exist, the default is read-only access to every vault, plus `config.change`, so the AI can open the settings page for you to approve.
 
 ```json
 {
@@ -64,11 +68,17 @@ The config file is `~/.inked-mcp/config.json`. If it does not exist, the default
 ```
 
 - `version` must be `1`.
-- `vaults` is `"*"` for all vaults, or a non-empty list of vault names or ids. Names are matched exactly after decryption. An unknown name, or a name shared by two vaults, stops the server with a clear error (use the id instead).
+- `vaults` is `"*"` for all vaults, or a non-empty list of vault names or ids. Names are matched exactly after decryption. An unknown name, or a name shared by two vaults, is a config error (use the id instead): `status` stops, and `serve` keeps running with only `inked_status`, `change_config` and `sign_out` until it is fixed.
 - `actions` is a non-empty list of actions or groups.
 - `limits.writesPerMinute` is optional, a whole number from 1 to 1000. The default is 120.
 
-The config is checked strictly. A typo or an unknown key stops the server rather than quietly changing what the AI can do. The vault allowlist is enforced inside the MCP process only.
+The config is checked strictly. A typo or an unknown key is an error, never a quiet change to what the AI can do: `status` stops, and `serve` keeps running with only `inked_status`, `change_config` and `sign_out` until the config is fixed. The vault allowlist is enforced inside the MCP process only.
+
+### Change access from the AI client
+
+You rarely need to edit this file. Ask the AI for the access you want. Its `change_config` tool opens a settings page in your browser, pre-filled with its proposal and with each proposed change marked. Nothing changes until you click Apply. The server then writes the file and reloads at once, with no restart.
+
+The AI can only open that page while the config grants `config.change`. If you remove it, run `inked-mcp config` in a terminal to open the same page yourself. What you apply there reaches a running AI client the next time it checks its status, or after you reconnect inked in /mcp.
 
 ### Actions
 
@@ -85,6 +95,8 @@ The config is checked strictly. A typo or an unknown key stops the server rather
 | `note.move` | `move_note` | Move a note to another folder in the same vault |
 | `folder.rename` | `rename_folder` | Rename a folder |
 | `folder.move` | `move_folder` | Move a folder within the same vault |
+| `vault.create` | `create_vault` | Create a vault. You confirm each one in the browser, and the AI then has access to it |
+| `config.change` | `change_config` | Open the access settings page with a proposal. You apply or cancel |
 
 ### Groups
 
@@ -93,13 +105,14 @@ The config is checked strictly. A typo or an unknown key stops the server rather
 | `@read` | `vault.list`, `tree.read`, `note.read`, `search` |
 | `@write` | `folder.create`, `note.create`, `note.append`, `note.update` |
 | `@organize` | `note.move`, `folder.rename`, `folder.move` |
+| `@manage` | `vault.create` |
 
 ### Never grantable
 
 These do not exist as tools and no config can add them:
 
 - deleting notes or folders
-- creating, renaming or deleting vaults
+- renaming or deleting vaults
 - changing your password, the recovery key, invites or admin tasks
 
 Do these in the Inked web app.
@@ -140,7 +153,7 @@ inked-mcp serve --config ~/.inked-mcp/capture.json
 
 Put that command and its arguments in the client's MCP settings (see below). A file given with `--config` that does not exist is an error, not a fallback to the default.
 
-After you edit a config, restart the AI client so it starts `serve` again.
+Changes made on the settings page the AI opens apply at once. Changes made with `inked-mcp config` in a terminal, or by editing the file by hand, reach a running AI client the next time it checks its status, or after you reconnect inked in /mcp.
 
 ## Connect a client
 
@@ -162,7 +175,7 @@ claude plugin install inked@inked
 
 Inside a session you can use `/plugin marketplace add <path-to-repo>` and `/plugin install inked@inked` instead. In Claude Code the tools appear as `mcp__plugin_inked_inked__<tool>`, for example `mcp__plugin_inked_inked__list_vaults`.
 
-The plugin runs the bundled server with `node` and the default folder, so it uses the credential and config you set up above. It does not need `inked-mcp` on your PATH (you still need the CLI, or `node mcp/dist/cli.cjs login`, to sign in once). After you update the repository, run `npm run build -w mcp` again and then `/reload-plugins`.
+The plugin runs the bundled server with `node` and the default folder, so it uses the credential and config you set up above. It does not need `inked-mcp` on your PATH. To sign in, ask Claude to sign you in to Inked. After you update the repository, run `npm run build -w mcp` again and then `/reload-plugins`.
 
 Without the plugin, add the server directly. Options go before the name; omit `--env` to use the default `~/.inked-mcp`. This form uses `node` with the absolute path to the built file, which works on every platform:
 
@@ -190,7 +203,7 @@ Add this to `claude_desktop_config.json` and restart Claude Desktop. Use the abs
 
 On Windows, if you prefer the global command, use `"command": "cmd", "args": ["/c", "inked-mcp", "serve"]`.
 
-To give Claude the same guidance the plugin gives, upload the folder `mcp/plugin/skills/inked-notes` as a skill in Claude Desktop's skill settings.
+To give Claude the same guidance the plugin gives, upload each folder in `mcp/plugin/skills` as a skill in Claude Desktop's skill settings.
 
 ### Cursor
 
@@ -208,6 +221,20 @@ On Windows, the global command form is `"command": "cmd", "args": ["/c", "inked-
 
 In any client, add `"--config", "<file>"` to `args` to use a specific policy.
 
+<a id="approval-page"></a>
+
+## The local approval page
+
+Sign-in, access changes and new vaults need you, not the AI. For each one, the server starts a small web page for that single step:
+
+- It listens on `127.0.0.1` only, on a random port, at a URL with a 32-byte random token. Any other path returns 404.
+- It refuses requests whose `Host` is not that address, which stops DNS rebinding. It refuses form posts from another origin or without the page's CSRF token.
+- It runs no scripts and loads nothing from the internet. Its Content Security Policy allows only its own inline styles.
+- It closes after one successful submit, after Cancel, or after 5 minutes. Only one page is open at a time.
+- The AI receives the outcome (signed in, applied, created, cancelled, timed out), never what you typed. If no browser can be opened, the AI gets the link to give you.
+
+The audit log records `signed_in`, `config_applied` and `vault_created` events, with ids only.
+
 ## Audit log
 
 Every tool call is recorded as one JSON line in `~/.inked-mcp/audit.log`: the time, the tool, the vault id, the ids touched, whether it succeeded, and a short error code on failure. It never records titles, bodies, folder names or vault names, and never any key or secret. The log is local only; the Inked server cannot tell MCP calls from browser use.
@@ -222,11 +249,11 @@ If your Inked is behind Cloudflare, Bot Fight Mode or Super Bot Fight Mode can c
 
 ### "Inked credential is stale"
 
-The full message is "Inked credential is stale (password changed?). Run `inked-mcp login`, then restart the AI client." Your password changed (or the credential was revoked). Run `inked-mcp login` again, then restart the AI client.
+Your password changed (or the credential was revoked). In an AI client, ask it to sign you in again. In a terminal, run `inked-mcp login`, then restart the client.
 
 ### "Not permitted by the Inked MCP config"
 
-The AI asked for an action your config does not grant. Edit `~/.inked-mcp/config.json` (or the file you pass with `--config`), then restart the client.
+The AI asked for an action your config does not grant. Ask the AI to change its access (it opens the settings page), or run `inked-mcp config`.
 
 ### "Write limit reached"
 
@@ -234,4 +261,4 @@ More writes than `limits.writesPerMinute` in a minute. Wait a moment, or raise t
 
 ### Config error
 
-`serve` and `status` stop with `Config error: ...` when the config has a typo, an unknown action, or a vault name that is missing or ambiguous. The message says which. Fix the file and try again.
+`status` stops with `Config error: ...` when the config has a typo, an unknown action, or a vault name that is missing or ambiguous. `serve` keeps running with only `inked_status`, `change_config` and `sign_out`, so the AI can open the settings page and you can fix it there.
