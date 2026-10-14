@@ -1310,3 +1310,40 @@ describe('selection ring motion', () => {
     expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
   });
 });
+
+describe('touch', () => {
+  const touchPtr = (type: string, id: number, x: number, y: number) => {
+    const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
+    Object.assign(e, { pointerId: id, pointerType: 'touch' });
+    fire(svg(), e);
+  };
+  const apart = () => {
+    const a = translate(node('n3'))!;
+    const b = translate(node('n1'))!;
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+
+  it('one finger dragged on empty map pans it', () => {
+    render({ entries: [entry(base())] });
+    const before = translate(node('n3'))!;
+    touchPtr('pointerdown', 1, 20, 20);
+    touchPtr('pointermove', 1, 60, 40);
+    touchPtr('pointerup', 1, 60, 40);
+    const after = translate(node('n3'))!;
+    expect(after.x - before.x).toBeCloseTo(40, 0);
+    expect(after.y - before.y).toBeCloseTo(20, 0);
+  });
+
+  it('two fingers moving apart zoom the map', () => {
+    render({ entries: [entry(base())] });
+    const before = apart();
+    touchPtr('pointerdown', 1, 100, 100);
+    touchPtr('pointerdown', 2, 140, 100);
+    // The first move of two fingers only records the gap; the next ones zoom by how it changes.
+    touchPtr('pointermove', 2, 150, 100);
+    touchPtr('pointermove', 2, 220, 100);
+    touchPtr('pointerup', 2, 220, 100);
+    touchPtr('pointerup', 1, 100, 100);
+    expect(apart()).toBeGreaterThan(before);
+  });
+});
