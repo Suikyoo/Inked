@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VaultIcon } from '../brand/VaultIcon';
 import { FitIcon, MinusIcon, PlusIcon, ResetIcon } from '../components/Icons';
@@ -35,6 +35,9 @@ const NODE_LAG_MS = DUR.ink;
 const WRITE_SETTLE_MS = DUR.ink;
 /** Live ripples: the second ring follows the first by this much. */
 const RING_GAP_MS = 200;
+/** Selection wave: how far it reaches from any node (map px before zoom), and how far the selected node's hover ghost sits outside its ring. */
+const SEL_WAVE_REACH = 72;
+const GHOST_OUTSET = 4;
 /** Meaning threads: how many neighbours, the wait after a new selection's ink path, and the stagger between them. */
 const THREAD_COUNT = 3;
 const THREAD_BASE_MS = DUR.ink + 40;
@@ -479,13 +482,33 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
    */
   const selRing = (id: string, r: number, isSel: boolean) => {
     const fresh = selWave?.id === id;
+    // The wave reaches SEL_WAVE_REACH from every node, far past the other rings, whatever the node's own ring size.
+    const wave = { '--wave-scale': String(SEL_WAVE_REACH / r) } as CSSProperties;
     return (
       <>
         {isSel && <circle key={fresh ? `sel${selWave.seq}` : 'sel'} className={`cmap-sel${fresh ? ' is-inking' : ''}`} r={r} pathLength={1} />}
-        {!isSel && hover === id && <circle className="cmap-ghost" r={r} pathLength={1} />}
-        {fresh && <circle key={`wave${selWave.seq}`} className="cmap-sel-wave" r={r} onAnimationEnd={() => setSelWave(null)} />}
+        {hover === id && <circle className={isSel ? 'cmap-ghost is-outer' : 'cmap-ghost'} r={isSel ? r + GHOST_OUTSET : r} pathLength={1} />}
+        {fresh &&
+          [0, 1].map((k) => (
+            <circle
+              key={`wave${selWave.seq}-${k}`}
+              className={`cmap-sel-wave${k ? ' is-echo' : ''}`}
+              r={r}
+              style={wave}
+              onAnimationEnd={k ? () => setSelWave(null) : undefined}
+            />
+          ))}
       </>
     );
+  };
+  /** Selects a node; picking the node that is already selected replays its select motion instead of doing nothing. */
+  const pick = (sel: MapSelection) => {
+    const key = sel.kind === 'hub' ? hubKey(sel.vaultId) : sel.id;
+    if (key === selectedKey && !prefersReducedMotion()) {
+      setSelWave({ id: key, seq: ++ringSeq.current });
+      if (sel.kind === 'note') setRing({ id: key, seq: ++ringSeq.current });
+    }
+    onSelect(sel);
   };
 
   const nodeFocusProps = (id: string) => ({
@@ -533,19 +556,19 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
   const onDotClick = (e: MouseEvent<SVGGElement>, vaultId: string, id: string) => {
     e.stopPropagation();
     if (consumeDrag()) return;
-    onSelect({ kind: 'note', vaultId, id });
+    pick({ kind: 'note', vaultId, id });
     setFocusId(id);
   };
   const onFolderClick = (e: MouseEvent<SVGGElement>, vaultId: string, id: string) => {
     e.stopPropagation();
     if (consumeDrag()) return;
-    onSelect({ kind: 'folder', vaultId, id });
+    pick({ kind: 'folder', vaultId, id });
     setFocusId(id);
   };
   const onHubClick = (e: MouseEvent<SVGGElement>, vaultId: string) => {
     e.stopPropagation();
     if (consumeDrag()) return;
-    onSelect({ kind: 'hub', vaultId });
+    pick({ kind: 'hub', vaultId });
     setFocusId(hubKey(vaultId));
     setRush((r) => ({ vaultId, seq: r.seq + 1 }));
   };
@@ -735,7 +758,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
                   fitTo(scene.folderBounds[f.id]);
                 }}
                 onKeyDown={(e) => {
-                  if (activates(e)) onSelect({ kind: 'folder', vaultId: f.vaultId, id: f.id });
+                  if (activates(e)) pick({ kind: 'folder', vaultId: f.vaultId, id: f.id });
                 }}
                 onPointerEnter={() => setHoverSoon(f.id)}
                 onPointerLeave={() => hoverNext.current === f.id && setHoverSoon(null)}
@@ -773,7 +796,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
                   fitTo(scene.vaultBounds[h.vaultId]);
                 }}
                 onKeyDown={(ev) => {
-                  if (activates(ev)) onSelect({ kind: 'hub', vaultId: h.vaultId });
+                  if (activates(ev)) pick({ kind: 'hub', vaultId: h.vaultId });
                 }}
                 onPointerEnter={() => setHoverSoon(hubKey(h.vaultId))}
                 onPointerLeave={() => hoverNext.current === hubKey(h.vaultId) && setHoverSoon(null)}
@@ -828,7 +851,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
                   const open = e.key === 'Enter';
                   if (!activates(e)) return;
                   if (open) navigate(noteHref(dot.vaultId, dot.id));
-                  else onSelect({ kind: 'note', vaultId: dot.vaultId, id: dot.id });
+                  else pick({ kind: 'note', vaultId: dot.vaultId, id: dot.id });
                 }}
                 onPointerEnter={() => setHoverSoon(dot.id)}
                 onPointerLeave={() => hoverNext.current === dot.id && setHoverSoon(null)}

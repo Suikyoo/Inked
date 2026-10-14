@@ -1189,11 +1189,12 @@ describe('selection ring motion', () => {
     }
   });
 
-  it('shows no ghost on the node that is already selected', () => {
+  it('shows no ghost on top of the ring of the node that is already selected, only the outer one', () => {
     render({ entries: [entry(t())], selected: { kind: 'note', vaultId: 'v1', id: 'a' } });
     hover(node('a'));
     expect(node('a').querySelector('.cmap-sel')).not.toBeNull();
-    expect(node('a').querySelector('.cmap-ghost')).toBeNull();
+    expect(node('a').querySelectorAll('.cmap-ghost')).toHaveLength(1);
+    expect(node('a').querySelector('.cmap-ghost')!.classList.contains('is-outer')).toBe(true);
   });
 
   it('inks the ring in and sends a wave from it when a note, folder or hub becomes the selection', () => {
@@ -1203,11 +1204,55 @@ describe('selection ring motion', () => {
       click(el);
       expect(el.querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(true);
       expect(el.querySelector('.cmap-sel')!.getAttribute('pathLength')).toBe('1');
-      const wave = el.querySelector('.cmap-sel-wave');
-      expect(wave).not.toBeNull();
-      ended(wave!);
+      const waves = el.querySelectorAll('.cmap-sel-wave');
+      expect(waves).toHaveLength(2);
+      ended(waves[1]);
       expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
     }
+  });
+
+  it('sends the wave much farther than any other ring: the same wide reach from every node', () => {
+    motion(true);
+    render({ entries: [entry(t())] });
+    for (const el of [node('a'), hub()]) {
+      click(el);
+      const wave = el.querySelector<SVGCircleElement>('.cmap-sel-wave')!;
+      const reach = Number(wave.getAttribute('r')) * Number(wave.style.getPropertyValue('--wave-scale'));
+      expect(reach).toBeCloseTo(72, 0);
+    }
+  });
+
+  it('a selected node still answers hover with an outer ghost', () => {
+    render({ entries: [entry(t())], selected: { kind: 'hub', vaultId: 'v1' } });
+    hover(hub());
+    const sel = hub().querySelector('.cmap-sel')!;
+    const outer = hub().querySelector('.cmap-ghost.is-outer');
+    expect(outer).not.toBeNull();
+    expect(Number(outer!.getAttribute('r'))).toBeGreaterThan(Number(sel.getAttribute('r')));
+    unhover(hub());
+    expect(host!.querySelector('.cmap-ghost')).toBeNull();
+  });
+
+  it('clicking or pressing Space on the selected node replays its ring, wave and ink ring', () => {
+    motion(true);
+    render({ entries: [entry(t())], selected: { kind: 'note', vaultId: 'v1', id: 'a' } });
+    expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
+    click(node('a'));
+    expect(node('a').querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(true);
+    expect(node('a').querySelectorAll('.cmap-sel-wave')).toHaveLength(2);
+    expect(node('a').querySelector('.cmap-ring')).not.toBeNull();
+    ended(node('a').querySelectorAll('.cmap-sel-wave')[1]);
+    expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
+    key(node('a'), ' ');
+    expect(node('a').querySelectorAll('.cmap-sel-wave')).toHaveLength(2);
+  });
+
+  it('replays nothing on a re-click under reduced motion', () => {
+    motion(false);
+    render({ entries: [entry(t())], selected: { kind: 'hub', vaultId: 'v1' } });
+    click(hub());
+    expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
+    expect(hub().querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(false);
   });
 
   it('plays nothing for a selection the map mounts with, then plays when it changes', () => {

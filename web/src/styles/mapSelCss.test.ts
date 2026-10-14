@@ -21,6 +21,10 @@ describe('map selection ring css', () => {
     expect(rules('.cmap-sel.is-inking')).toMatch(/rotate\(-90deg\)/);
     expect(rules('.cmap-sel-wave')).toMatch(/stroke:var\(--map-sel\);/);
     expect(rules('.cmap-sel-wave')).toMatch(/animation:cmap-sel-wave /);
+    // The node sets --wave-scale so every wave reaches the same wide radius; the echo trails it.
+    expect(css).toMatch(/@keyframes cmap-sel-wave \{[\s\S]*?to \{[^}]*scale\(var\(--wave-scale/);
+    expect(rules('.cmap-sel-wave.is-echo')).toMatch(/animation-delay:/);
+    expect(rules('.cmap-ghost.is-outer')).toMatch(/opacity:/);
   });
 
   it('keeps a still ghost and no wave under reduced motion', () => {
