@@ -1205,20 +1205,21 @@ describe('selection ring motion', () => {
       expect(el.querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(true);
       expect(el.querySelector('.cmap-sel')!.getAttribute('pathLength')).toBe('1');
       const waves = el.querySelectorAll('.cmap-sel-wave');
-      expect(waves).toHaveLength(2);
-      ended(waves[1]);
+      expect(waves).toHaveLength(1);
+      ended(waves[0]);
       expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
     }
   });
 
-  it('sends the wave much farther than any other ring: the same wide reach from every node', () => {
+  it('sends a single pump, not a wave with an echo, and sets no per-node reach', () => {
     motion(true);
     render({ entries: [entry(t())] });
     for (const el of [node('a'), hub()]) {
       click(el);
-      const wave = el.querySelector<SVGCircleElement>('.cmap-sel-wave')!;
-      const reach = Number(wave.getAttribute('r')) * Number(wave.style.getPropertyValue('--wave-scale'));
-      expect(reach).toBeCloseTo(72, 0);
+      const waves = el.querySelectorAll<SVGCircleElement>('.cmap-sel-wave');
+      expect(waves).toHaveLength(1);
+      expect(waves[0]!.classList.contains('is-echo')).toBe(false);
+      expect(waves[0]!.style.getPropertyValue('--wave-scale')).toBe('');
     }
   });
 
@@ -1239,12 +1240,12 @@ describe('selection ring motion', () => {
     expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
     click(node('a'));
     expect(node('a').querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(true);
-    expect(node('a').querySelectorAll('.cmap-sel-wave')).toHaveLength(2);
+    expect(node('a').querySelectorAll('.cmap-sel-wave')).toHaveLength(1);
     expect(node('a').querySelector('.cmap-ring')).not.toBeNull();
-    ended(node('a').querySelectorAll('.cmap-sel-wave')[1]);
+    ended(node('a').querySelectorAll('.cmap-sel-wave')[0]);
     expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
     key(node('a'), ' ');
-    expect(node('a').querySelectorAll('.cmap-sel-wave')).toHaveLength(2);
+    expect(node('a').querySelectorAll('.cmap-sel-wave')).toHaveLength(1);
   });
 
   it('a double-click selects and plays once, without restarting the ring on the second click', () => {
@@ -1279,8 +1280,8 @@ describe('selection ring motion', () => {
     motion(true);
     render({ entries: [entry(t())] });
     click(hub());
-    expect(hub().querySelectorAll('.cmap-sel-wave')).toHaveLength(2);
-    act(() => void vi.advanceTimersByTime(2500));
+    expect(hub().querySelectorAll('.cmap-sel-wave')).toHaveLength(1);
+    act(() => void vi.advanceTimersByTime(1100));
     expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
     expect(hub().querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(false);
   });

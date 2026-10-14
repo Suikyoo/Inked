@@ -51,12 +51,6 @@ describe('phone.css', () => {
     expect(rules('.md img')).toMatch(/max-width:100%;/);
   });
 
-  it('plays one short pump for a selection on a phone, with no echo ring', () => {
-    expect(rules('.cmap-sel-wave.is-echo')).toMatch(/display:none;/);
-    expect(rules('.cmap-sel-wave')).toMatch(/animation:cmap-sel-pump 600ms /);
-    expect(phone).toMatch(/@keyframes cmap-sel-pump \{[\s\S]*?to \{[^}]*scale\(1\.5\)/);
-  });
-
   it('makes the Load map button span the row, and the brand link a full-height target', () => {
     expect(cssRules(read('home.css'), '.map-load').join('')).toMatch(/flex:1 1 100%;/);
     expect(rules('.btn, .btn-sm, .search, .brand')).toMatch(/min-height:44px;/);
@@ -82,6 +76,15 @@ describe('phone.css', () => {
     expect(rules('.tree-actions .ibtn')).toMatch(/width:36px;height:36px;/);
     expect(rules('.tree-actions')).toMatch(/gap:4px;/);
     expect(rules('.vault-row .vault-actions')).toMatch(/top:50%;transform:translateY\(-50%\);/);
+  });
+
+  it('puts the map before the results on a phone, but search and Ask answers first', () => {
+    const home = read('home.css');
+    const order = (sel: string) => cssRules(home, sel).join('');
+    expect(order('.map')).toMatch(/order:1;/);
+    expect(order('.map-load')).toMatch(/order:1;/);
+    expect(order('.results')).toMatch(/order:2;/);
+    expect(order(".home-body[data-column='search'] .results, .home-body[data-column='ask'] .results")).toMatch(/order:0;/);
   });
 
   it('drops the map selection ghost where there is no hover', () => {

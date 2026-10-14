@@ -20,10 +20,10 @@ describe('map selection ring css', () => {
     expect(rules('.cmap-sel.is-inking')).toMatch(/animation:cmap-sel-ink var\(--dur-3\)/);
     expect(rules('.cmap-sel.is-inking')).toMatch(/rotate\(-90deg\)/);
     expect(rules('.cmap-sel-wave')).toMatch(/stroke:var\(--map-sel\);/);
-    expect(rules('.cmap-sel-wave')).toMatch(/animation:cmap-sel-wave /);
-    // The node sets --wave-scale so every wave reaches the same wide radius; the echo trails it.
-    expect(css).toMatch(/@keyframes cmap-sel-wave \{[\s\S]*?to \{[^}]*scale\(var\(--wave-scale/);
-    expect(rules('.cmap-sel-wave.is-echo')).toMatch(/animation-delay:/);
+    // One short pump: it grows to 1.5x and fades. There is no echo ring and no per-node reach.
+    expect(rules('.cmap-sel-wave')).toMatch(/animation:cmap-sel-pump 600ms /);
+    expect(css).toMatch(/@keyframes cmap-sel-pump \{[\s\S]*?to \{[^}]*scale\(1\.5\)/);
+    expect(css).not.toMatch(/is-echo|--wave-scale/);
     expect(rules('.cmap-ghost.is-outer')).toMatch(/opacity:/);
   });
 

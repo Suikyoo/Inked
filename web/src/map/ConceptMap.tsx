@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VaultIcon } from '../brand/VaultIcon';
 import { FitIcon, MinusIcon, PlusIcon, ResetIcon } from '../components/Icons';
@@ -35,11 +35,10 @@ const NODE_LAG_MS = DUR.ink;
 const WRITE_SETTLE_MS = DUR.ink;
 /** Live ripples: the second ring follows the first by this much. */
 const RING_GAP_MS = 200;
-/** Selection wave: how far it reaches from any node (map px before zoom), and how far the selected node's hover ghost sits outside its ring. */
-const SEL_WAVE_REACH = 72;
+/** How far the selected node's hover ghost sits outside its ring (map px before zoom). */
 const GHOST_OUTSET = 4;
-/** Selection wave: a fallback clear once both rings must be done (420ms echo delay + 1.5s), in case animationend never fires. */
-const SEL_WAVE_CLEAR_MS = 2200;
+/** Selection pump: a fallback clear once it must be done (120ms delay + 600ms), in case animationend never fires. */
+const SEL_WAVE_CLEAR_MS = 1000;
 /** Meaning threads: how many neighbours, the wait after a new selection's ink path, and the stagger between them. */
 const THREAD_COUNT = 3;
 const THREAD_BASE_MS = DUR.ink + 40;
@@ -169,7 +168,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
     lastSelectedKey.current = selectedKey;
     setSelWave(selectedKey && !prefersReducedMotion() ? { id: selectedKey, seq: ++ringSeq.current } : null);
   }, [selectedKey]);
-  // The echo's animationend normally clears the wave; if it never fires (map hidden, node remounted), this does, so a
+  // The pump's animationend normally clears it; if that never fires (map hidden, node remounted), this does, so a
   // stale wave cannot play the next time its node appears.
   useEffect(() => {
     if (!selWave) return;
@@ -487,27 +486,16 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
     else nodeRefs.current.delete(id);
   };
   /**
-   * The white ring around a node: solid when selected (inked in, with a wave, when the selection is new), a faint
+   * The white ring around a node: solid when selected (inked in, with a pump, when the selection is new), a faint
    * turning dashed ghost when merely pointed at. `pathLength` 1 lets the CSS draw and dash it at any radius.
    */
   const selRing = (id: string, r: number, isSel: boolean) => {
     const fresh = selWave?.id === id;
-    // The wave reaches SEL_WAVE_REACH from every node, far past the other rings, whatever the node's own ring size.
-    const wave = { '--wave-scale': String(SEL_WAVE_REACH / r) } as CSSProperties;
     return (
       <>
         {isSel && <circle key={fresh ? `sel${selWave.seq}` : 'sel'} className={`cmap-sel${fresh ? ' is-inking' : ''}`} r={r} pathLength={1} />}
         {hover === id && <circle key={isSel ? 'ghost-out' : 'ghost'} className={isSel ? 'cmap-ghost is-outer' : 'cmap-ghost'} r={isSel ? r + GHOST_OUTSET : r} pathLength={1} />}
-        {fresh &&
-          [0, 1].map((k) => (
-            <circle
-              key={`wave${selWave.seq}-${k}`}
-              className={`cmap-sel-wave${k ? ' is-echo' : ''}`}
-              r={r}
-              style={wave}
-              onAnimationEnd={k ? () => setSelWave(null) : undefined}
-            />
-          ))}
+        {fresh && <circle key={`wave${selWave.seq}`} className="cmap-sel-wave" r={r} onAnimationEnd={() => setSelWave(null)} />}
       </>
     );
   };
