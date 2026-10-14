@@ -70,6 +70,13 @@ One phone block in `base.css`:
 
 A new `usePhone()` hook wraps `matchMedia('(max-width: 760px)')` and is the only JS reader of the phone breakpoint. CSS cannot import the constant, so a test asserts that the exported `PHONE_QUERY` matches the `max-width` of the phone blocks in the CSS files.
 
+## Corrections after reading the code (supersede the text above)
+
+- Pinch zoom and one-finger pan already exist in `ConceptMap.tsx` (`touch-action: none`, two-pointer zoom). They get tests, not new code.
+- No topbar note title: the note's `doc-bar` already holds the breadcrumb and title. It becomes sticky under the topbar on a phone instead.
+- The local map in the note context panel is not gated behind "Load map". It is small, and it sits inside a closed folded row on a phone.
+- Owner addition: on a phone, the selection wave is one short pump instead of two long rings (assumed phone only; desktop keeps the current wave).
+
 ## Testing
 
 Test-first, following the existing patterns.
