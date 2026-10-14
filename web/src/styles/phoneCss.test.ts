@@ -72,6 +72,18 @@ describe('phone.css', () => {
     expect(rules('.input-action::after, .swatch::after')).toMatch(/inset:-8px;/);
   });
 
+  it('keeps every text field at 16px, including the ones their own class sets smaller', () => {
+    // Type selectors lose to class selectors, so the classed fields are named here.
+    expect(rules('.search input, .input, .input-sm, .input-bare, .editor, .tree-rename, .crumb-title')).toMatch(/font-size:16px;/);
+  });
+
+  it('does not let icon hit areas overlap neighbours or spill out of their bar', () => {
+    expect(rules('.topbar .ibtn::after, .tree-actions .ibtn::after')).toMatch(/content:none;/);
+    expect(rules('.tree-actions .ibtn')).toMatch(/width:36px;height:36px;/);
+    expect(rules('.tree-actions')).toMatch(/gap:4px;/);
+    expect(rules('.vault-row .vault-actions')).toMatch(/top:50%;transform:translateY\(-50%\);/);
+  });
+
   it('drops the map selection ghost where there is no hover', () => {
     expect(phone).toMatch(/@media \(hover: none\)/);
     expect(rules('.cmap-ghost')).toMatch(/display:none;/);

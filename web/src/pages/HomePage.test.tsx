@@ -739,4 +739,13 @@ describe('Home on a phone', () => {
     phone.set(true);
     expect(host!.querySelector('.cmap')).not.toBeNull();
   });
+
+  it('offers Zoom to folder only once there is a map to zoom', () => {
+    phone = mockPhone(true);
+    mount(baseState(), undefined, undefined, { focusVault: 'v1' });
+    const zoom = () => [...host!.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Zoom to folder');
+    expect(zoom()).toBeUndefined();
+    click(loadMapButton()!);
+    expect(zoom()).toBeDefined();
+  });
 });

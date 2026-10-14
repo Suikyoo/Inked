@@ -31,10 +31,20 @@
     padding-bottom: calc(40px + env(safe-area-inset-bottom));
   }
 
-  /* 16px or iOS zooms the page when an input takes focus. */
+  /* 16px or iOS zooms the page when an input takes focus. Class selectors beat the type selectors, so the
+     fields whose own class sets a smaller size are named too. */
   input,
   textarea,
   select {
+    font-size: 16px;
+  }
+  .search input,
+  .input,
+  .input-sm,
+  .input-bare,
+  .editor,
+  .tree-rename,
+  .crumb-title {
     font-size: 16px;
   }
 
@@ -66,6 +76,23 @@
   }
   .ibtn-xs::after {
     inset: -12px;
+  }
+  /* A hit area must not reach a neighbour or leave its bar: the topbar buttons are already 44px, and the tree
+     row buttons sit a few px apart, so they are drawn bigger instead. */
+  .topbar .ibtn::after,
+  .tree-actions .ibtn::after {
+    content: none;
+  }
+  .tree-actions {
+    gap: 4px;
+  }
+  .tree-actions .ibtn {
+    width: 36px;
+    height: 36px;
+  }
+  .vault-row .vault-actions {
+    top: 50%;
+    transform: translateY(-50%);
   }
   .segmented button::after {
     content: '';

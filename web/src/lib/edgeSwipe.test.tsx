@@ -37,11 +37,17 @@ function Probe({ enabled, onSwipe }: { enabled: boolean; onSwipe: () => void }) 
   useEdgeSwipe(enabled, onSwipe);
   return null;
 }
-function touch(type: 'touchstart' | 'touchend', x: number, y: number) {
+function touch(type: 'touchstart' | 'touchend', x: number, y: number, target: EventTarget = document) {
   const e = new Event(type, { bubbles: true });
   const t = { clientX: x, clientY: y };
   Object.assign(e, { touches: type === 'touchstart' ? [t] : [], changedTouches: [t] });
-  act(() => void document.dispatchEvent(e));
+  act(() => void target.dispatchEvent(e));
+}
+function add(html: string): HTMLElement {
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  document.body.appendChild(el);
+  return el;
 }
 function mount(enabled: boolean, onSwipe: () => void) {
   host = document.createElement('div');
@@ -70,6 +76,46 @@ describe('useEdgeSwipe', () => {
     mount(false, fn);
     touch('touchstart', 4, 300);
     touch('touchend', 120, 300);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the concept map', '<div class="cmap"><svg><g id="t"></g></svg></div>'],
+    ['a code block', '<pre><code id="t">x</code></pre>'],
+    ['a table', '<table><tbody><tr><td id="t">x</td></tr></tbody></table>'],
+    ['a text field', '<textarea id="t" spellCheck="false"></textarea>'],
+  ])('ignores a swipe that starts on %s', (_name, html) => {
+    const fn = vi.fn();
+    mount(true, fn);
+    const el = add(html);
+    const target = el.querySelector('#t')!;
+    touch('touchstart', 4, 300, target);
+    touch('touchend', 140, 300, target);
+    el.remove();
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('ignores a swipe that starts inside something that scrolls sideways', () => {
+    const fn = vi.fn();
+    mount(true, fn);
+    const el = add('<div id="s" style="overflow-x:auto"><span id="t">x</span></div>');
+    const scroller = el.querySelector<HTMLElement>('#s')!;
+    Object.defineProperty(scroller, 'scrollWidth', { value: 900 });
+    Object.defineProperty(scroller, 'clientWidth', { value: 300 });
+    const target = el.querySelector('#t')!;
+    touch('touchstart', 4, 300, target);
+    touch('touchend', 140, 300, target);
+    el.remove();
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('ignores a swipe while a dialog is open', () => {
+    const fn = vi.fn();
+    mount(true, fn);
+    const el = add('<div role="dialog">x</div>');
+    touch('touchstart', 4, 300);
+    touch('touchend', 140, 300);
+    el.remove();
     expect(fn).not.toHaveBeenCalled();
   });
 });

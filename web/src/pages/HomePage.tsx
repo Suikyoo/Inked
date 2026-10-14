@@ -486,7 +486,7 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
               {bodiesPending && q.length >= 2 && <p className="results-note">Still decrypting note text, so some matches may be missing.</p>}
             </>
           ) : column === 'preview' && selected ? (
-            <NodePreview selection={selected} onSelect={setSelected} onZoom={(sel) => setFitRequest((r) => ({ sel, n: (r?.n ?? 0) + 1 }))} />
+            <NodePreview selection={selected} onSelect={setSelected} onZoom={showMap ? (sel) => setFitRequest((r) => ({ sel, n: (r?.n ?? 0) + 1 })) : undefined} />
           ) : (
             <div className="empty">
               <p>Select a folder or note on the map.</p>
