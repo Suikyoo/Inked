@@ -1247,6 +1247,44 @@ describe('selection ring motion', () => {
     expect(node('a').querySelectorAll('.cmap-sel-wave')).toHaveLength(2);
   });
 
+  it('a double-click selects and plays once, without restarting the ring on the second click', () => {
+    motion(true);
+    render({ entries: [entry(t())] });
+    fire(folderNode('f1'), new MouseEvent('click', { bubbles: true, detail: 1 }));
+    const ring = folderNode('f1').querySelector('.cmap-sel');
+    const wave = folderNode('f1').querySelector('.cmap-sel-wave');
+    fire(folderNode('f1'), new MouseEvent('click', { bubbles: true, detail: 2 }));
+    expect(folderNode('f1').querySelector('.cmap-sel')).toBe(ring);
+    expect(folderNode('f1').querySelector('.cmap-sel-wave')).toBe(wave);
+  });
+
+  it('a held key replays once, not on every repeat; Enter on a selected folder replays', () => {
+    motion(true);
+    render({ entries: [entry(t())], selected: { kind: 'folder', vaultId: 'v1', id: 'f1' } });
+    key(folderNode('f1'), 'Enter');
+    const wave = folderNode('f1').querySelector('.cmap-sel-wave');
+    expect(wave).not.toBeNull();
+    fire(folderNode('f1'), new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true }));
+    expect(folderNode('f1').querySelector('.cmap-sel-wave')).toBe(wave);
+  });
+
+  it('Enter on the selected note opens it instead of replaying', () => {
+    motion(true);
+    render({ entries: [entry(t())], selected: { kind: 'note', vaultId: 'v1', id: 'a' } });
+    key(node('a'), 'Enter');
+    expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
+  });
+
+  it('clears a wave whose animation never ends, so it cannot replay later', () => {
+    motion(true);
+    render({ entries: [entry(t())] });
+    click(hub());
+    expect(hub().querySelectorAll('.cmap-sel-wave')).toHaveLength(2);
+    act(() => void vi.advanceTimersByTime(2500));
+    expect(host!.querySelector('.cmap-sel-wave')).toBeNull();
+    expect(hub().querySelector('.cmap-sel')!.classList.contains('is-inking')).toBe(false);
+  });
+
   it('replays nothing on a re-click under reduced motion', () => {
     motion(false);
     render({ entries: [entry(t())], selected: { kind: 'hub', vaultId: 'v1' } });
