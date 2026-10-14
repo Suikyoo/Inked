@@ -272,18 +272,23 @@
   .search kbd {
     display: none;
   }
-  /* Results first on narrow screens; the map can wait. Stacked, the column cannot borrow the map's height. */
+  /* Map (or its Load map button) first on narrow screens, then the preview column; but while searching or asking,
+     the answers come first. Stacked, the column cannot borrow the map's height. */
   .home-body {
     flex: none;
   }
+  .home-body[data-column='search'] .results,
+  .home-body[data-column='ask'] .results {
+    order: 0;
+  }
   .results {
-    order: 1;
+    order: 2;
     flex-basis: 100%;
     contain: none;
     max-height: 60vh;
   }
   .map {
-    order: 2;
+    order: 1;
   }
 }
 
@@ -437,7 +442,7 @@
 
 /* Phone: the map waits behind this button, below the results. */
 .map-load {
-  order: 2;
+  order: 1;
   flex: 1 1 100%;
   display: flex;
   padding: 8px 0 0;

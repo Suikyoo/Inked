@@ -78,6 +78,15 @@ describe('phone.css', () => {
     expect(rules('.vault-row .vault-actions')).toMatch(/top:50%;transform:translateY\(-50%\);/);
   });
 
+  it('puts the map before the results on a phone, but search and Ask answers first', () => {
+    const home = read('home.css');
+    const order = (sel: string) => cssRules(home, sel).join('');
+    expect(order('.map')).toMatch(/order:1;/);
+    expect(order('.map-load')).toMatch(/order:1;/);
+    expect(order('.results')).toMatch(/order:2;/);
+    expect(order(".home-body[data-column='search'] .results, .home-body[data-column='ask'] .results")).toMatch(/order:0;/);
+  });
+
   it('drops the map selection ghost where there is no hover', () => {
     expect(phone).toMatch(/@media \(hover: none\)/);
     expect(rules('.cmap-ghost')).toMatch(/display:none;/);

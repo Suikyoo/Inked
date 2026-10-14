@@ -388,7 +388,7 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
         </p>
       )}
 
-      <div className="home-body">
+      <div className="home-body" data-column={column}>
         {(state.vaultsStatus !== 'ready' || vaults.length > 0) &&
           (showMap ? (
           <section className="map" aria-label="Concept map">

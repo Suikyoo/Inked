@@ -748,4 +748,13 @@ describe('Home on a phone', () => {
     click(loadMapButton()!);
     expect(zoom()).toBeDefined();
   });
+
+  it('marks the column on the body so the CSS can put answers ahead of the map', () => {
+    phone = mockPhone(true);
+    mount(baseState());
+    const body = () => host!.querySelector('.home-body')!;
+    expect(body().getAttribute('data-column')).toBe('empty');
+    type('alpha');
+    expect(body().getAttribute('data-column')).toBe('search');
+  });
 });
