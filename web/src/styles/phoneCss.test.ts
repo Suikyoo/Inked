@@ -51,12 +51,6 @@ describe('phone.css', () => {
     expect(rules('.md img')).toMatch(/max-width:100%;/);
   });
 
-  it('plays one short pump for a selection on a phone, with no echo ring', () => {
-    expect(rules('.cmap-sel-wave.is-echo')).toMatch(/display:none;/);
-    expect(rules('.cmap-sel-wave')).toMatch(/animation:cmap-sel-pump 600ms /);
-    expect(phone).toMatch(/@keyframes cmap-sel-pump \{[\s\S]*?to \{[^}]*scale\(1\.5\)/);
-  });
-
   it('makes the Load map button span the row, and the brand link a full-height target', () => {
     expect(cssRules(read('home.css'), '.map-load').join('')).toMatch(/flex:1 1 100%;/);
     expect(rules('.btn, .btn-sm, .search, .brand')).toMatch(/min-height:44px;/);

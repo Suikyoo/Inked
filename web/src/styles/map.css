@@ -496,7 +496,7 @@
 }
 
 /* Selection ring. Pointing at a node shows a faint ghost of it: dashed, turning slowly like the vault dial.
-   A new selection inks its ring in with one clockwise stroke from 12 o'clock, then a white wave leaves it.
+   A new selection inks its ring in with one clockwise stroke from 12 o'clock, then one white pump leaves it.
    The circles carry pathLength="1", so the dashes and the stroke read the same at every radius. */
 .cmap-ghost {
   fill: none;
@@ -527,20 +527,13 @@
   transform-box: fill-box;
   transform-origin: center;
   opacity: 0;
-  /* Starts as the stroke is a little over halfway round, so the wave reads as the ring's echo. It travels far past
-     the other rings: the node sets --wave-scale so every wave ends at the same wide radius, whatever the node. */
-  animation: cmap-sel-wave 1500ms cubic-bezier(0.1, 0.7, 0.2, 1) 180ms forwards;
+  /* One short pump from the ring: it grows to 1.5x and fades, once. */
+  animation: cmap-sel-pump 600ms cubic-bezier(0.2, 0.7, 0.2, 1) 120ms forwards;
   pointer-events: none;
 }
-/* A second, fainter wave trails the first, like a ping's echo. */
-.cmap-sel-wave.is-echo {
-  stroke-width: 0.8;
-  animation-delay: 420ms;
-}
-@keyframes cmap-sel-wave {
+@keyframes cmap-sel-pump {
   from { opacity: 0.8; transform: scale(1); }
-  30% { opacity: 0.5; }
-  to { opacity: 0; transform: scale(var(--wave-scale, 2.4)); }
+  to { opacity: 0; transform: scale(1.5); }
 }
 /* A selected node still answers the pointer: the ghost turns just outside its solid ring. */
 .cmap-ghost.is-outer {
