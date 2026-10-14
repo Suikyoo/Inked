@@ -51,6 +51,12 @@ describe('phone.css', () => {
     expect(rules('.md img')).toMatch(/max-width:100%;/);
   });
 
+  it('plays one short pump for a selection on a phone, with no echo ring', () => {
+    expect(rules('.cmap-sel-wave.is-echo')).toMatch(/display:none;/);
+    expect(rules('.cmap-sel-wave')).toMatch(/animation:cmap-sel-pump 600ms /);
+    expect(phone).toMatch(/@keyframes cmap-sel-pump \{[\s\S]*?to \{[^}]*scale\(1\.5\)/);
+  });
+
   it('drops the map selection ghost where there is no hover', () => {
     expect(phone).toMatch(/@media \(hover: none\)/);
     expect(rules('.cmap-ghost')).toMatch(/display:none;/);
