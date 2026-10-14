@@ -48,7 +48,8 @@
   }
   .btn,
   .btn-sm,
-  .search {
+  .search,
+  .brand {
     min-height: 44px;
   }
   .ibtn,
@@ -75,12 +76,42 @@
     line-height: 44px;
   }
 
+  /* Form controls. The show-password button and the colour swatches keep their size and grow their hit area. */
+  .input,
+  .input-sm,
+  .input-wrap,
+  .check {
+    min-height: 44px;
+  }
+  .check {
+    align-items: center;
+  }
+  .input-action,
+  .swatch {
+    position: relative;
+  }
+  .input-action::after,
+  .swatch::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
   /* The doc bar (breadcrumb, save state, edit | view) stays under the topbar while the note scrolls. */
   .doc-bar {
     position: sticky;
     top: calc(48px + env(safe-area-inset-top));
     z-index: 20;
     background: var(--ground);
+  }
+  .crumbs {
+    flex: 1 1 0;
+  }
+  a.crumb,
+  .crumb-title {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   /* Reading. */

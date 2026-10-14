@@ -34,7 +34,7 @@ describe('phone.css', () => {
 
   it('gives rows and buttons a 44px target', () => {
     expect(rules('.item, .item-sm, .tree-row, .menu-item')).toMatch(/min-height:44px;/);
-    expect(rules('.btn, .btn-sm, .search')).toMatch(/min-height:44px;/);
+    expect(rules('.btn, .btn-sm, .search, .brand')).toMatch(/min-height:44px;/);
     // Icon buttons keep their layout size and grow only their hit area.
     expect(rules('.ibtn::after')).toMatch(/inset:-1\d?px;/);
   });
@@ -55,6 +55,21 @@ describe('phone.css', () => {
     expect(rules('.cmap-sel-wave.is-echo')).toMatch(/display:none;/);
     expect(rules('.cmap-sel-wave')).toMatch(/animation:cmap-sel-pump 600ms /);
     expect(phone).toMatch(/@keyframes cmap-sel-pump \{[\s\S]*?to \{[^}]*scale\(1\.5\)/);
+  });
+
+  it('makes the Load map button span the row, and the brand link a full-height target', () => {
+    expect(cssRules(read('home.css'), '.map-load').join('')).toMatch(/flex:1 1 100%;/);
+    expect(rules('.btn, .btn-sm, .search, .brand')).toMatch(/min-height:44px;/);
+  });
+
+  it('keeps the doc bar to one row with a 44px breadcrumb and title', () => {
+    expect(rules('.crumbs')).toMatch(/flex:1 1 0;/);
+    expect(rules('a.crumb, .crumb-title')).toMatch(/min-height:44px;/);
+  });
+
+  it('sizes form controls for a finger', () => {
+    expect(rules('.input, .input-sm, .input-wrap, .check')).toMatch(/min-height:44px;/);
+    expect(rules('.input-action::after, .swatch::after')).toMatch(/inset:-8px;/);
   });
 
   it('drops the map selection ghost where there is no hover', () => {
