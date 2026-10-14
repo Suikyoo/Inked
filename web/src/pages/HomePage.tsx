@@ -17,6 +17,7 @@ import { buildRows, type SearchRow } from './searchRows';
 import { describeError, relativeTime } from '../lib/util';
 import { NodePreview } from './NodePreview';
 import { homeColumn, homeError, homePending } from './homeStatus';
+import { usePhone } from '../lib/usePhone';
 import { useAppState, useSearchEntries, useStore, vaultStats } from '../state/StoreContext';
 import type { AppState } from '../state/store';
 
@@ -142,7 +143,11 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
   const answeredRows = useRef(rows);
   if (!searching) answeredRows.current = rows;
   const mapRows = searching ? answeredRows.current : rows;
-  const mapEntries = useVaultGraphs(state);
+  // On a phone the map waits for the "Load map" button; its graphs and layouts are not built before.
+  const phone = usePhone();
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const showMap = !phone || mapLoaded;
+  const mapEntries = useVaultGraphs(state, showMap);
   // The notes that have a dot on the map, kept as one Set while its members do not change (a body edit rebuilds
   // mapEntries but not the dots), so the meaning-neighbour lookup below keeps its identity.
   const dotIdsRef = useRef<ReadonlySet<string>>(new Set());
@@ -384,11 +389,18 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
       )}
 
       <div className="home-body">
-        {(state.vaultsStatus !== 'ready' || vaults.length > 0) && (
+        {(state.vaultsStatus !== 'ready' || vaults.length > 0) &&
+          (showMap ? (
           <section className="map" aria-label="Concept map">
             <ConceptMap entries={mapEntries} neighbours={neighbours} hits={asking ? litIds : hitIds} hot={hot} loading={treesPending} selected={selected} onSelect={setSelected} fitRequest={fitRequest} focusVault={focusVault} saves={saves} onSavesPlayed={onSavesPlayed} searching={asking || q.length > 0} />
           </section>
-        )}
+          ) : (
+            <div className="map-load">
+              <button type="button" className="btn" onClick={() => setMapLoaded(true)}>
+                Load map
+              </button>
+            </div>
+          ))}
 
         <aside
           className={column === 'ask' ? 'results is-ask' : 'results'}

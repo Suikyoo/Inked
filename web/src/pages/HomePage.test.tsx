@@ -18,6 +18,13 @@ import { askStub } from '../test/ask';
 import type { AppState, AppStore } from '../state/store';
 import { resetWriteOnForTests } from '../map/ConceptMap';
 import { HomePage } from './HomePage';
+import { mockPhone } from '../test/phone';
+import { layoutVault } from '../map/layout';
+
+vi.mock('../map/layout', async (orig) => {
+  const m = await orig<typeof import('../map/layout')>();
+  return { ...m, layoutVault: vi.fn(m.layoutVault) };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -670,5 +677,66 @@ describe('Ask in the search bar', () => {
     renderHome({ account: accountStub(origins), ask: askStub({ turns: [turn('done')] } as never) });
     act(() => host!.querySelector<HTMLButtonElement>('button[aria-label="Back to search"]')!.click());
     expect(document.activeElement).toBe(input());
+  });
+});
+
+describe('Home on a phone', () => {
+  let phone: ReturnType<typeof mockPhone>;
+  beforeEach(() => {
+    vi.mocked(layoutVault).mockClear();
+  });
+  afterEach(() => phone?.restore());
+
+  const loadMapButton = () => [...host!.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Load map');
+
+  it('shows search and a Load map button, and builds no map until it is pressed', () => {
+    phone = mockPhone(true);
+    mount(baseState());
+    expect(host!.querySelector('input#q')).not.toBeNull();
+    expect(loadMapButton()).toBeDefined();
+    expect(host!.querySelector('.cmap')).toBeNull();
+    expect(layoutVault).not.toHaveBeenCalled();
+    click(loadMapButton()!);
+    expect(host!.querySelector('.cmap')).not.toBeNull();
+    expect(layoutVault).toHaveBeenCalled();
+    expect(loadMapButton()).toBeUndefined();
+  });
+
+  it('keeps search results working while the map is hidden', () => {
+    phone = mockPhone(true);
+    mount(baseState());
+    type('alpha');
+    expect(column().textContent).toContain('Alpha');
+    expect(host!.querySelector('.cmap')).toBeNull();
+  });
+
+  it('hands search hits to the map when it is loaded after a search', () => {
+    phone = mockPhone(true);
+    mount(baseState());
+    type('alpha');
+    click(loadMapButton()!);
+    expect(host!.querySelector('.cmap')).not.toBeNull();
+    expect(host!.querySelector('input#q')).toHaveProperty('value', 'alpha');
+  });
+
+  it('shows the map at once on a wide screen, with no button', () => {
+    phone = mockPhone(false);
+    mount(baseState());
+    expect(loadMapButton()).toBeUndefined();
+    expect(host!.querySelector('.cmap')).not.toBeNull();
+  });
+
+  it('mounts the map when the window grows past phone width, and keeps it if it shrinks again', () => {
+    phone = mockPhone(true);
+    mount(baseState());
+    expect(host!.querySelector('.cmap')).toBeNull();
+    phone.set(false);
+    expect(host!.querySelector('.cmap')).not.toBeNull();
+    phone.set(true);
+    expect(host!.querySelector('.cmap')).toBeNull();
+    click(loadMapButton()!);
+    phone.set(false);
+    phone.set(true);
+    expect(host!.querySelector('.cmap')).not.toBeNull();
   });
 });

@@ -434,3 +434,13 @@
 .res-ask:focus-visible {
   background: var(--hover);
 }
+
+/* Phone: the map waits behind this button, below the results. */
+.map-load {
+  order: 2;
+  display: flex;
+  padding: 8px 0 0;
+}
+.map-load .btn {
+  width: 100%;
+}
