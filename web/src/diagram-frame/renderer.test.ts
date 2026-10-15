@@ -68,7 +68,7 @@ describe('createRenderer', () => {
     });
     // A note's %%{init}%% directive may not change the theme or inject css.
     expect(cfg.secure).toEqual(
-      expect.arrayContaining(['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'maxEdges', 'theme', 'themeCSS', 'themeVariables', 'fontFamily']),
+      expect.arrayContaining(['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'maxEdges', 'theme', 'themeCSS', 'themeVariables', 'fontFamily', 'htmlLabels']),
     );
     expect(typeof cfg.themeCSS).toBe('string');
   });
@@ -103,6 +103,12 @@ describe('createRenderer', () => {
     const { renderer } = make({ render });
     const r = await renderer.render('a', 'graph TD; A-->B');
     expect(r).toMatchObject({ ok: false, reason: 'oversized' });
+  });
+
+  it('does not mistake an unrelated parse error for the edge limit', async () => {
+    const render = vi.fn().mockRejectedValue(new Error('Parse error: unknown knowledge node'));
+    const { renderer } = make({ render });
+    expect(await renderer.render('a', 'graph TD; A-->B')).toMatchObject({ ok: false, reason: 'syntax' });
   });
 
   it('reports a load failure and retries on the next render', async () => {

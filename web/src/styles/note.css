@@ -352,6 +352,7 @@ a.crumb:hover {
   border: 1px solid var(--side-border);
   border-radius: var(--radius-lg);
   overflow-x: auto;
+  contain: paint;
 }
 .md .diagram-note {
   margin: -12px 0 20px;

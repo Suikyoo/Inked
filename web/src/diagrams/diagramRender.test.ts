@@ -97,6 +97,32 @@ describe('renderDiagram', () => {
     expect(frame.render).toHaveBeenCalledTimes(2);
   });
 
+  it('turns a rejected frame render into a load failure and retries next time', async () => {
+    const mod = await load();
+    frame.render.mockRejectedValueOnce(new Error('port closed'));
+    expect(await mod.renderDiagram('graph TD; A-->B')).toEqual({ ok: false, reason: 'load' });
+    expect(mod.peekDiagram('graph TD; A-->B')).toBeUndefined();
+    frame.render.mockResolvedValueOnce({ ok: true, svg: OK_SVG, css: OK_CSS });
+    expect((await mod.renderDiagram('graph TD; A-->B')).ok).toBe(true);
+    expect(frame.render).toHaveBeenCalledTimes(2);
+  });
+
+  it('a late load failure of an old entry does not evict the newer entry for the same source', async () => {
+    const mod = await load();
+    let failFirst!: (o: FrameOutcome) => void;
+    frame.render.mockReturnValueOnce(new Promise<FrameOutcome>((r) => (failFirst = r)));
+    const first = mod.renderDiagram('graph TD; A-->B');
+    mod.clearDiagrams();
+    frame.render.mockResolvedValueOnce({ ok: true, svg: OK_SVG, css: OK_CSS });
+    const second = await mod.renderDiagram('graph TD; A-->B');
+    expect(second.ok).toBe(true);
+    failFirst({ ok: false, reason: 'load' });
+    expect(await first).toEqual({ ok: false, reason: 'load' });
+    expect(mod.peekDiagram('graph TD; A-->B')).toBe(second);
+    await mod.renderDiagram('graph TD; A-->B');
+    expect(frame.render).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps at most 50 results', async () => {
     const mod = await load();
     frame.render.mockResolvedValue({ ok: true, svg: OK_SVG, css: OK_CSS });

@@ -44,12 +44,14 @@ export function renderDiagram(source: string): Promise<DiagramResult> {
   if (text.length > MAX_TEXT_SIZE) return Promise.resolve({ ok: false, reason: 'oversized' });
   const hit = cache.get(text);
   if (hit) return hit.promise;
-  const entry: Entry = { promise: draw(text) };
+  const entry: Entry = { promise: draw(text).catch((): DiagramResult => ({ ok: false, reason: 'load' })) };
   cache.set(text, entry);
   if (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value!);
   void entry.promise.then((r) => {
     // A load failure or a timeout may be transient: the next view tries again.
-    if (!r.ok && (r.reason === 'load' || r.reason === 'timeout')) cache.delete(text);
+    if (!r.ok && (r.reason === 'load' || r.reason === 'timeout')) {
+      if (cache.get(text) === entry) cache.delete(text);
+    }
     else entry.value = r;
   });
   return entry.promise;

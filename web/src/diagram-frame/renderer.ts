@@ -57,7 +57,7 @@ export function createRenderer(deps: RendererDeps) {
           // Keys a note's %%{init}%% directive may not change: Mermaid's own list plus the look.
           secure: [
             'secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'maxEdges', 'suppressErrorRendering',
-            'theme', 'themeCSS', 'themeVariables', 'fontFamily',
+            'theme', 'themeCSS', 'themeVariables', 'fontFamily', 'htmlLabels',
           ],
         });
         return mermaid;
@@ -87,7 +87,7 @@ export function createRenderer(deps: RendererDeps) {
         return { type: 'result', id, ok: true, svg: lifted.svg, css: lifted.css };
       } catch (e) {
         const message = firstLine(e);
-        return { type: 'result', id, ok: false, reason: /edge/i.test(message) ? 'oversized' : 'syntax', message };
+        return { type: 'result', id, ok: false, reason: /edge limit/i.test(message) ? 'oversized' : 'syntax', message };
       } finally {
         // Mermaid can leave its measuring node in <body> after an error.
         document.getElementById(`d${id}`)?.remove();

@@ -18,7 +18,12 @@ window.addEventListener(
       });
       port.onmessage = (m: MessageEvent) => {
         if (!isRenderRequest(m.data)) return;
-        void renderer.render(m.data.id, m.data.source).then((result) => port.postMessage(result));
+        const { id, source } = m.data;
+        void renderer
+          .render(id, source)
+          .then((result) => port.postMessage(result))
+          // An unexpected rejection still answers, instead of leaving the page to time out.
+          .catch(() => port.postMessage({ type: 'result', id, ok: false, reason: 'syntax' }));
       };
       port.postMessage({ type: 'ready' });
     },
