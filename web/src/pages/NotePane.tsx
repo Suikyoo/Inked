@@ -11,6 +11,7 @@ import { usePhone } from '../lib/usePhone';
 import { describeError, formatDate, relativeTime, wordCount } from '../lib/util';
 import { folderPath, titleIndex, useAppState, useStore, vaultStats } from '../state/StoreContext';
 import type { VaultView } from '../state/store';
+import { useInkedImages } from './useInkedImages';
 import { useNoteEditor, type SaveStatus } from './useNoteEditor';
 
 const SAVE_LABEL: Record<SaveStatus, string> = {
@@ -109,6 +110,7 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
   const [titleError, setTitleError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const articleRef = useRef<HTMLElement>(null);
 
   // Pick the initial mode once the note has loaded.
   useEffect(() => {
@@ -164,6 +166,7 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
       },
     });
   }, [mode, editor.status, editor.body, titles, vault.id]);
+  useInkedImages(articleRef, vault.id, html);
 
   const graph = useVaultGraph(state, vault.id);
   const backlinks = useMemo(() => (graph ? incomingLinks(graph, noteId) : []), [graph, noteId]);
@@ -306,7 +309,7 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
           </div>
         ) : (
           // Sanitised by DOMPurify in renderMarkdown.
-          <article key="view" className="md" onClick={onArticleClick} dangerouslySetInnerHTML={{ __html: html }} />
+          <article ref={articleRef} key="view" className="md" onClick={onArticleClick} dangerouslySetInnerHTML={{ __html: html }} />
         )}
       </main>
 

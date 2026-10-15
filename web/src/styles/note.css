@@ -425,7 +425,23 @@ a.crumb:hover {
 }
 .md img {
   max-width: 100%;
+  height: auto;
   border-radius: var(--radius);
+}
+.md img[data-inked-image]:not([src]) {
+  display: inline-block;
+  min-width: 160px;
+  min-height: 96px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+.md .img-unavailable {
+  display: inline-block;
+  padding: 8px 12px;
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius);
+  color: var(--muted-2);
+  font-size: 13px;
 }
 .md s,
 .md del {

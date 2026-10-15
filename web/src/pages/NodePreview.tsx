@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { uniqueTitle } from '../components/VaultTree';
 import { describeError, relativeTime } from '../lib/util';
@@ -9,6 +9,7 @@ import type { MapSelection } from '../map/ConceptMap';
 import { useVaultGraph } from '../map/useVaultGraphs';
 import { renderMarkdown } from '../markdown/render';
 import { followNoteLink } from './NotePane';
+import { useInkedImages } from './useInkedImages';
 import { useSemantic, useSemanticStore } from '../semantic/SemanticContext';
 import { folderPath, useAppState, useStore } from '../state/StoreContext';
 import type { AppState } from '../state/store';
@@ -32,6 +33,8 @@ function Markdown({ body, ready, vaultId }: { body: string | undefined; ready: b
         : '',
     [body, titles, vaultId],
   );
+  const articleRef = useRef<HTMLElement>(null);
+  useInkedImages(articleRef, vaultId, html);
   if (body === undefined) return <p className="preview-hint">{ready ? 'No text available.' : 'Decrypting…'}</p>;
   if (!body.trim()) return <p className="preview-hint">This note is empty.</p>;
   // Sanitised by DOMPurify in renderMarkdown, as in NotePane.
@@ -43,7 +46,7 @@ function Markdown({ body, ready, vaultId }: { body: string | undefined; ready: b
     }
     followNoteLink(e, navigate);
   };
-  return <article className="md" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <article ref={articleRef} className="md" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 type Related = { id: string; vaultId: string; title: string; path: string; sim: string };
