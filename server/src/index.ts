@@ -10,6 +10,7 @@ const app = await buildApp({
   cookieSecure: config.cookieSecure,
   trustProxy: config.trustProxy,
   llmOrigins: config.llmOrigins,
+  imageQuotaBytes: config.imageQuotaBytes,
   logger: {
     level: process.env.LOG_LEVEL || 'info',
     // Log paths without query strings or invite tokens: those can carry usernames and secrets.

@@ -17,6 +17,8 @@ export interface AppContext {
   setupToken: string | null;
   /** Origins the browser may call for Ask (CSP connect-src and /api/status). */
   llmOrigins: string[];
+  /** Most image bytes one user may store (INKED_IMAGE_QUOTA_MB). */
+  imageQuotaBytes: number;
 }
 
 declare module 'fastify' {

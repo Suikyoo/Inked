@@ -18,6 +18,7 @@ services:
       # Only nginx on the private network may set the client IP (it forwards Cloudflare's CF-Connecting-IP).
       TRUST_PROXY: "172.31.250.0/28"
       INKED_LLM_ORIGINS: ${INKED_LLM_ORIGINS:-}
+      INKED_IMAGE_QUOTA_MB: ${INKED_IMAGE_QUOTA_MB:-}
     networks:
       - inked-internal
 

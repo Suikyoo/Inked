@@ -4,6 +4,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { randomBytes } from 'node:crypto';
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import { DEFAULT_IMAGE_QUOTA_MB } from './config.js';
 import { type AppContext, deleteExpiredSessions } from './context.js';
 import { loadServerSecret } from './crypto.js';
 import { type Db, openDb } from './db.js';
@@ -27,6 +28,8 @@ export interface AppOptions {
   setupToken?: string;
   /** Extra origins the browser may call for Ask (added to CSP connect-src). */
   llmOrigins?: string[];
+  /** Per-user cap on stored image bytes; defaults to 1024 MiB. */
+  imageQuotaBytes?: number;
   logger?: FastifyServerOptions['logger'];
 }
 
@@ -115,6 +118,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     limiter: new FailureLimiter(),
     accountLimiter: new FailureLimiter(30, 15 * 60_000, 15 * 60_000),
     llmOrigins,
+    imageQuotaBytes: opts.imageQuotaBytes ?? DEFAULT_IMAGE_QUOTA_MB * 1024 * 1024,
     setupToken: opts.setupToken ?? (countUsers(db) === 0 ? randomBytes(16).toString('base64url') : null),
   };
   if (ctx.setupToken && !opts.setupToken) {
@@ -156,7 +160,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.addHook('onSend', async (request, reply, payload) => {
     reply.headers(headers);
-    if (isApiPath(request.url)) reply.header('cache-control', 'no-store');
+    if (isApiPath(request.url) && !reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
     return payload;
   });
 

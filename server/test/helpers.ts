@@ -14,7 +14,7 @@ export interface TestApp {
 
 export const TEST_SETUP_TOKEN = 'test-setup-token-0123456789abcdef';
 
-export async function makeApp(opts: { webDist?: string; trustProxy?: false | number | string; setupToken?: string; llmOrigins?: string[] } = {}): Promise<TestApp> {
+export async function makeApp(opts: { webDist?: string; trustProxy?: false | number | string; setupToken?: string; llmOrigins?: string[]; imageQuotaBytes?: number } = {}): Promise<TestApp> {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'inked-test-'));
   const app = await buildApp({
     dataDir,
@@ -23,6 +23,7 @@ export async function makeApp(opts: { webDist?: string; trustProxy?: false | num
     trustProxy: opts.trustProxy ?? false,
     setupToken: opts.setupToken ?? TEST_SETUP_TOKEN,
     llmOrigins: opts.llmOrigins,
+    imageQuotaBytes: opts.imageQuotaBytes,
   });
   return {
     app,

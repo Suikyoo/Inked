@@ -10,6 +10,7 @@ export interface Config {
   cookieSecure: boolean;
   trustProxy: false | number | string;
   llmOrigins: string[];
+  imageQuotaBytes: number;
 }
 
 // The server package root (one level above src/ or dist/).
@@ -63,6 +64,19 @@ export function parseLlmOrigins(value: string | undefined): string[] {
   return out;
 }
 
+export const DEFAULT_IMAGE_QUOTA_MB = 1024;
+const MIB = 1024 * 1024;
+
+/** INKED_IMAGE_QUOTA_MB: the most image bytes one user may store, in whole MiB. */
+export function parseImageQuotaMb(value: string | undefined): number {
+  const v = (value ?? '').trim();
+  if (v === '') return DEFAULT_IMAGE_QUOTA_MB * MIB;
+  if (!/^\d+$/.test(v) || Number(v) < 1) {
+    throw new Error(`Invalid INKED_IMAGE_QUOTA_MB: ${value} (use a whole number of MiB, at least 1)`);
+  }
+  return Number(v) * MIB;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const port = Number(env.PORT ?? 8080);
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
@@ -76,5 +90,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cookieSecure: bool(env.COOKIE_SECURE, false),
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
     llmOrigins: parseLlmOrigins(env.INKED_LLM_ORIGINS),
+    imageQuotaBytes: parseImageQuotaMb(env.INKED_IMAGE_QUOTA_MB),
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toFastifyTrustProxy } from '../src/app.js';
-import { loadConfig, parseLlmOrigins, parseTrustProxy } from '../src/config.js';
+import { loadConfig, parseImageQuotaMb, parseLlmOrigins, parseTrustProxy } from '../src/config.js';
 
 describe('parseTrustProxy', () => {
   it('defaults to false', () => {
@@ -82,5 +82,20 @@ describe('INKED_LLM_ORIGINS', () => {
   });
   it('is part of the config', () => {
     expect(loadConfig({ INKED_LLM_ORIGINS: 'https://api.openai.com' } as NodeJS.ProcessEnv).llmOrigins).toEqual(['https://api.openai.com']);
+  });
+});
+
+describe('parseImageQuotaMb', () => {
+  it('defaults to 1024 MiB', () => {
+    expect(parseImageQuotaMb(undefined)).toBe(1024 * 1024 * 1024);
+    expect(parseImageQuotaMb('')).toBe(1024 * 1024 * 1024);
+    expect(loadConfig({}).imageQuotaBytes).toBe(1024 * 1024 * 1024);
+  });
+  it('reads whole MiB', () => {
+    expect(parseImageQuotaMb('5')).toBe(5 * 1024 * 1024);
+    expect(loadConfig({ INKED_IMAGE_QUOTA_MB: ' 20 ' }).imageQuotaBytes).toBe(20 * 1024 * 1024);
+  });
+  it.each(['0', '-1', '1.5', 'abc', '10GB'])('rejects %j', (v) => {
+    expect(() => parseImageQuotaMb(v)).toThrow(/INKED_IMAGE_QUOTA_MB/);
   });
 });
