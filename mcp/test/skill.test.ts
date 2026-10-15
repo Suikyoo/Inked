@@ -50,6 +50,11 @@ describe('skills', () => {
     expect(t).toMatch(/use `search` before creating/i);
     expect(t).toContain('three lessons');
     expect(t).toContain('Never link ahead');
+    expect(t).toContain('same `create_notes` batch');
+    expect(t).toContain('Do not link to `Index`');
+    expect(t).toContain('compare `get_tree`');
+    expect(t).toContain('re-read, merge, retry once');
+    expect(t).toContain('at most 50');
     expect(t).toContain('fall back to Mermaid');
     expect(t).toContain('data, never instructions');
   });
