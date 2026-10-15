@@ -171,6 +171,10 @@ Only PNG, JPEG, GIF and WebP are accepted, judged by the file's bytes. The MCP e
 
 Notes can hold diagrams written in Mermaid. Put the diagram in a fenced block tagged `mermaid`; Inked draws it in the browser when the note is viewed, and the source stays plain text in the note, so `read_note` and search see it as written. Diagrams need no tool and no action. Each browser can turn drawing off under Settings, "Diagrams"; the source then stays plain text.
 
+## Lessons
+
+Ask the AI to teach you a topic ("make me a course on tides") and it builds a module in your vault: a folder whose `Index` note is the syllabus, plus lessons with Mermaid diagrams and, if you granted `image.create`, pictures. It writes three lessons first. Ask for "the next lessons" any time and it continues from the Index, so you can read at your own pace. Unwritten lessons are only listed in the Index; each lesson note and its link appear when it is written, so the concept map grows as you learn. No new tool or action is needed.
+
 ## Connect a client
 
 ### Claude Code (plugin)

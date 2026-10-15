@@ -37,6 +37,11 @@ describe('skills', () => {
     expect(t).toContain('Never ask for the Inked password in chat');
   });
 
+  it('inked-notes points to inked-lessons', () => {
+    const t = skills.find((s) => s.name === 'inked-notes')!.text;
+    expect(t).toContain('use `inked-lessons`');
+  });
+
   it('inked-lessons keeps its pacing, linking, media and safety rules', () => {
     const t = skills.find((s) => s.name === 'inked-lessons')!.text;
     expect(t).toContain('`inked-note-style`');

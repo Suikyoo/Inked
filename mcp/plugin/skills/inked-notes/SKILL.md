@@ -65,5 +65,6 @@ The main use. Follow this order:
 - **Tidy an Index note:** `read_note` it, then `update_note` to list the folder's notes as `[[links]]`, only because the user asked for the edit.
 - **Save this conversation:** use `inked-save-session`.
 - **Document this repository:** use `inked-document-codebase`.
+- **Teach me a topic, or write the next lessons:** use `inked-lessons`.
 - **A new vault for a topic:** `create_vault`, then build in it once the user has confirmed it.
 - **More access:** `change_config` with a proposal; the user approves it in the browser.
