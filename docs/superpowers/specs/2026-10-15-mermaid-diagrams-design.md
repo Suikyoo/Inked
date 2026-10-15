@@ -144,7 +144,7 @@ The SVG scales with `max-width: 100%` through Mermaid's own inline `max-width`. 
 
 ## Open items
 
-- Measured size of the frame's Mermaid chunks (record after the first production build).
+- Measured size of the frame's Mermaid chunks (Mermaid 11.17.2, production build): a flowchart note loads 28 scripts and one stylesheet, 798 KB raw and 211 KB gzipped, plus 44 KB of Public Sans woff2 fonts. The largest chunks are the 662 KB shared chunk `chunk-FOHPRMQF` (143 KB gzipped, not loaded by a flowchart), `cytoscape` 435 KB (138 KB gzipped), `katex` 259 KB (77 KB gzipped) and the 237 KB `chunk-DU6HZSFF` (36 KB gzipped; a flowchart loads this one). Each further diagram type adds its own chunk (sequence 116 KB raw, 30 KB gzipped). Nothing of Mermaid is in the main page bundle. Real-browser check on the production build: all cases passed except that a wide flowchart at 375px scales down to fit the figure instead of scrolling. When the frame is lost, the note shows no line until the 30 s timeout fires; the next render then recovers by creating a new frame (observed 30.1 s).
 - Follow-up: teach the `inked-notes` skill in the plugin repo to prefer mermaid fences for diagrams.
 - Possible later optimization: an encrypted diagram cache in the existing image store, to skip re-rendering. Not needed now; rendering is fast and the cache is per session.
 
