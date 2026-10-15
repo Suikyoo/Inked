@@ -135,6 +135,8 @@ In the Cloudflare dashboard for the zone, turn off the features that rewrite HTM
 
 Inked does not need them, and its CSP (`script-src 'self'` and `style-src 'self'`, so no inline or third-party scripts and no inline styles) blocks what they inject anyway, which can break pages.
 
+Responses under `/frame/` (the sandboxed diagram renderer) deliberately carry a different policy, with `style-src 'unsafe-inline'`, `connect-src 'none'`, `sandbox allow-scripts` and `Access-Control-Allow-Origin: *`; see `docs/architecture.md`, "Diagrams". Do not let nginx, Cloudflare transform rules or any other layer add, replace or strip these headers on `/frame/` paths, or diagrams stop drawing.
+
 ## Local test
 
 ```bash

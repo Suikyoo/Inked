@@ -167,6 +167,10 @@ Grant the single action `image.create` (it is in no group and is off by default)
 
 Only PNG, JPEG, GIF and WebP are accepted, judged by the file's bytes. The MCP encrypts the image with the vault key before upload, so the server never sees it, and returns `![alt](inked://id)` for the AI to put in a note. The audit log records the vault and image id, never the URL, the path or the bytes. The settings page keeps your `imageDirs` when you apply changes; edit them in the file.
 
+## Diagrams
+
+Notes can hold diagrams written in Mermaid. Put the diagram in a fenced block tagged `mermaid`; Inked draws it in the browser when the note is viewed, and the source stays plain text in the note, so `read_note` and search see it as written. Diagrams need no tool and no action. Each browser can turn drawing off under Settings, "Diagrams"; the source then stays plain text.
+
 ## Connect a client
 
 ### Claude Code (plugin)
