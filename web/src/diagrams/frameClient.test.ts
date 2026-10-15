@@ -152,4 +152,53 @@ describe('createFrameClient', () => {
     expect((await p2).ok).toBe(true);
     client.reset();
   });
+
+  describe('a stale connect after reset', () => {
+    function setup() {
+      const first = fakeFrame();
+      const second = fakeFrame();
+      let resolveFirst!: (c: FrameConnection) => void;
+      const connect = vi
+        .fn<() => Promise<FrameConnection>>()
+        .mockReturnValueOnce(new Promise<FrameConnection>((r) => (resolveFirst = r)))
+        .mockResolvedValue(second.conn);
+      const client = createFrameClient(connect, { renderTimeoutMs: 1000 });
+      return { first, second, connect, client, resolveFirst: () => resolveFirst(first.conn) };
+    }
+
+    it('render during a pending connect, then reset, then the same id again: the stale callback does not arm a timer or tear down the new frame', async () => {
+      const { first, second, client, resolveFirst } = setup();
+      const p1 = client.render('x', 'a');
+      client.reset();
+      expect(await p1).toEqual({ ok: false, reason: 'load' });
+      const p2 = client.render('x', 'b');
+      await until(() => second.seen.length === 1);
+      resolveFirst();
+      await until(() => first.dispose.mock.calls.length === 1);
+      second.frame.postMessage({ type: 'result', id: 'x', ok: true, svg: '<svg/>' });
+      expect((await p2).ok).toBe(true);
+      vi.advanceTimersByTime(5000);
+      await tick();
+      expect(second.dispose).not.toHaveBeenCalled();
+      expect(first.dispose).toHaveBeenCalledTimes(1);
+      client.reset();
+    });
+
+    it('only the legitimate timeout of the new request fires when it is still unanswered', async () => {
+      const { first, second, client, resolveFirst } = setup();
+      const p1 = client.render('x', 'a');
+      client.reset();
+      expect(await p1).toEqual({ ok: false, reason: 'load' });
+      const p2 = client.render('x', 'b');
+      await until(() => second.seen.length === 1);
+      resolveFirst();
+      await until(() => first.dispose.mock.calls.length === 1);
+      vi.advanceTimersByTime(999);
+      expect(second.dispose).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(2);
+      expect(await p2).toEqual({ ok: false, reason: 'timeout' });
+      await tick();
+      expect(second.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
 });

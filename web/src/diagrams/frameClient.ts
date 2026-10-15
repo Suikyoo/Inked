@@ -68,7 +68,7 @@ export function createFrameClient(connect: () => Promise<FrameConnection>, opts:
         pending.set(id, settle);
         open().then(
           (c) => {
-            if (!pending.has(id)) return; // settled while connecting
+            if (pending.get(id) !== settle) return; // settled (or superseded by a newer request with the same id) while connecting
             timer = setTimeout(() => drop({ ok: false, reason: 'timeout' }), renderTimeoutMs);
             c.port.postMessage({ type: 'render', id, source } satisfies RenderRequest);
           },
