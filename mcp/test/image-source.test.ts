@@ -143,6 +143,11 @@ describe('readImageFile', () => {
     expect(e).toMatchObject({ kind: 'not_found' });
     expect(String(e.message)).not.toContain(allowed);
   });
+  it('answers the same denied for a missing file outside the allowed folders', async () => {
+    const e = await readImageFile(path.join(outside, 'nope.png'), [allowed]).catch((x) => x);
+    expect(e).toMatchObject({ kind: 'denied' });
+    expect(String(e.message)).not.toContain(outside);
+  });
   it('refuses a file over 10 MiB', async () => {
     const big = path.join(allowed, 'big.png');
     writeFileSync(big, Buffer.alloc(MAX_IMAGE_BYTES + 1, 1));

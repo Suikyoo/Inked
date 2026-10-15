@@ -11,6 +11,7 @@ export function toToolMessage(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 0) return 'Can’t reach the Inked server.';
     if (e.status === 429) return `Inked is refusing sign-ins for now. Try again in ${e.retryAfter ?? 60} s.`;
+    if (e.code === 'quota_exceeded') return 'Image storage is full. Delete unused images or ask the Inked admin to raise INKED_IMAGE_QUOTA_MB.';
     if (e.status === 413) return 'Note is too large (about 1.5 MB of text is the limit).';
     if (e.status === 404) return 'Not found.';
     if (e.code === 'user_mismatch') return 'Session error. Restart the Inked MCP server.';

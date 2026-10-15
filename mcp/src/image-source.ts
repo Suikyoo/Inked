@@ -175,18 +175,25 @@ export async function readImageFile(file: string, dirs: readonly string[]): Prom
   if (dirs.length === 0) {
     throw new ToolError('denied', 'Local files are off. List folders as "imageDirs" in the Inked MCP config file to allow them.');
   }
+  const NOT_ALLOWED = 'That file is not inside a folder listed in "imageDirs".';
   let real: string;
   try {
     real = await fs.realpath(file);
   } catch {
-    throw new ToolError('not_found', 'File not found.');
+    // A missing file only reads as not_found inside an allowed folder, so paths elsewhere cannot be probed.
+    const lexical = path.resolve(file);
+    for (const dir of dirs) {
+      const realDir = await fs.realpath(dir).catch(() => null);
+      if (realDir && inside(realDir, lexical)) throw new ToolError('not_found', 'File not found.');
+    }
+    throw new ToolError('denied', NOT_ALLOWED);
   }
   let allowed = false;
   for (const dir of dirs) {
     const realDir = await fs.realpath(dir).catch(() => null);
     if (realDir && inside(realDir, real)) allowed = true;
   }
-  if (!allowed) throw new ToolError('denied', 'That file is not inside a folder listed in "imageDirs".');
+  if (!allowed) throw new ToolError('denied', NOT_ALLOWED);
   const stat = await fs.stat(real);
   if (!stat.isFile()) throw new ToolError('invalid', 'That is not a file.');
   if (stat.size > MAX_IMAGE_BYTES) throw new ToolError('invalid', TOO_BIG);

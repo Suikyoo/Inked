@@ -10,6 +10,7 @@ describe('toToolMessage', () => {
     [new NonApiResponse(403), 'Server returned a non-API response (Cloudflare challenge or proxy page?). See docs/mcp.md#cloudflare.'],
     [new ApiError(429, 'locked', undefined, 60), 'Inked is refusing sign-ins for now. Try again in 60 s.'],
     [new ApiError(413, 'too_large'), 'Note is too large (about 1.5 MB of text is the limit).'],
+    [new ApiError(413, 'quota_exceeded'), 'Image storage is full. Delete unused images or ask the Inked admin to raise INKED_IMAGE_QUOTA_MB.'],
     [new ApiError(404, 'not_found'), 'Not found.'],
     [new ApiError(0, 'network'), 'Can’t reach the Inked server.'],
     [new ApiError(409, 'user_mismatch'), 'Session error. Restart the Inked MCP server.'],
