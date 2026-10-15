@@ -39,7 +39,7 @@ note view (main page, strict CSP)                 /frame/frame.html (sandboxed i
     sanitize SVG (DOMPurify)
     css -> constructed stylesheet in a shadow root on the figure
     style="" -> CSSOM writes
-    swap code block for <figure><svg>
+    swap code block for <div class="diagram"><svg>
 ```
 
 ### The frame page
@@ -75,7 +75,7 @@ Runs in the frame. Mermaid is imported on the first `render`. Config: `startOnLo
 1. `markdown-it` is unchanged. A `mermaid` fence is an ordinary `pre > code.language-mermaid` block. If a render fails, or the app is locked, the reader sees readable source.
 2. A hook, `useDiagrams`, mirrors `useInkedImages`. After the note HTML is in the DOM it finds `code.language-mermaid` blocks and asks `renderDiagram(source)` for each.
 3. `renderDiagram` trims the source, refuses it over 20 000 characters, checks a cache keyed by source, and otherwise asks the frame client to render. The reply `{ svg, css }` goes through `prepareDiagramSvg` (below). The result `{ id, svg, css }` is cached in memory.
-4. The hook swaps the block for a `<figure class="diagram" role="img">` with an `aria-label` ("Diagram", or the SVG `<title>` when present).
+4. The hook swaps the block for a `<div class="diagram" role="img">` with an `aria-label` ("Diagram", or the SVG `<title>` when present).
 5. In-flight renders are cancelled when the note HTML changes or the component unmounts; a late result must not write into a replaced DOM.
 
 Where it runs: note view in `NotePane` and `NodePreview`. It never runs for `AskAnswer`; LLM answers are untrusted and a mermaid fence there stays a code block.
@@ -86,7 +86,7 @@ This is the part the probe confirmed.
 
 - The frame, not the page, takes Mermaid's markup apart (`liftStyles`, in the frame): it cuts every `<style>` out of the SVG into a `css` string and moves each `style=""` attribute into `data-inline-style`, then sends `{ svg, css }`. The page must never parse markup that contains either: the page's CSP reports a violation for every `<style>` element and `style` attribute in any document it parses, even a detached `DOMParser` one (the first gate run logged 138 of them). So the page only ever sees style-free SVG.
 - The page sanitizes what it receives, because the frame is another window: the SVG with a separate DOMPurify profile (keep SVG shapes, text and markers; remove `script`, `foreignObject`, event attributes, any leftover `<style>` or `style` attribute, and any `href` or `xlink:href` that is not a same-document fragment), and the css (no `@import`, no `url()` other than `url(#fragment)`). The note sanitizer `sanitizeHtml` is unchanged.
-- The css is refused outright if it contains a backslash, `:host`, `::slotted`, `image-set(`, `image(`, `src(` or `expression(` (the diagram then shows as an error); otherwise `@import` and any `url()` other than `url(#fragment)` are stripped. It goes into a constructed stylesheet adopted by a shadow root on that diagram's own `<figure>`, so it can only style the figure's contents: a note's `classDef` lines are in this css, and a document-wide sheet would let hostile note content restyle the whole app. The sheet goes with the figure; there is nothing to release. The page's own css does not cross the shadow boundary, so the base rule that sizes the svg is part of the adopted sheet. `data-inline-style` values and presentation attributes with an external `url()` are stripped.
+- The css is refused outright if it contains a backslash, `:host`, `::slotted`, `image-set(`, `image(`, `src(` or `expression(` (the diagram then shows as an error); otherwise `@import` and any `url()` other than `url(#fragment)` are stripped. It goes into a constructed stylesheet adopted by a shadow root on that diagram's own `<div>`, so it can only style the figure's contents: a note's `classDef` lines are in this css, and a document-wide sheet would let hostile note content restyle the whole app. The sheet goes with the figure; there is nothing to release. The page's own css does not cross the shadow boundary, so the base rule that sizes the svg is part of the adopted sheet. `data-inline-style` values and presentation attributes with an external `url()` are stripped.
 - Each `data-inline-style` is written back with `el.style.cssText` once the SVG is in the page. CSSOM writes are what React `style` props already use here.
 
 ### Theme

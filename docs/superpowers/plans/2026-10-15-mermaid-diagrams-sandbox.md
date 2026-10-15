@@ -4,7 +4,7 @@
 
 **Goal:** A ```` ```mermaid ```` fence in a note is drawn as a themed SVG diagram in view mode. Mermaid runs in a sandboxed iframe with its own CSP; the main page keeps its strict CSP.
 
-**Architecture:** A separate Vite build produces `dist/frame/` (Mermaid and two fonts). The server serves `/frame/*` with its own CSP (inline styles allowed, no network, `sandbox`) and CORS. The note view talks to the iframe over a `MessageChannel`, gets back `{ svg, css }` (the frame lifted Mermaid's `<style>` blocks into `css` and its `style=""` attributes into `data-inline-style`), sanitizes both, applies the css through a constructed stylesheet adopted by a shadow root on the figure and each `data-inline-style` through CSSOM writes (both CSP-safe, as the revision 1 probe confirmed), and swaps the code block for a `<figure>`. Any failure leaves the code block and adds a one-line note.
+**Architecture:** A separate Vite build produces `dist/frame/` (Mermaid and two fonts). The server serves `/frame/*` with its own CSP (inline styles allowed, no network, `sandbox`) and CORS. The note view talks to the iframe over a `MessageChannel`, gets back `{ svg, css }` (the frame lifted Mermaid's `<style>` blocks into `css` and its `style=""` attributes into `data-inline-style`), sanitizes both, applies the css through a constructed stylesheet adopted by a shadow root on the figure and each `data-inline-style` through CSSOM writes (both CSP-safe, as the revision 1 probe confirmed), and swaps the code block for a `<div>`. Any failure leaves the code block and adds a one-line note.
 
 **Tech Stack:** TypeScript, React 18, `mermaid` 11 (already added to `web/package.json` by an earlier task), DOMPurify, Fastify, Vite (second build config), vitest + jsdom.
 
@@ -21,12 +21,12 @@ Copied from the spec. Every task's requirements include these.
 - Protocol (all after the handshake on a `MessageChannel`): parent posts `{ type: 'inked-diagram-connect', theme }` with `port2` transferred, target origin `'*'`; the frame accepts only the first such message with `event.source === window.parent` and one port, and replies `{ type: 'ready' }`. Requests `{ type: 'render', id, source }`; replies `{ type: 'result', id, ok: true, svg, css }` or `{ type: 'result', id, ok: false, reason: 'oversized' | 'syntax' | 'load', message? }`. Both sides validate every message with a type guard and ignore the rest. The parent treats the SVG as untrusted.
 - Timeouts: no `ready` within 15 s is a load failure; no result within 30 s is `timeout` and the parent removes the iframe and makes a new one on the next request. `load` and `timeout` results are never cached.
 - Mermaid config in the frame: `startOnLoad: false`, `securityLevel: 'strict'`, `theme: 'base'`, `themeVariables` from the connect message, `maxTextSize` 20 000, `maxEdges` 200, `htmlLabels: false` and `flowchart.htmlLabels: false`, and `secure` extended with `theme`, `themeCSS`, `themeVariables`, `fontFamily`. Public Sans 400, 500 and 600 are loaded (3 s cap) before the first render.
-- The page never parses markup that contains `<style>` or `style="..."`: its CSP reports a violation for each, even in a detached `DOMParser` document (found by the first Task 4 gate run). The frame lifts them (`liftStyles`: styles to `css`, each style attribute to `data-inline-style`) and sends `{ svg, css }`; the page applies `css` through a constructed stylesheet adopted by a shadow root on the diagram's own `<figure>` (so it cannot restyle the rest of the page) and each `data-inline-style` through CSSOM.
+- The page never parses markup that contains `<style>` or `style="..."`: its CSP reports a violation for each, even in a detached `DOMParser` document (found by the first Task 4 gate run). The frame lifts them (`liftStyles`: styles to `css`, each style attribute to `data-inline-style`) and sends `{ svg, css }`; the page applies `css` through a constructed stylesheet adopted by a shadow root on the diagram's own `<div>` (so it cannot restyle the rest of the page) and each `data-inline-style` through CSSOM.
 - Frame output is untrusted. `isSafeCss` refuses css containing a backslash, `:host`, `::slotted`, `image-set(`, `image(`, `src(` or `expression(` (the whole diagram then shows as a diagram error); `data-inline-style` values and presentation attributes with an external `url()` are stripped (Task 5).
 - SVG sanitizer (parent): removes `script`, `foreignObject`, event attributes and any `href` / `xlink:href` that is not a same-document fragment (`#...`). CSS: no `@import`, no `url()` except `url(#fragment)`. The note sanitizer `sanitizeHtml` is unchanged.
 - `markdown-it` gets no mermaid rule. The fence stays `pre > code.language-mermaid`. `renderUntrustedMarkdown` output (Ask answers) is never hydrated.
 - Cache: in memory only, keyed by trimmed source, at most 50 entries. `clearDiagrams()` empties it and removes the iframe, and is called from `enterUnlocked` and `dropKeys` in `web/src/state/store.ts` next to `this.images.clear()`.
-- Failure notes (text exact): "Diagram too large to draw.", "Diagram error" (plus ": <first error line>" when there is one), "Could not load the diagram renderer.", "Diagram took too long to draw." Wrapper: `<figure class="diagram" role="img" aria-label="Diagram" or the SVG title>`.
+- Failure notes (text exact): "Diagram too large to draw.", "Diagram error" (plus ": <first error line>" when there is one), "Could not load the diagram renderer.", "Diagram took too long to draw." Wrapper: `<div class="diagram" role="img" aria-label="Diagram" or the SVG title>` (a `<div>`, not a `<figure>`: `figure` is not a valid shadow host, which the Task 6 implementer found).
 - Setting: diagrams are optional. `prefs.diagrams()` (localStorage key `inked.diagrams`; on unless the value is `'off'`, and on when storage is unavailable) is switched by a "Diagrams" card on the Settings page, per browser and never sent to the server. When off, the hook draws nothing, creates no iframe and makes no request to `/frame/`; each mermaid block stays a code block with the note "Diagrams are off. Turn them on in Settings."; turning it off calls `clearDiagrams()`.
 - Out of scope: export, zoom and pan, editor live preview, clickable nodes, ASCII auto-detection, a light theme, a persistent cache, syncing the setting across devices, the `inked-notes` skill in the plugin repo.
 - Commits: conventional commit subject, and end every commit message with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
@@ -1507,7 +1507,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ### Task 6: Diagram shadow root with its own stylesheet
 
-A diagram's css comes from Mermaid's generated `<style>` and from the note's own `classDef` lines, so it is not fully trustworthy. A document-wide stylesheet would let hostile note content restyle the whole app. Instead each diagram's css is adopted by a shadow root on that diagram's own `<figure>`, which bounds it to the figure. (`isSafeCss` in Task 5 already refuses `:host` and `::slotted`, the two selectors that could reach out of the shadow root.)
+A diagram's css comes from Mermaid's generated `<style>` and from the note's own `classDef` lines, so it is not fully trustworthy. A document-wide stylesheet would let hostile note content restyle the whole app. Instead each diagram's css is adopted by a shadow root on that diagram's own `<div>`, which bounds it to the figure. (`isSafeCss` in Task 5 already refuses `:host` and `::slotted`, the two selectors that could reach out of the shadow root.)
 
 **Files:**
 - Create: `web/src/diagrams/diagramShadow.ts`
@@ -1543,7 +1543,7 @@ const sheetsOf = (root: ShadowRoot) => root.adoptedStyleSheets as unknown as Fak
 
 describe('mountDiagramShadow', () => {
   it('puts the svg in an open shadow root and leaves the host light DOM empty', () => {
-    const host = document.createElement('figure');
+    const host = document.createElement('div');
     const svg = svgEl();
     mountDiagramShadow(host, svg, '#a .n{fill:red}');
     expect(host.shadowRoot).not.toBeNull();
@@ -1552,7 +1552,7 @@ describe('mountDiagramShadow', () => {
   });
 
   it('adopts one sheet on that root only: the diagram css, then the base css', () => {
-    const host = document.createElement('figure');
+    const host = document.createElement('div');
     mountDiagramShadow(host, svgEl(), '#a .n{fill:red}');
     const sheets = sheetsOf(host.shadowRoot!);
     expect(sheets).toHaveLength(1);
@@ -1562,8 +1562,8 @@ describe('mountDiagramShadow', () => {
   });
 
   it('gives each diagram its own root and its own sheet, even for identical css', () => {
-    const h1 = document.createElement('figure');
-    const h2 = document.createElement('figure');
+    const h1 = document.createElement('div');
+    const h2 = document.createElement('div');
     mountDiagramShadow(h1, svgEl(), '#a{fill:red}');
     mountDiagramShadow(h2, svgEl(), '#a{fill:red}');
     expect(h1.shadowRoot).not.toBe(h2.shadowRoot);
@@ -2007,7 +2007,7 @@ describe('useDiagrams', () => {
     const el = await mount(block('graph TD; A-->B'));
     expect(renderDiagram).toHaveBeenCalledWith('graph TD; A-->B');
     expect(el.querySelector('pre')).toBeNull();
-    const figure = el.querySelector('figure.diagram')!;
+    const figure = el.querySelector('div.diagram')!;
     expect(figure.getAttribute('role')).toBe('img');
     expect(figure.getAttribute('aria-label')).toBe('Flow');
     expect(mountShadow).toHaveBeenCalledTimes(1);
@@ -2023,13 +2023,13 @@ describe('useDiagrams', () => {
     peekDiagram.mockReturnValue(ok());
     const el = await mount(block('graph TD; A-->B'));
     expect(renderDiagram).not.toHaveBeenCalled();
-    expect(el.querySelector('figure.diagram')).not.toBeNull();
+    expect(el.querySelector('div.diagram')).not.toBeNull();
   });
 
   it('labels the figure "Diagram" when the svg has no title', async () => {
     renderDiagram.mockResolvedValue({ ...ok(), svg: '<svg id="inked-dg-1" viewBox="0 0 1 1"><rect/></svg>' });
     const el = await mount(block('graph TD; A-->B'));
-    expect(el.querySelector('figure')!.getAttribute('aria-label')).toBe('Diagram');
+    expect(el.querySelector('div.diagram')!.getAttribute('aria-label')).toBe('Diagram');
   });
 
   it.each([
@@ -2042,7 +2042,7 @@ describe('useDiagrams', () => {
     renderDiagram.mockResolvedValue(result);
     const el = await mount(block('graph TD; A-->B'));
     expect(el.querySelector('pre')).not.toBeNull();
-    expect(el.querySelector('figure')).toBeNull();
+    expect(el.querySelector('div.diagram')).toBeNull();
     const note = el.querySelector('.diagram-note')!;
     expect(note.textContent).toBe(text);
     expect(note.getAttribute('role')).toBe('note');
@@ -2061,7 +2061,7 @@ describe('useDiagrams', () => {
   it('draws two identical diagrams, each in its own figure with its own shadow mount', async () => {
     renderDiagram.mockResolvedValue(ok());
     const el = await mount(block('graph TD; A-->B') + block('graph TD; A-->B'));
-    const figures = el.querySelectorAll('figure.diagram');
+    const figures = el.querySelectorAll('div.diagram');
     expect(figures).toHaveLength(2);
     expect(mountShadow).toHaveBeenCalledTimes(2);
     expect(mountShadow.mock.calls[0][0]).not.toBe(mountShadow.mock.calls[1][0]);
@@ -2077,7 +2077,7 @@ describe('useDiagrams', () => {
     await act(async () => resolve(ok()));
     expect(mountShadow).not.toHaveBeenCalled();
     expect(pre.isConnected).toBe(false);
-    expect(document.querySelector('figure.diagram')).toBeNull();
+    expect(document.querySelector('div.diagram')).toBeNull();
   });
 
   it('draws again when the html changes', async () => {
@@ -2087,7 +2087,7 @@ describe('useDiagrams', () => {
     await act(async () => root!.render(<Host markup={block('graph TD; B-->C')} />));
     expect(renderDiagram).toHaveBeenLastCalledWith('graph TD; B-->C');
     expect(mountShadow).toHaveBeenCalledTimes(2);
-    expect(el.querySelectorAll('figure.diagram')).toHaveLength(1);
+    expect(el.querySelectorAll('div.diagram')).toHaveLength(1);
   });
 
   it('with diagrams switched off in Settings: no render, no peek, code block kept, note shown', async () => {
@@ -2097,7 +2097,7 @@ describe('useDiagrams', () => {
     expect(peekDiagram).not.toHaveBeenCalled();
     expect(mountShadow).not.toHaveBeenCalled();
     expect(el.querySelectorAll('pre')).toHaveLength(2);
-    expect(el.querySelector('figure')).toBeNull();
+    expect(el.querySelector('div.diagram')).toBeNull();
     const notes = el.querySelectorAll('.diagram-note');
     expect(notes).toHaveLength(2);
     expect(notes[0].textContent).toBe('Diagrams are off. Turn them on in Settings.');
@@ -2154,7 +2154,7 @@ function figureFor(r: Drawn): HTMLElement {
     el.style.cssText = css;
     el.removeAttribute('data-inline-style');
   }
-  const figure = document.createElement('figure');
+  const figure = document.createElement('div');
   figure.className = 'diagram';
   figure.setAttribute('role', 'img');
   figure.setAttribute('aria-label', svg.querySelector('title')?.textContent?.trim() || 'Diagram');
@@ -2536,7 +2536,7 @@ Mermaid cannot run under the app's CSP: it measures text by inserting inline-sty
 
 The page and the frame talk over a `MessageChannel` handed over once (`inked-diagram-connect`, with the theme read from the CSS variables). The page sends `{ type: 'render', id, source }` and gets back the SVG string, or a failure (`oversized`, `syntax`, `load`). A frame that does not answer in 30 seconds is removed and replaced on the next request. The frame runs Mermaid with `securityLevel: 'strict'`, HTML labels off, `maxTextSize` 20 000 and `maxEdges` 200, and a `secure` list that stops a note's `%%{init}%%` directive from changing the theme or injecting CSS.
 
-The frame also lifts Mermaid's `<style>` blocks and `style=""` attributes out of the SVG before it replies, because the page's CSP reports a violation for every one of them in any document the page parses, even a detached one; the reply is `{ svg, css }`, with each style attribute kept as `data-inline-style`. What comes back is untrusted: the page sanitizes the SVG with DOMPurify (no script, `foreignObject`, event attributes, external `href` or external `url()` attributes), refuses css that contains a backslash, `:host`, `::slotted`, `image-set(`, `image(`, `src(` or `expression(` (the diagram then shows as an error), strips `@import` and external `url()` from the rest, and applies it through a constructed stylesheet adopted by a shadow root on that diagram's own `<figure>`, so the css cannot restyle anything else. Each `data-inline-style` is applied through CSSOM, which the strict CSP allows. A diagram that is too large, has a syntax error, cannot load or times out stays a code block with a one-line note. Rendered diagrams are cached in memory by source and dropped, with the iframe, whenever the keys are dropped (lock and sign-out). Ask answers are never drawn: a mermaid fence in an LLM answer stays a code block. In `vite dev` the frame is proxied to the backend, so run `npm run build` once and keep the backend running to see diagrams there.
+The frame also lifts Mermaid's `<style>` blocks and `style=""` attributes out of the SVG before it replies, because the page's CSP reports a violation for every one of them in any document the page parses, even a detached one; the reply is `{ svg, css }`, with each style attribute kept as `data-inline-style`. What comes back is untrusted: the page sanitizes the SVG with DOMPurify (no script, `foreignObject`, event attributes, external `href` or external `url()` attributes), refuses css that contains a backslash, `:host`, `::slotted`, `image-set(`, `image(`, `src(` or `expression(` (the diagram then shows as an error), strips `@import` and external `url()` from the rest, and applies it through a constructed stylesheet adopted by a shadow root on that diagram's own `<div>`, so the css cannot restyle anything else. Each `data-inline-style` is applied through CSSOM, which the strict CSP allows. A diagram that is too large, has a syntax error, cannot load or times out stays a code block with a one-line note. Rendered diagrams are cached in memory by source and dropped, with the iframe, whenever the keys are dropped (lock and sign-out). Ask answers are never drawn: a mermaid fence in an LLM answer stays a code block. In `vite dev` the frame is proxied to the backend, so run `npm run build` once and keep the backend running to see diagrams there.
 
 Drawing diagrams is optional. A per-browser preference (`prefs.diagrams()`, localStorage key `inked.diagrams`, on by default, switched in Settings under "Diagrams") controls it, and the server never learns it. When it is off the hook creates no iframe and makes no request to `/frame/`; each mermaid block stays a code block with the note "Diagrams are off. Turn them on in Settings." Turning it off also removes a renderer that is already running.
 ```
@@ -2591,7 +2591,7 @@ Start the built server in the background on a free port with a new empty `DATA_D
 
 Put these in notes and switch each to view mode. Read the console filtered to `Content Security Policy` after each one. The main page must log no violation.
 
-1. A flowchart with a subgraph, a decision node and a labeled edge. Drawn, dark and purple, labels inside their boxes, and `document.adoptedStyleSheets.length` stays 0 (the css lives in the figure's shadow root: check `document.querySelector('figure.diagram').shadowRoot.adoptedStyleSheets.length` is 1). If the shadow-root stylesheet is not applied under the strict CSP, stop and report; the fallback is a document-level stylesheet with the `:host`-style refusals kept.
+1. A flowchart with a subgraph, a decision node and a labeled edge. Drawn, dark and purple, labels inside their boxes, and `document.adoptedStyleSheets.length` stays 0 (the css lives in the figure's shadow root: check `document.querySelector('div.diagram').shadowRoot.adoptedStyleSheets.length` is 1). If the shadow-root stylesheet is not applied under the strict CSP, stop and report; the fallback is a document-level stylesheet with the `:host`-style refusals kept.
 2. A sequence diagram. Drawn.
 3. A state diagram, a class diagram and an ER diagram. Drawn or, if one looks wrong, noted as best-effort in the spec.
 4. A flowchart with `style A fill:#ff00ff` on one node. That node is magenta. A flowchart with `classDef hot fill:#f00;}body{background:red` assigned to a node (a CSS-injection attempt): the app page does not turn red and the diagram either draws normally or shows a diagram error.
@@ -2599,7 +2599,7 @@ Put these in notes and switch each to view mode. Read the console filtered to `C
 6. `%%{init: {"themeCSS": ".node rect { fill: red !important }", "theme": "forest"}}%%` at the top of a flowchart. The look is unchanged (no red, not forest).
 7. The same diagram twice in one note. Both drawn and both styled. Delete one of them in edit mode and return to view: the other keeps its styling.
 8. An empty mermaid fence. Stays an empty code block, no label.
-9. Lock the app. Check `document.querySelector('iframe.diagram-frame')` is `null` and no `figure.diagram` is left in the page (run these in the page console). Unlock and open the note again: redrawn, and one new `iframe.diagram-frame` exists.
+9. Lock the app. Check `document.querySelector('iframe.diagram-frame')` is `null` and no `div.diagram` is left in the page (run these in the page console). Unlock and open the note again: redrawn, and one new `iframe.diagram-frame` exists.
 10. Resize the pane to 375px wide with a wide flowchart. The figure scrolls horizontally and the page does not.
 11. Open the note in the node preview (concept map). Drawn there too.
 12. Open `http://localhost:8098/frame/frame.html` directly in a tab: it loads and does nothing (no handshake). Open `http://localhost:8098/frame/nope` : 404 JSON.
