@@ -1,4 +1,5 @@
 import { MAX_TEXT_SIZE, type DiagramTheme, type RenderResult } from '../diagrams/protocol';
+import { liftStyles } from './liftStyles';
 
 export const MAX_EDGES = 200;
 
@@ -69,7 +70,9 @@ export function createRenderer(deps: RendererDeps) {
       }
       try {
         const { svg } = await mermaid.render(id, text);
-        return { type: 'result', id, ok: true, svg };
+        const lifted = liftStyles(svg);
+        if (!lifted) return { type: 'result', id, ok: false, reason: 'syntax' };
+        return { type: 'result', id, ok: true, svg: lifted.svg, css: lifted.css };
       } catch (e) {
         const message = firstLine(e);
         return { type: 'result', id, ok: false, reason: /edge/i.test(message) ? 'oversized' : 'syntax', message };

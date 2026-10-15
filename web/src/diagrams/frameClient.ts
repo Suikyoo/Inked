@@ -6,7 +6,7 @@ export interface FrameConnection {
   dispose(): void;
 }
 
-export type FrameOutcome = { ok: true; svg: string } | { ok: false; reason: FailReason | 'timeout'; message?: string };
+export type FrameOutcome = { ok: true; svg: string; css: string } | { ok: false; reason: FailReason | 'timeout'; message?: string };
 
 export interface FrameClient {
   render(id: string, source: string): Promise<FrameOutcome>;
@@ -32,8 +32,8 @@ export function createFrameClient(connect: () => Promise<FrameConnection>, opts:
           const settle = pending.get(d.id);
           if (!settle) return;
           if (!d.ok) settle({ ok: false, reason: d.reason, message: d.message });
-          else if (d.svg.length > MAX_SVG_SIZE) settle({ ok: false, reason: 'oversized' });
-          else settle({ ok: true, svg: d.svg });
+          else if (d.svg.length + d.css.length > MAX_SVG_SIZE) settle({ ok: false, reason: 'oversized' });
+          else settle({ ok: true, svg: d.svg, css: d.css });
         };
         return c;
       });

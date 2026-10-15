@@ -37,8 +37,18 @@ describe('createFrameClient', () => {
     const p = client.render('inked-dg-1', 'graph TD; A-->B');
     await until(() => f.seen.length === 1);
     expect(f.seen[0]).toEqual({ type: 'render', id: 'inked-dg-1', source: 'graph TD; A-->B' });
-    f.frame.postMessage({ type: 'result', id: 'inked-dg-1', ok: true, svg: '<svg/>' });
-    expect(await p).toEqual({ ok: true, svg: '<svg/>' });
+    f.frame.postMessage({ type: 'result', id: 'inked-dg-1', ok: true, svg: '<svg/>', css: '' });
+    expect(await p).toEqual({ ok: true, svg: '<svg/>', css: '' });
+    client.reset();
+  });
+
+  it('passes a css string through', async () => {
+    const f = fakeFrame();
+    const client = createFrameClient(async () => f.conn);
+    const p = client.render('a', 'x');
+    await until(() => f.seen.length === 1);
+    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: '<svg/>', css: '#a{fill:red}' });
+    expect(await p).toEqual({ ok: true, svg: '<svg/>', css: '#a{fill:red}' });
     client.reset();
   });
 
@@ -58,10 +68,10 @@ describe('createFrameClient', () => {
     const p = client.render('a', 'x');
     await until(() => f.seen.length === 1);
     f.frame.postMessage('garbage');
-    f.frame.postMessage({ type: 'result', id: 'zzz', ok: true, svg: '<svg/>' });
-    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: 5 });
-    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: '<svg id="real"/>' });
-    expect(await p).toEqual({ ok: true, svg: '<svg id="real"/>' });
+    f.frame.postMessage({ type: 'result', id: 'zzz', ok: true, svg: '<svg/>', css: '' });
+    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: 5, css: '' });
+    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: '<svg id="real"/>', css: '' });
+    expect(await p).toEqual({ ok: true, svg: '<svg id="real"/>', css: '' });
     client.reset();
   });
 
@@ -70,7 +80,7 @@ describe('createFrameClient', () => {
     const client = createFrameClient(async () => f.conn);
     const p = client.render('a', 'x');
     await until(() => f.seen.length === 1);
-    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: 'x'.repeat(MAX_SVG_SIZE + 1) });
+    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: 'x'.repeat(MAX_SVG_SIZE), css: 'y' });
     expect(await p).toEqual({ ok: false, reason: 'oversized' });
     client.reset();
   });
@@ -83,10 +93,10 @@ describe('createFrameClient', () => {
     const p2 = client.render('b', 'y');
     await until(() => f.seen.length === 2);
     expect(connect).toHaveBeenCalledTimes(1);
-    f.frame.postMessage({ type: 'result', id: 'b', ok: true, svg: '<svg id="b"/>' });
-    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: '<svg id="a"/>' });
-    expect(await p1).toEqual({ ok: true, svg: '<svg id="a"/>' });
-    expect(await p2).toEqual({ ok: true, svg: '<svg id="b"/>' });
+    f.frame.postMessage({ type: 'result', id: 'b', ok: true, svg: '<svg id="b"/>', css: '' });
+    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: '<svg id="a"/>', css: '' });
+    expect(await p1).toEqual({ ok: true, svg: '<svg id="a"/>', css: '' });
+    expect(await p2).toEqual({ ok: true, svg: '<svg id="b"/>', css: '' });
     client.reset();
   });
 
@@ -97,7 +107,7 @@ describe('createFrameClient', () => {
     expect(await client.render('a', 'x')).toEqual({ ok: false, reason: 'load' });
     const p = client.render('b', 'x');
     await until(() => f.seen.length === 1);
-    f.frame.postMessage({ type: 'result', id: 'b', ok: true, svg: '<svg/>' });
+    f.frame.postMessage({ type: 'result', id: 'b', ok: true, svg: '<svg/>', css: '' });
     expect((await p).ok).toBe(true);
     expect(connect).toHaveBeenCalledTimes(2);
     client.reset();
@@ -118,7 +128,7 @@ describe('createFrameClient', () => {
     const p3 = client.render('c', 'z');
     await until(() => second.seen.length === 1);
     expect(connect).toHaveBeenCalledTimes(2);
-    second.frame.postMessage({ type: 'result', id: 'c', ok: true, svg: '<svg/>' });
+    second.frame.postMessage({ type: 'result', id: 'c', ok: true, svg: '<svg/>', css: '' });
     expect((await p3).ok).toBe(true);
     client.reset();
   });
@@ -128,7 +138,7 @@ describe('createFrameClient', () => {
     const client = createFrameClient(async () => f.conn, { renderTimeoutMs: 1000 });
     const p = client.render('a', 'x');
     await until(() => f.seen.length === 1);
-    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: '<svg/>' });
+    f.frame.postMessage({ type: 'result', id: 'a', ok: true, svg: '<svg/>', css: '' });
     await p;
     vi.advanceTimersByTime(5000);
     expect(f.dispose).not.toHaveBeenCalled();
@@ -148,7 +158,7 @@ describe('createFrameClient', () => {
     const p2 = client.render('b', 'x');
     await until(() => second.seen.length === 1);
     expect(connect).toHaveBeenCalledTimes(2);
-    second.frame.postMessage({ type: 'result', id: 'b', ok: true, svg: '<svg/>' });
+    second.frame.postMessage({ type: 'result', id: 'b', ok: true, svg: '<svg/>', css: '' });
     expect((await p2).ok).toBe(true);
     client.reset();
   });
@@ -175,7 +185,7 @@ describe('createFrameClient', () => {
       await until(() => second.seen.length === 1);
       resolveFirst();
       await until(() => first.dispose.mock.calls.length === 1);
-      second.frame.postMessage({ type: 'result', id: 'x', ok: true, svg: '<svg/>' });
+      second.frame.postMessage({ type: 'result', id: 'x', ok: true, svg: '<svg/>', css: '' });
       expect((await p2).ok).toBe(true);
       vi.advanceTimersByTime(5000);
       await tick();

@@ -6,7 +6,7 @@ describe('protocol guards', () => {
     expect(isConnectMessage({ type: CONNECT, theme: { darkMode: true } })).toBe(true);
     expect(isReadyMessage({ type: 'ready' })).toBe(true);
     expect(isRenderRequest({ type: 'render', id: 'a', source: 'graph TD' })).toBe(true);
-    expect(isRenderResult({ type: 'result', id: 'a', ok: true, svg: '<svg/>' })).toBe(true);
+    expect(isRenderResult({ type: 'result', id: 'a', ok: true, svg: '<svg/>', css: '' })).toBe(true);
     expect(isRenderResult({ type: 'result', id: 'a', ok: false, reason: 'syntax' })).toBe(true);
     expect(isRenderResult({ type: 'result', id: 'a', ok: false, reason: 'load', message: 'x' })).toBe(true);
   });
@@ -24,6 +24,8 @@ describe('protocol guards', () => {
     expect(isRenderRequest({ type: 'render', id: 1, source: 'x' })).toBe(false);
     expect(isRenderRequest({ type: 'render', id: 'a' })).toBe(false);
     expect(isRenderResult({ type: 'result', id: 'a', ok: true })).toBe(false);
+    expect(isRenderResult({ type: 'result', id: 'a', ok: true, svg: '<svg/>' })).toBe(false);
+    expect(isRenderResult({ type: 'result', id: 'a', ok: true, svg: '<svg/>', css: 5 })).toBe(false);
     expect(isRenderResult({ type: 'result', id: 'a', ok: true, svg: 5 })).toBe(false);
     expect(isRenderResult({ type: 'result', id: 'a', ok: false, reason: 'timeout' })).toBe(false);
     expect(isRenderResult({ type: 'result', id: 'a', ok: false, reason: 'syntax', message: 5 })).toBe(false);

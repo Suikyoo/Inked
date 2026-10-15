@@ -19,8 +19,28 @@ describe('createRenderer', () => {
   it('renders and returns the svg under the same id', async () => {
     const { renderer, render } = make();
     const r = await renderer.render('inked-dg-1', ' graph TD; A-->B \n');
-    expect(r).toEqual({ type: 'result', id: 'inked-dg-1', ok: true, svg: '<svg id="inked-dg-1"></svg>' });
+    expect(r).toEqual({ type: 'result', id: 'inked-dg-1', ok: true, svg: '<svg id="inked-dg-1"></svg>', css: '' });
     expect(render).toHaveBeenCalledWith('inked-dg-1', 'graph TD; A-->B');
+  });
+
+  it('lifts styles out of the svg Mermaid returns', async () => {
+    const render = vi.fn(async () => ({
+      svg: '<svg id="x" style="opacity:0.5"><style>#x .n{fill:red}</style><rect class="n"/></svg>',
+    }));
+    const { renderer } = make({ render });
+    const r = await renderer.render('x', 'graph TD; A-->B');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.svg).not.toContain('<style');
+    expect(r.svg).not.toContain(' style=');
+    expect(r.svg).toContain('data-inline-style="opacity:0.5"');
+    expect(r.css).toContain('#x .n{fill:red}');
+  });
+
+  it('reports syntax when the output holds no svg', async () => {
+    const render = vi.fn(async () => ({ svg: '<div>not an svg</div>' }));
+    const { renderer } = make({ render });
+    expect(await renderer.render('a', 'graph TD; A-->B')).toEqual({ type: 'result', id: 'a', ok: false, reason: 'syntax' });
   });
 
   it('loads fonts before Mermaid is configured, and configures once', async () => {

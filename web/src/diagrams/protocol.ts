@@ -22,7 +22,7 @@ export interface RenderRequest {
   source: string;
 }
 export type RenderResult =
-  | { type: 'result'; id: string; ok: true; svg: string }
+  | { type: 'result'; id: string; ok: true; svg: string; css: string }
   | { type: 'result'; id: string; ok: false; reason: FailReason; message?: string };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -41,7 +41,7 @@ export function isRenderRequest(v: unknown): v is RenderRequest {
 
 export function isRenderResult(v: unknown): v is RenderResult {
   if (!isObject(v) || v.type !== 'result' || typeof v.id !== 'string') return false;
-  if (v.ok === true) return typeof v.svg === 'string';
+  if (v.ok === true) return typeof v.svg === 'string' && typeof v.css === 'string';
   return (
     v.ok === false &&
     (v.reason === 'oversized' || v.reason === 'syntax' || v.reason === 'load') &&
