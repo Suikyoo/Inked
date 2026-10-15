@@ -96,6 +96,7 @@ The AI can only open that page while the config grants `config.change`. If you r
 | `folder.rename` | `rename_folder` | Rename a folder |
 | `folder.move` | `move_folder` | Move a folder within the same vault |
 | `vault.create` | `create_vault` | Create a vault. You confirm each one in the browser, and the AI then has access to it |
+| `image.create` | `add_image` | Add images to notes (fetches web links; reads folders you list as `imageDirs`). In no group |
 | `config.change` | `change_config` | Open the access settings page with a proposal. You apply or cancel |
 
 ### Groups
@@ -106,6 +107,8 @@ The AI can only open that page while the config grants `config.change`. If you r
 | `@write` | `folder.create`, `note.create`, `note.append`, `note.update` |
 | `@organize` | `note.move`, `folder.rename`, `folder.move` |
 | `@manage` | `vault.create` |
+
+No group includes `image.create`; list it explicitly in `actions`.
 
 ### Never grantable
 

@@ -68,7 +68,7 @@ nginx's error log keeps the image default. Its entries can include the request l
 
 ### Request size
 
-The effective request limit is the app's 4 MiB. nginx allows 5 MiB (`client_max_body_size 5m`), so nginx itself never cuts off a legitimate request; anything between the two limits reaches Inked, which answers 413.
+The app's JSON request limit is 4 MiB and nginx allows 5 MiB (`client_max_body_size 5m`), so anything between the two limits reaches Inked, which answers 413. The image upload route (`/api/vaults/<id>/images/<id>`) is the exception: the app allows 10 MiB + 28 bytes there, and nginx allows 11 MiB for that route only.
 
 ## 5. First run
 

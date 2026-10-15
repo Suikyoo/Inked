@@ -24,6 +24,17 @@ server {
 
     location = /healthz { access_log off; return 200 "ok\n"; }
 
+    # Encrypted image uploads: the app allows 10 MiB + 28 bytes, so this route alone gets a larger cap.
+    location ~ ^/api/vaults/[^/]+/images/[^/]+$ {
+        client_max_body_size 11m;
+        proxy_pass http://inked:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Connection "";
+    }
+
     location / {
         proxy_pass http://inked:8080;
         proxy_http_version 1.1;
