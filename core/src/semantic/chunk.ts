@@ -1,3 +1,5 @@
+import { stripImageRefs } from '../images';
+
 export const EMBED_DIM = 384;
 export const CHUNK_TOKENS = 400;
 export const CHUNK_OVERLAP = 64;
@@ -13,7 +15,7 @@ export function estimateTokens(text: string): number {
 /** Splits a note into overlapping windows for embedding; the title leads the first chunk. */
 export function chunkNote(title: string, body: string): string[] {
   const head = title.trim();
-  const words = body.split(/\s+/).filter(Boolean);
+  const words = stripImageRefs(body).split(/\s+/).filter(Boolean);
   if (words.length === 0) return head ? [head] : [];
   const per = Math.floor(CHUNK_TOKENS / TOKENS_PER_WORD);
   const step = per - Math.floor(CHUNK_OVERLAP / TOKENS_PER_WORD);

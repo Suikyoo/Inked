@@ -80,3 +80,14 @@ describe('isFresh', () => {
     expect(isFresh(undefined, note, 'm')).toBe(false);
   });
 });
+
+describe('chunkNote and image references', () => {
+  const ID = '3f2b8c1e-5d4a-4e7b-9a6c-1d2e3f4a5b6c';
+  it('embeds the alt text, never the inked:// target', () => {
+    const [first] = chunkNote('Title', `a ![shot](inked://${ID}) b`);
+    expect(first).toBe('Title\na shot b');
+  });
+  it('drops an image with no alt text', () => {
+    expect(chunkNote('Title', `a ![](inked://${ID}) b`)[0]).toBe('Title\na b');
+  });
+});

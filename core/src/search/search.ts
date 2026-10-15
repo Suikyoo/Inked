@@ -1,3 +1,4 @@
+import { stripImageRefs } from '../images';
 import { fuzzyMatch, type FuzzyMatch } from './fuzzy';
 
 export interface SearchEntry {
@@ -97,10 +98,11 @@ export function searchBodies(
     if (exclude.has(entry.noteId)) continue;
     const body = bodies[entry.noteId];
     if (!body) continue;
-    const at = body.toLowerCase().indexOf(q);
+    const text = stripImageRefs(body);
+    const at = text.toLowerCase().indexOf(q);
     // toLowerCase can change string length for a few scripts; only trust aligned hits.
-    if (at === -1 || body.slice(at, at + q.length).toLowerCase() !== q) continue;
-    out.push({ entry, snippet: makeSnippet(body, at, q.length) });
+    if (at === -1 || text.slice(at, at + q.length).toLowerCase() !== q) continue;
+    out.push({ entry, snippet: makeSnippet(text, at, q.length) });
     if (out.length >= limit) break;
   }
   return out;
