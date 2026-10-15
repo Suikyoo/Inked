@@ -33,7 +33,13 @@ import {
   type KdfParams,
 } from 'inked-core';
 import { argon2InWorker } from '../lib/argon2Worker';
-import { INDEX_TITLE, indexBody, indexNoteOf } from 'inked-core';
+import { INDEX_TITLE, indexBody, indexNoteOf, decryptImage, encryptImage } from 'inked-core';
+import { blobBytes, ImageStore, validateImage } from './imageStore';
+
+export interface PreparedImage {
+  id: string;
+  bytes: Uint8Array;
+}
 import { NOTE_TOO_LARGE_MESSAGE, uuid } from '../lib/util';
 import { sendPending, type DropReason, type PendingSave } from './pending';
 import { TabLink } from './tabs';
@@ -282,6 +288,11 @@ export class AppStore {
   private releaseHold: (() => void) | null = null;
   private userKey: CryptoKey | null = null;
   private vaultKeys = new Map<string, CryptoKey>();
+  /** Decrypted images as blob: urls; emptied whenever the keys are dropped. */
+  readonly images = new ImageStore({
+    download: (vaultId, imageId) => api.getImage(vaultId, imageId),
+    decrypt: (vaultId, imageId, blob) => decryptImage(this.vaultKey(vaultId), vaultId, imageId, blob),
+  });
   /** Bumped on every lock/unlock so late async results from an old session are dropped. */
   private epoch = 0;
   private flushers = new Set<(final: boolean) => Promise<void>>();
@@ -421,6 +432,26 @@ export class AppStore {
     return encryptNoteVector(this.vaultKey(vaultId), vaultId, noteId, model, chunks);
   }
 
+  /** Reads and checks a pasted or dropped file; throws ImageRejectedError, or LockedError when the vault is locked. */
+  async prepareImage(vaultId: string, file: Blob): Promise<PreparedImage> {
+    this.vaultKey(vaultId);
+    const bytes = await blobBytes(file);
+    validateImage(bytes);
+    return { id: crypto.randomUUID(), bytes };
+  }
+
+  /** Makes the image viewable now, encrypts it under the vault key and uploads the ciphertext. */
+  async uploadImage(vaultId: string, image: PreparedImage): Promise<void> {
+    const key = this.vaultKey(vaultId);
+    this.images.put(vaultId, image.id, image.bytes);
+    try {
+      await api.putImage(vaultId, image.id, await encryptImage(key, vaultId, image.id, image.bytes));
+    } catch (e) {
+      this.images.forget(vaultId, image.id);
+      throw e;
+    }
+  }
+
   decryptVector(vaultId: string, noteId: string, model: string, ct: string): Promise<Int8Array[]> {
     return decryptNoteVector(this.vaultKey(vaultId), vaultId, noteId, model, ct);
   }
@@ -538,6 +569,7 @@ export class AppStore {
     this.epoch++;
     this.userKey = userKey;
     this.vaultKeys.clear();
+    this.images.clear();
     this.ownStamps.clear();
     this.unseenSaves.clear();
     this.readyTrees.clear();
@@ -555,6 +587,7 @@ export class AppStore {
     this.epoch++;
     this.userKey = null;
     this.vaultKeys.clear();
+    this.images.clear();
     this.ownStamps.clear();
     this.unseenSaves.clear();
     this.readyTrees.clear();

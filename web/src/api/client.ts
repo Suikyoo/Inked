@@ -53,6 +53,10 @@ interface RequestOptions {
   signal?: AbortSignal;
   /** Gives up after this many milliseconds: the request is aborted, with the same network error. */
   timeoutMs?: number;
+  /** Send these bytes as the body (application/octet-stream) instead of JSON. */
+  bytesIn?: Uint8Array;
+  /** Read a successful response as bytes instead of JSON. */
+  bytesOut?: boolean;
 }
 
 /** Per-call options for requests whose wait the caller bounds, or that act for a given account. */
@@ -65,9 +69,10 @@ export interface CallOptions {
 const networkError = () => new ApiError(0, 'network', 'Can’t reach the server. Check your connection and try again.');
 
 async function request<T>(method: Method, path: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json' };
+  const headers: Record<string, string> = { Accept: opts.bytesOut ? 'application/octet-stream' : 'application/json' };
   if (method !== 'GET') headers['X-Inked'] = '1';
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.bytesIn) headers['Content-Type'] = 'application/octet-stream';
+  else if (body !== undefined) headers['Content-Type'] = 'application/json';
   const user = opts.bound ? (opts.asUser ?? requestUser) : null;
   if (user) headers['X-Inked-User'] = user;
   let signal = opts.signal;
@@ -82,22 +87,29 @@ async function request<T>(method: Method, path: string, body?: unknown, opts: Re
   }
   let res: Response;
   let text: string;
+  let bytes: Uint8Array | null = null;
   try {
     res = await fetch(path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: (opts.bytesIn as BodyInit | undefined) ?? (body === undefined ? undefined : JSON.stringify(body)),
       credentials: 'same-origin',
       cache: 'no-store',
       signal,
     });
     // An abort (or a dropped connection) can also land while the body is read.
-    text = await res.text();
+    if (opts.bytesOut && res.ok) {
+      bytes = new Uint8Array(await res.arrayBuffer());
+      text = '';
+    } else {
+      text = await res.text();
+    }
   } catch {
     throw networkError();
   } finally {
     clearTimeout(timer);
   }
+  if (bytes) return bytes as T;
   let data: unknown = null;
   if (text) {
     try {
@@ -205,4 +217,11 @@ export const api = {
     opts: CallOptions = {},
   ) => data<{ note: NoteHeadDTO }>('PUT', `/api/notes/${enc(id)}`, body, opts),
   deleteNote: (id: string) => data<{ ok: true }>('DELETE', `/api/notes/${enc(id)}`),
+  putImage: (vaultId: string, imageId: string, blob: Uint8Array) =>
+    request<{ id: string; size: number; createdAt: string }>('POST', `/api/vaults/${enc(vaultId)}/images/${enc(imageId)}`, undefined, {
+      bound: true,
+      bytesIn: blob,
+    }),
+  getImage: (vaultId: string, imageId: string) =>
+    request<Uint8Array>('GET', `/api/vaults/${enc(vaultId)}/images/${enc(imageId)}`, undefined, { bound: true, bytesOut: true }),
 };

@@ -6,6 +6,7 @@ const api = vi.hoisted(() => ({
   listVaults: vi.fn(), createVault: vi.fn(), createNote: vi.fn(), getNote: vi.fn(), updateNote: vi.fn(),
   rotateRecoveryKey: vi.fn(), tree: vi.fn(), bodies: vi.fn(), createFolder: vi.fn(), updateVault: vi.fn(),
   recoverStart: vi.fn(), recoverFinish: vi.fn(),
+  putImage: vi.fn(), getImage: vi.fn(),
 }));
 /** The store's 401 handler, as the real client would call it. */
 const unauthorized = vi.hoisted(() => ({ handler: null as null | (() => unknown) }));
@@ -1811,5 +1812,64 @@ describe('describeError', () => {
       const indexes = Object.values(s.getState().trees[vaultId].notes).filter((n) => n.folderId === null && n.title === 'Index');
       expect(indexes).toHaveLength(1);
     });
+  });
+});
+
+describe('images', () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+  beforeEach(() => {
+    api.putImage.mockReset();
+    api.getImage.mockReset();
+    let n = 0;
+    URL.createObjectURL = vi.fn(() => `blob:img/${++n}`);
+    URL.revokeObjectURL = vi.fn();
+  });
+
+  it('uploadImage encrypts under the vault key before sending and caches the plaintext', async () => {
+    const s = await registeredStore();
+    const v = await s.createVault('Work', '#45A89E');
+    api.putImage.mockResolvedValue({ id: 'x', size: 1, createdAt: 'x' });
+    const prepared = await s.prepareImage(v.id, new Blob([PNG]));
+    await s.uploadImage(v.id, prepared);
+    const [vaultId, imageId, blob] = api.putImage.mock.calls[0] as [string, string, Uint8Array];
+    expect(vaultId).toBe(v.id);
+    expect(imageId).toBe(prepared.id);
+    expect(blob.length).toBe(PNG.length + 28);
+    expect(Array.from(blob.slice(12, 20))).not.toEqual(Array.from(PNG.slice(0, 8)));
+    expect(await s.images.get(v.id, prepared.id)).toMatchObject({ ok: true });
+    expect(api.getImage).not.toHaveBeenCalled();
+  });
+
+  it('prepareImage refuses an SVG and an oversized file without any request', async () => {
+    const s = await registeredStore();
+    const v = await s.createVault('Work', '#45A89E');
+    await expect(s.prepareImage(v.id, new Blob(['<svg/>']))).rejects.toThrow(/PNG, JPEG, GIF and WebP/);
+    expect(api.putImage).not.toHaveBeenCalled();
+  });
+
+  it('a failed upload forgets the cached image and rethrows', async () => {
+    const s = await registeredStore();
+    const v = await s.createVault('Work', '#45A89E');
+    api.putImage.mockRejectedValue(new Error('boom'));
+    const prepared = await s.prepareImage(v.id, new Blob([PNG]));
+    await expect(s.uploadImage(v.id, prepared)).rejects.toThrow('boom');
+    expect(s.images.peek(v.id, prepared.id)).toBeNull();
+  });
+
+  it('prepareImage on a locked vault throws LockedError', async () => {
+    const s = new AppStore();
+    await expect(s.prepareImage('nope', new Blob([PNG]))).rejects.toBeInstanceOf(LockedError);
+  });
+
+  it('lock revokes every cached image url', async () => {
+    const s = await registeredStore();
+    const v = await s.createVault('Work', '#45A89E');
+    api.putImage.mockResolvedValue({ id: 'x', size: 1, createdAt: 'x' });
+    const prepared = await s.prepareImage(v.id, new Blob([PNG]));
+    await s.uploadImage(v.id, prepared);
+    api.logout.mockResolvedValue({ ok: true });
+    await s.lock();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:img/1');
+    expect(s.images.peek(v.id, prepared.id)).toBeNull();
   });
 });

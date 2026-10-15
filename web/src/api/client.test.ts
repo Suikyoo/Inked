@@ -178,3 +178,34 @@ describe('X-Inked-User (account binding)', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 });
+
+describe('image bytes', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setRequestUser(null);
+  });
+
+  it('putImage sends the blob as octet-stream with the CSRF and account headers', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ id: 'i', size: 3, createdAt: 'x' }), { status: 201 }));
+    vi.stubGlobal('fetch', fetch);
+    setRequestUser('u1');
+    const blob = new Uint8Array([1, 2, 3]);
+    await expect(api.putImage('v1', 'i1', blob)).resolves.toMatchObject({ id: 'i', size: 3 });
+    const [path, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(path).toBe('/api/vaults/v1/images/i1');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(blob);
+    expect(init.headers).toMatchObject({ 'Content-Type': 'application/octet-stream', 'X-Inked': '1', 'X-Inked-User': 'u1' });
+  });
+
+  it('getImage returns the bytes', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([7, 8, 9]), { status: 200 })));
+    const out = await api.getImage('v1', 'i1');
+    expect(Array.from(out)).toEqual([7, 8, 9]);
+  });
+
+  it('getImage maps a JSON error body to an ApiError', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'not_found' }), { status: 404 })));
+    await expect(api.getImage('v1', 'i1')).rejects.toMatchObject({ status: 404, code: 'not_found' });
+  });
+});
