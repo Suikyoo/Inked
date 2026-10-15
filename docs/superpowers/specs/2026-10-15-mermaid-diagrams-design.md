@@ -81,3 +81,15 @@ The SVG scales with `max-width: 100%`. A wide diagram scrolls horizontally insid
 
 - Measured size of the Mermaid chunk (to be recorded after the first production build).
 - Follow-up: teach the `inked-notes` skill in the plugin repo to prefer mermaid fences for diagrams.
+
+## Probe result (Task 1): FAILED
+
+Date 2026-10-15, mermaid 11.17.2, throwaway page served by the real server under the real CSP (`style-src 'self'`). Results:
+
+- `constructedSheet`: true. `cssomStyle`: true.
+- Theme fill and per-node inline `style A fill:#ff00ff` both applied after the sheet-adopt and `style.cssText` re-insertion (checked by hand: `rgb(36, 34, 44)` and `rgb(255, 0, 255)`). The probe's own `themeFillApplied`/`inlineStyleApplied` printed `null` only because its selector `g.node[id^="flowchart-D-"]` missed Mermaid 11's id prefix (`p-flow-flowchart-D-5`); not a real failure.
+- `flow` (14px): overflow `[]`. `seq`: overflow `[]`.
+- **`flowBig` (22px monospace): overflow on all 5 nodes** (`p-flowBig-flowchart-A-0`, `B-1`, `C-3`, `D-5`, `E-6`). Node shapes are exactly as wide as at 14px (e.g. A: 227.6 vs label 302.3; D: 167.9 vs label 169.3), so Mermaid's measuring pass ignored the font settings. The screenshot shows 22px labels spilling out of their boxes.
+- **`ownViolations` non-empty** for `flow`, `flowBig` and `seq`: many `style-src-attr: inline` plus a few `style-src-elem: inline` events, from Mermaid's own measuring container and generated `<style>` elements.
+
+Conclusion: the plan's CSP approach does not hold, because the measuring pass is broken by the CSP. Options for another design round: render to a `data:` SVG image (img-src allows `data:`), or a sandboxed renderer page with its own CSP.
