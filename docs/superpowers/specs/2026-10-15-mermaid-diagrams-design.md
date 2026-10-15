@@ -1,6 +1,6 @@
-# Mermaid diagrams in notes: design
+# Mermaid diagrams in notes: design (revision 2, sandboxed renderer)
 
-Date: 2026-10-15. Status: draft, awaiting review.
+Date: 2026-10-15. Status: draft revision, awaiting review. Revision 1 (render in the page, style around the CSP) failed its probe; see "Why revision 2".
 
 ## Goal
 
@@ -12,84 +12,128 @@ Primary use: architecture and flow diagrams that the AI (through the MCP tools) 
 
 - Language: Mermaid, not a custom DSL and not ASCII auto-detection.
 - Rendering happens in the browser, on view, from the decrypted note text. Nothing about a diagram reaches the server.
-- Mermaid is self-hosted as a lazily loaded chunk. No CDN. No change to `script-src`, `connect-src` or `style-src`.
-- Styling is Inked's own: dark and purple, driven by CSS variables, not Mermaid's default look.
+- Mermaid is self-hosted. No CDN. The main app's CSP (`style-src 'self'`) does not change.
+- Styling is Inked's own: dark and purple, driven by CSS variables.
+- Mermaid runs inside a sandboxed iframe with its own CSP (this revision).
 
 ## Non-goals
 
-Export to PNG or SVG, zoom and pan, live preview in the editor, clickable nodes, ASCII auto-detection, and updating the `inked-notes` skill in the sibling plugin repo (listed as a follow-up).
+Export to PNG or SVG, zoom and pan, live preview in the editor, clickable nodes, ASCII auto-detection, a light theme, a persistent diagram cache, and updating the `inked-notes` skill in the sibling plugin repo (a follow-up).
 
-## Pipeline
+## Why revision 2
 
-1. `markdown-it` is unchanged. A ```` ```mermaid ```` fence renders as an ordinary `pre > code.language-mermaid` block. If rendering fails, is skipped, or the app is locked, the reader sees readable source.
-2. A hook, `useDiagrams` (in `web/src/diagrams/`), runs after the note HTML is in the DOM, like `useInkedImages`. It finds `code.language-mermaid` blocks in the view article.
-3. For each block it calls `renderDiagram(source, theme)` in `mermaidRender.ts`, which:
-   - dynamic-imports Mermaid on first use (notes without a diagram never load it);
-   - initializes Mermaid with `startOnLoad: false`, `securityLevel: 'strict'`, `theme: 'base'`, `themeVariables` read from the current CSS variables, `maxTextSize` about 20 000 and `maxEdges` about 200, and HTML labels off so labels are plain SVG text;
-   - renders to an SVG string;
-   - sanitizes it (see Sanitizing);
-   - applies styles under the CSP (see CSP).
-4. The hook replaces the `pre` with a wrapper element holding the SVG. The wrapper has `role="img"` and an `aria-label` ("Diagram", plus the title when Mermaid provides one).
-5. Renders are keyed by source. The app is dark-only today, so the theme is read once, when Mermaid first loads. If a light theme is ever added, the cache key must include the theme. In-flight renders are cancelled when the note HTML changes or the component unmounts. A render finishing late must not write into a replaced DOM. Results are cached in memory only, never persisted.
+Revision 1 rendered Mermaid in the page and tried to make its output pass the CSP afterwards. A probe on a production build under the real CSP (Mermaid 11.17.2) found:
 
-Where it runs: note view in `NotePane` and `NodePreview`. It never runs for `AskAnswer`. `renderUntrustedMarkdown` output keeps mermaid fences as code blocks, because LLM answers are untrusted.
+- Constructed stylesheets (`new CSSStyleSheet().replaceSync()` in `document.adoptedStyleSheets`) and CSSOM style writes (`el.style.cssText`) both apply under `style-src 'self'`. The theme fill and a per-node inline style rendered correctly.
+- Mermaid's text measuring pass does not survive the CSP. It builds its SVG inside the page, using inline styles and a `<style>` element, and the CSP blocks them (about 120 `style-src-attr` and `style-src-elem` violations). A 22px monospace theme font left every label wider than its box, and the box widths were identical to the 14px run. Mermaid sizes boxes before we can touch the output, so no post-processing fixes it.
 
-## CSP
+So the layout has to run in a document that is allowed to use inline styles. We do not loosen the main page for that. The renderer moves to a sandboxed iframe. The display side of revision 1 (sanitizing, constructed stylesheet, CSSOM) is kept, because the probe showed it works.
 
-The CSP is `style-src 'self'`: no inline `<style>` elements and no `style="..."` attribute strings (see `docs/architecture.md`). Mermaid's SVG contains both, so inserting it unchanged would render unstyled and fill the console with CSP errors.
+## Architecture
 
-Approach:
+```
+note view (main page, strict CSP)                 /frame/frame.html (sandboxed iframe, own CSP)
+  useDiagrams hook                                  MessageChannel port
+    renderDiagram(source) --> frame client ------>  render(id, source)  --> Mermaid (inline styles allowed)
+    cache by source          <-- {svg} -----------  returns the SVG string
+    sanitize SVG (DOMPurify)
+    lift <style> -> constructed stylesheet
+    style="" -> CSSOM writes
+    swap code block for <figure><svg>
+```
 
-- Cut the `<style>` block out of the SVG. Mermaid scopes it to `#mermaid-<id>`. Apply its text through a constructed stylesheet (`new CSSStyleSheet().replaceSync(text)` added to `document.adoptedStyleSheets`). Remove the sheet when no diagram on the page uses its id.
-- Parse each `style` attribute and re-apply it with `el.style.setProperty()`, then remove the attribute. This is the CSSOM path React `style` props already use in this app.
-- Inked's own rules for `.md` diagram wrappers (overflow, max-width, spacing) go in `note.css`.
+### The frame page
 
-This depends on two assumptions. First, that a constructed stylesheet is allowed under `style-src 'self'`. Second, that Mermaid's own measuring pass is not fooled: it inserts the SVG into the page to measure text before we ever see it, and that insertion is also subject to the CSP. If the measuring pass ignores the font settings, labels overflow their boxes. Task 1 of the plan is a throwaway probe that checks it in a real browser under the real CSP, using the production build. If the assumption fails, the fallback is to render the sanitized SVG into an `<img src="data:image/svg+xml,...">`. `img-src data:` allows that, and the SVG is fully sandboxed. The cost is page fonts, text selection and live theming, so labels must then be plain SVG text with explicit font stacks. The spec is amended if the fallback is used.
+- A separate Vite build produces `dist/frame/` (a `frame.html`, one script, Mermaid chunks and the two fonts). It is built with `base: '/frame/'` and no `public/` copy. Mermaid lives only here, so the main bundle does not grow.
+- The server serves every path under `/frame/` with different headers from the rest of the app:
+  - `Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'`. The page is a sandbox even when opened directly. It cannot make any network request. There is no `'unsafe-eval'`; a diagram type that needs it is unsupported.
+  - `Access-Control-Allow-Origin: *`. A sandboxed document without `allow-same-origin` has an opaque origin, and module scripts and fonts it loads are CORS requests. Everything under `/frame/` is public static code and fonts, so `*` leaks nothing.
+  - The other security headers stay as they are.
+  - An unknown path under `/frame/` is a plain 404 JSON, never the SPA shell (the SPA must never be served with these relaxed headers).
+- The parent embeds it as `<iframe sandbox="allow-scripts" src="/frame/frame.html">`. No `allow-same-origin`: the frame cannot read the app's cookies, storage, memory, keys or DOM. The main CSP's `default-src 'self'` already permits a same-origin frame source.
+- The iframe is created on the first diagram in a session, hidden with a CSS class (`visibility: hidden`, off-screen, fixed size, not `display: none`, because Mermaid measures text and needs real layout).
 
-## Sanitizing
+### Protocol
 
-A separate DOMPurify configuration for Mermaid SVG, not the note sanitizer. It keeps SVG shapes, text and markers. It removes `script`, `foreignObject`, event attributes and any `href` or `xlink:href` that is not a same-document fragment (`#...`). The existing `sanitizeHtml` for notes is unchanged.
+All traffic after the handshake uses a `MessageChannel`, so no other window can send into it.
 
-## Theming
+1. The parent creates the channel and, on the iframe's `load`, sends `{ type: 'inked-diagram-connect', theme }` with `port2` in the transfer list, to target origin `'*'` (the frame's origin is opaque).
+2. The frame accepts the first such message only if `event.source === window.parent`, keeps `ports[0]`, configures Mermaid from `theme` on first use, and replies `{ type: 'ready' }`.
+3. Parent to frame: `{ type: 'render', id, source }`. `id` is a string the parent makes unique (`inked-dg-<n>`) and Mermaid uses as the SVG id, so cached results never collide.
+4. Frame to parent: `{ type: 'result', id, ok: true, svg }` or `{ type: 'result', id, ok: false, reason: 'oversized' | 'syntax' | 'load', message? }`.
 
-`theme: 'base'` with `themeVariables` for node and cluster fill, border, text, line and note colors, plus font family and size. Values are read from the computed CSS variables when Mermaid first loads. `themeCSS` carries small Inked tweaks (corner radius, stroke width, label weight).
+Both sides validate every message with a type guard and ignore anything else. The parent treats the returned SVG as untrusted and runs it through the sanitizer. The frame only ever receives diagram text; it has no keys and no other note content.
 
-A note's own `%%{init: {...}}%%` directive must not override the theme or inject CSS. Mermaid's `secure` list names the keys a diagram directive cannot change; we add `theme`, `themeCSS`, `themeVariables` and `fontFamily` to it, on top of Mermaid's defaults (`secure`, `securityLevel`, `startOnLoad`, `maxTextSize`, `maxEdges`, `suppressErrorRendering`).
+The parent applies timeouts. No `ready` within 15 s counts as `load`. A render with no result within 30 s rejects with `timeout`, and the parent removes the iframe (which kills a runaway script) and creates a fresh one on the next request.
 
-## Limits and errors
+### Frame renderer
 
-- Over `maxTextSize` or `maxEdges`: keep the code block and show an "oversized diagram" label.
-- Mermaid syntax error: keep the code block and show a short "diagram error" label with Mermaid's first error line.
-- Mermaid chunk fails to load: same as a syntax error, with a different label.
-- No allowlist of diagram types. Flowchart, sequence, state, class and ER are tested. Others get best-effort rendering.
+Runs in the frame. Mermaid is imported on the first `render`. Config: `startOnLoad: false`, `securityLevel: 'strict'`, `theme: 'base'`, `themeVariables` from the parent's `theme`, a small `themeCSS` of Inked tweaks, `maxTextSize` 20 000, `maxEdges` 200, HTML labels off (`htmlLabels: false` and `flowchart.htmlLabels: false`, so labels are plain selectable SVG text and the SVG has no `foreignObject`), and `secure` extended with `theme`, `themeCSS`, `themeVariables` and `fontFamily` so a note's `%%{init}%%` directive cannot change the look or inject CSS. Before the first render it loads Public Sans 400, 500 and 600 with `document.fonts.load` (capped at 3 s), so text is measured in the font the main page will show.
 
-## Phone
+### Parent pipeline
 
-The SVG scales with `max-width: 100%`. A wide diagram scrolls horizontally inside its wrapper, like `pre` does in `phone.css` today.
+1. `markdown-it` is unchanged. A `mermaid` fence is an ordinary `pre > code.language-mermaid` block. If a render fails, or the app is locked, the reader sees readable source.
+2. A hook, `useDiagrams`, mirrors `useInkedImages`. After the note HTML is in the DOM it finds `code.language-mermaid` blocks and asks `renderDiagram(source)` for each.
+3. `renderDiagram` trims the source, refuses it over 20 000 characters, checks a cache keyed by source, and otherwise asks the frame client to render. The reply goes through `prepareDiagramSvg` (below). The result `{ id, svg, css }` is cached in memory.
+4. The hook swaps the block for a `<figure class="diagram" role="img">` with an `aria-label` ("Diagram", or the SVG `<title>` when present).
+5. In-flight renders are cancelled when the note HTML changes or the component unmounts; a late result must not write into a replaced DOM.
+
+Where it runs: note view in `NotePane` and `NodePreview`. It never runs for `AskAnswer`; LLM answers are untrusted and a mermaid fence there stays a code block.
+
+### Display under the strict CSP
+
+This is the part the probe confirmed.
+
+- Sanitize the SVG string with a separate DOMPurify profile: keep SVG shapes, text and markers; remove `script`, `foreignObject`, event attributes and any `href` or `xlink:href` that is not a same-document fragment. The note sanitizer `sanitizeHtml` is unchanged.
+- Cut every `<style>` out of the SVG and apply its sanitized text (no `@import`, no `url()` other than `url(#fragment)`) through a constructed stylesheet in `document.adoptedStyleSheets`, shared per diagram id and removed when the last figure using it goes.
+- Move each `style=""` attribute into `data-inline-style` while the SVG is still a string (a detached parse), then write it back with `el.style.cssText` after the SVG is in the page. CSSOM writes are what React `style` props already use here.
+
+### Theme
+
+The app is dark-only. The parent reads the CSS variables once, when the frame connects, and sends them as `theme` (`themeVariables` need literal colors, not `var()`). If a light theme is ever added, the cache key and the connect message must carry the theme.
+
+### Limits and errors
+
+- Over 20 000 characters, or over `maxEdges` edges: keep the code block and show "Diagram too large to draw."
+- Mermaid syntax error: keep the code block and show "Diagram error: <first error line>".
+- Frame failed to load or connect: keep the code block and show "Could not load the diagram renderer." Not cached, so the next view retries.
+- Render timed out: keep the code block and show "Diagram took too long to draw." Not cached.
+- No allowlist of diagram types. Flowchart, sequence, state, class and ER are tested; others get best-effort rendering.
+
+### Lock
+
+Locking or signing out drops the keys, and `store.images.clear()` already drops decrypted images there. The diagram cache holds rendered text of decrypted notes, so the same two places (`enterUnlocked` and `dropKeys` in `web/src/state/store.ts`) also call `clearDiagrams()`, which empties the cache and removes the iframe.
+
+### Phone
+
+The SVG scales with `max-width: 100%` through Mermaid's own inline `max-width`. A wide diagram scrolls horizontally inside its wrapper, like `pre` does in `phone.css`.
+
+### Dev server
+
+`vite dev` does not build the frame. The dev proxy forwards `/frame` to the backend like `/api`, so diagrams work in dev once `npm run build` has produced `dist/frame` and the backend is running. Without that, a diagram shows the "could not load" note.
+
+## Security notes
+
+- The frame cannot reach the app: opaque origin (both the `sandbox` attribute and the CSP `sandbox` directive), no network (`connect-src 'none'`), and it holds no secrets, only the diagram text the parent sends.
+- Mermaid output is untrusted: it is sanitized in the parent, and its CSS is filtered.
+- The relaxed `style-src 'unsafe-inline'` applies only to `/frame/*` responses. The main page's CSP, and `docs/architecture.md`'s promise of no `'unsafe-inline'` for the app, are unchanged.
+- `Access-Control-Allow-Origin: *` is limited to `/frame/*`.
 
 ## Testing
 
-- Unit, with Mermaid mocked (jsdom cannot lay out SVG): hook flow, replacement, stale guard, cache key, oversize, error fallback, and untrusted content not hydrating.
-- Fixture tests for the SVG sanitizer (no script, `foreignObject` or external href survives) and for style-attribute conversion and stylesheet cleanup.
-- Real-browser check on the production build under the strict CSP: a flowchart, a sequence diagram, a bad-syntax diagram, an `%%{init}%%` theme directive that must be ignored, two identical diagrams in one note, lock and unlock, and a 375px width. The console must show no CSP violations from our own insertion.
+- Server: header tests for `/frame/frame.html` and `/frame/assets/*` (exact CSP, CORS header, nosniff), 404 for unknown `/frame/...` and `/frame`, no regression on the main headers.
+- Frame renderer: unit tests with Mermaid mocked (config, secure list, error mapping, oversize, font loading, retry after a failed import).
+- Frame client: unit tests with Node's real `MessageChannel` standing in for the frame (request and result, timeout and restart, `ready` timeout, stale ids, malformed messages ignored).
+- Sanitizer, stylesheets, cache and hook: as in revision 1 (fixtures, mocked renderer, jsdom).
+- A gate probe on a production build before the rest is built: the real frame, client and host under the real CSP, checking the frame loads from an opaque origin, the layout is right at 22px monospace, and our own insertion causes no violation.
+- Final real-browser check on the production build: flowchart, sequence, state, class and ER diagrams, a bad-syntax diagram, an `%%{init}%%` theme directive that must be ignored, two identical diagrams in one note, lock and unlock (cache and iframe gone), 375px width, node preview, and no CSP violation in the main page.
 
 ## Docs
 
-`docs/architecture.md` (rendering, CSP handling, the fallback) and `docs/mcp.md` (notes may contain ```` ```mermaid ```` fences) are updated.
+`docs/architecture.md` (the frame, its headers, the protocol, the lock behavior) and `docs/mcp.md` (notes may contain ```` ```mermaid ```` fences) are updated. `docs/deploy.md`: nothing to change unless the gate shows nginx or Cloudflare strips the headers on `/frame/`; if so, record it there.
 
 ## Open items
 
-- Measured size of the Mermaid chunk (to be recorded after the first production build).
+- Measured size of the frame's Mermaid chunks (record after the first production build).
 - Follow-up: teach the `inked-notes` skill in the plugin repo to prefer mermaid fences for diagrams.
-
-## Probe result (Task 1): FAILED
-
-Date 2026-10-15, mermaid 11.17.2, throwaway page served by the real server under the real CSP (`style-src 'self'`). Results:
-
-- `constructedSheet`: true. `cssomStyle`: true.
-- Theme fill and per-node inline `style A fill:#ff00ff` both applied after the sheet-adopt and `style.cssText` re-insertion (checked by hand: `rgb(36, 34, 44)` and `rgb(255, 0, 255)`). The probe's own `themeFillApplied`/`inlineStyleApplied` printed `null` only because its selector `g.node[id^="flowchart-D-"]` missed Mermaid 11's id prefix (`p-flow-flowchart-D-5`); not a real failure.
-- `flow` (14px): overflow `[]`. `seq`: overflow `[]`.
-- **`flowBig` (22px monospace): overflow on all 5 nodes** (`p-flowBig-flowchart-A-0`, `B-1`, `C-3`, `D-5`, `E-6`). Node shapes are exactly as wide as at 14px (e.g. A: 227.6 vs label 302.3; D: 167.9 vs label 169.3), so Mermaid's measuring pass ignored the font settings. The screenshot shows 22px labels spilling out of their boxes.
-- **`ownViolations` non-empty** for `flow`, `flowBig` and `seq`: many `style-src-attr: inline` plus a few `style-src-elem: inline` events, from Mermaid's own measuring container and generated `<style>` elements.
-
-Conclusion: the plan's CSP approach does not hold, because the measuring pass is broken by the CSP. Options for another design round: render to a `data:` SVG image (img-src allows `data:`), or a sandboxed renderer page with its own CSP.
+- Possible later optimization: an encrypted diagram cache in the existing image store, to skip re-rendering. Not needed now; rendering is fast and the cache is per session.
