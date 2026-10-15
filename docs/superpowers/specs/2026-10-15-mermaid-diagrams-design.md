@@ -100,6 +100,14 @@ The app is dark-only. The parent reads the CSS variables once, when the frame co
 - Render timed out: keep the code block and show "Diagram took too long to draw." Not cached.
 - No allowlist of diagram types. Flowchart, sequence, state, class and ER are tested; others get best-effort rendering.
 
+### Setting
+
+Diagrams are optional. A per-browser preference, `prefs.diagrams()` (localStorage key `inked.diagrams`, like spell-check and the semantic-search choice in `web/src/lib/prefs.ts`), is on by default and is switched in a new "Diagrams" card on the Settings page. It is per browser, not synced: it governs what this browser loads, and the server never learns it.
+
+- **On:** as described above.
+- **Off:** the hook does nothing but leave each mermaid block as a code block and add the note "Diagrams are off. Turn them on in Settings." No iframe is created and no request is made to `/frame/`. Turning the setting off also calls `clearDiagrams()`, so an iframe that already exists is removed at once.
+- The card explains the cost: the first diagram in a session loads a hidden renderer from this server in the background, later diagrams need no request, and nothing about a diagram leaves the browser.
+
 ### Lock
 
 Locking or signing out drops the keys, and `store.images.clear()` already drops decrypted images there. The diagram cache holds rendered text of decrypted notes, so the same two places (`enterUnlocked` and `dropKeys` in `web/src/state/store.ts`) also call `clearDiagrams()`, which empties the cache and removes the iframe.
@@ -125,12 +133,13 @@ The SVG scales with `max-width: 100%` through Mermaid's own inline `max-width`. 
 - Frame renderer: unit tests with Mermaid mocked (config, secure list, error mapping, oversize, font loading, retry after a failed import).
 - Frame client: unit tests with Node's real `MessageChannel` standing in for the frame (request and result, timeout and restart, `ready` timeout, stale ids, malformed messages ignored).
 - Sanitizer, stylesheets, cache and hook: as in revision 1 (fixtures, mocked renderer, jsdom).
+- The setting: `prefs.diagrams()` default, off and round-trip, a storage failure meaning on; the Settings card toggles it and removes the iframe when turned off; with the setting off the hook calls no renderer and shows the note.
 - A gate probe on a production build before the rest is built: the real frame, client and host under the real CSP, checking the frame loads from an opaque origin, the layout is right at 22px monospace, and our own insertion causes no violation.
 - Final real-browser check on the production build: flowchart, sequence, state, class and ER diagrams, a bad-syntax diagram, an `%%{init}%%` theme directive that must be ignored, two identical diagrams in one note, lock and unlock (cache and iframe gone), 375px width, node preview, and no CSP violation in the main page.
 
 ## Docs
 
-`docs/architecture.md` (the frame, its headers, the protocol, the lock behavior) and `docs/mcp.md` (notes may contain ```` ```mermaid ```` fences) are updated. `docs/deploy.md`: nothing to change unless the gate shows nginx or Cloudflare strips the headers on `/frame/`; if so, record it there.
+`docs/architecture.md` (the frame, its headers, the protocol, the lock behavior, the setting) and `docs/mcp.md` (notes may contain ```` ```mermaid ```` fences; a browser can turn drawing off in Settings) are updated. `docs/deploy.md`: nothing to change unless the gate shows nginx or Cloudflare strips the headers on `/frame/`; if so, record it there.
 
 ## Open items
 

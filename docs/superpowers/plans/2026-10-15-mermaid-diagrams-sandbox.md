@@ -25,7 +25,8 @@ Copied from the spec. Every task's requirements include these.
 - `markdown-it` gets no mermaid rule. The fence stays `pre > code.language-mermaid`. `renderUntrustedMarkdown` output (Ask answers) is never hydrated.
 - Cache: in memory only, keyed by trimmed source, at most 50 entries. `clearDiagrams()` empties it and removes the iframe, and is called from `enterUnlocked` and `dropKeys` in `web/src/state/store.ts` next to `this.images.clear()`.
 - Failure notes (text exact): "Diagram too large to draw.", "Diagram error" (plus ": <first error line>" when there is one), "Could not load the diagram renderer.", "Diagram took too long to draw." Wrapper: `<figure class="diagram" role="img" aria-label="Diagram" or the SVG title>`.
-- Out of scope: export, zoom and pan, editor live preview, clickable nodes, ASCII auto-detection, a light theme, a persistent cache, the `inked-notes` skill in the plugin repo.
+- Setting: diagrams are optional. `prefs.diagrams()` (localStorage key `inked.diagrams`; on unless the value is `'off'`, and on when storage is unavailable) is switched by a "Diagrams" card on the Settings page, per browser and never sent to the server. When off, the hook draws nothing, creates no iframe and makes no request to `/frame/`; each mermaid block stays a code block with the note "Diagrams are off. Turn them on in Settings."; turning it off calls `clearDiagrams()`.
+- Out of scope: export, zoom and pan, editor live preview, clickable nodes, ASCII auto-detection, a light theme, a persistent cache, syncing the setting across devices, the `inked-notes` skill in the plugin repo.
 - Commits: conventional commit subject, and end every commit message with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 - Branch: `feat/mermaid-diagrams` (already created).
 
@@ -37,7 +38,8 @@ Failure modes the spec implies that no single feature task would otherwise pin. 
 2. **A hung or crashed frame.** A render with no reply times out, the iframe is replaced, every pending request fails cleanly, and the next view retries instead of caching the failure. Task 3 and Task 7.
 3. **Lock or sign-out leaving diagram text or the iframe alive.** The cache is emptied and the iframe removed in both places the store drops keys. Task 7 and Task 8.
 4. **A hostile or oversized reply from the frame** (script, `foreignObject`, external `href`, a multi-MB SVG, malformed messages). The parent ignores bad messages, caps the SVG size, and sanitizes. Task 3 and Task 5.
-5. **A note's `%%{init: {...}}%%` directive overriding the look or injecting CSS.** The frame's `secure` list blocks it. Task 2 pins the list; Task 4 and Task 10 check it in a real browser.
+5. **A note's `%%{init: {...}}%%` directive overriding the look or injecting CSS.** The frame's `secure` list blocks it. Task 2 pins the list; Task 4 and Task 11 check it in a real browser.
+6. **The setting off but something still loading.** With diagrams off there must be no iframe and no request to `/frame/`, and turning the setting off must remove an iframe that already exists. Task 8 (hook) and Task 9 (card).
 
 ---
 
@@ -58,6 +60,7 @@ Failure modes the spec implies that no single feature task would otherwise pin. 
 | `web/src/diagrams/diagramRender.ts` (create) | Parent API: `renderDiagram`, `peekDiagram`, `clearDiagrams`; cache. |
 | `web/src/diagrams/useDiagrams.ts` (create) | View hook. |
 | `web/src/pages/NotePane.tsx`, `NodePreview.tsx`, `web/src/state/store.ts`, `web/src/styles/note.css` (modify) | Wiring, lock clearing, styles. |
+| `web/src/lib/prefs.ts` (modify), `web/src/pages/SettingsDiagrams.tsx` (create), `web/src/pages/SettingsPage.tsx` (modify) | The per-browser on/off setting and its Settings card. |
 | `docs/architecture.md`, `docs/mcp.md`, `docs/deploy.md` (modify) | Docs. |
 
 ---
@@ -206,7 +209,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ### Task 2: The frame app (renderer, bootstrap, build)
 
 **Files:**
-- Create: `web/src/diagrams/protocol.ts` (the part this task needs; Task 3 adds the rest, see Interfaces), `web/src/diagram-frame/renderer.ts`, `web/src/diagram-frame/main.ts`, `web/frame.html`, `web/vite.frame.config.ts`
+- Create: `web/src/diagrams/protocol.ts` (the whole file, see Interfaces), `web/src/diagram-frame/renderer.ts`, `web/src/diagram-frame/main.ts`, `web/frame.html`, `web/vite.frame.config.ts`
 - Modify: `web/package.json` (build script), `web/vite.config.ts` (dev proxy), `web/tsconfig.node.json` (include the new config)
 - Test: `web/src/diagram-frame/renderer.test.ts`, `web/src/diagrams/protocol.test.ts`
 
@@ -1827,7 +1830,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Test: `web/src/markdown/render.test.ts` (add one case); the existing store test file for locking (see Step 8)
 
 **Interfaces:**
-- Consumes: `renderDiagram`, `peekDiagram`, `clearDiagrams`, `DiagramResult` from `./diagramRender` (Task 7); `adoptDiagramCss` from `./diagramSheets` (Task 6).
+- Consumes: `renderDiagram`, `peekDiagram`, `clearDiagrams`, `DiagramResult` from `./diagramRender` (Task 7); `adoptDiagramCss` from `./diagramSheets` (Task 6); `prefs.diagrams(): boolean` from `web/src/lib/prefs.ts` (written in Task 9; until then the hook tests exercise it through the real `prefs` and `localStorage`, so Task 8 adds the `prefs.diagrams` method itself, see Step 3a).
 - Produces: `useDiagrams(ref: RefObject<HTMLElement | null>, html: string): void`.
 
 - [ ] **Step 1: Write the failing hook tests**
@@ -1887,6 +1890,7 @@ afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
   root = host = null;
+  localStorage.clear();
 });
 
 describe('useDiagrams', () => {
@@ -1978,6 +1982,25 @@ describe('useDiagrams', () => {
     expect(adopt).toHaveBeenCalledTimes(2);
     expect(el.querySelectorAll('figure.diagram')).toHaveLength(1);
   });
+
+  it('with diagrams switched off in Settings: no render, no peek, code block kept, note shown', async () => {
+    localStorage.setItem('inked.diagrams', 'off');
+    const el = await mount(block('graph TD; A-->B') + block('graph TD; B-->C'));
+    expect(renderDiagram).not.toHaveBeenCalled();
+    expect(peekDiagram).not.toHaveBeenCalled();
+    expect(adopt).not.toHaveBeenCalled();
+    expect(el.querySelectorAll('pre')).toHaveLength(2);
+    expect(el.querySelector('figure')).toBeNull();
+    const notes = el.querySelectorAll('.diagram-note');
+    expect(notes).toHaveLength(2);
+    expect(notes[0].textContent).toBe('Diagrams are off. Turn them on in Settings.');
+  });
+
+  it('with diagrams switched off, an empty mermaid block gets no note', async () => {
+    localStorage.setItem('inked.diagrams', 'off');
+    const el = await mount(block(''));
+    expect(el.querySelector('.diagram-note')).toBeNull();
+  });
 });
 ```
 
@@ -1992,6 +2015,7 @@ Expected: FAIL (cannot resolve `./useDiagrams`).
 
 ```ts
 import { useEffect, type RefObject } from 'react';
+import { prefs } from '../lib/prefs';
 import { peekDiagram, renderDiagram, type DiagramResult } from './diagramRender';
 import { adoptDiagramCss } from './diagramSheets';
 
@@ -2003,6 +2027,14 @@ function failureText(r: Failed): string {
   if (r.reason === 'load') return 'Could not load the diagram renderer.';
   if (r.reason === 'timeout') return 'Diagram took too long to draw.';
   return r.message ? `Diagram error: ${r.message}` : 'Diagram error';
+}
+
+function addNote(pre: HTMLElement, text: string): void {
+  const note = document.createElement('p');
+  note.className = 'diagram-note';
+  note.setAttribute('role', 'note');
+  note.textContent = text;
+  pre.after(note);
 }
 
 function figureFor(r: Drawn): HTMLElement {
@@ -2033,22 +2065,24 @@ export function useDiagrams(ref: RefObject<HTMLElement | null>, html: string): v
     const root = ref.current;
     if (!root) return;
     let live = true;
+    const enabled = prefs.diagrams();
     const releases: Array<() => void> = [];
     for (const code of Array.from(root.querySelectorAll<HTMLElement>('pre > code.language-mermaid'))) {
       const pre = code.parentElement as HTMLElement;
       const source = code.textContent ?? '';
       if (!source.trim()) continue;
+      if (!enabled) {
+        // Off in Settings: nothing is loaded and no frame is created.
+        addNote(pre, 'Diagrams are off. Turn them on in Settings.');
+        continue;
+      }
       const show = (r: DiagramResult) => {
         if (!live || !pre.isConnected) return;
         if (r.ok) {
           releases.push(adoptDiagramCss(r.id, r.css));
           pre.replaceWith(figureFor(r));
         } else {
-          const note = document.createElement('p');
-          note.className = 'diagram-note';
-          note.setAttribute('role', 'note');
-          note.textContent = failureText(r);
-          pre.after(note);
+          addNote(pre, failureText(r));
         }
       };
       const cached = peekDiagram(source);
@@ -2061,6 +2095,35 @@ export function useDiagrams(ref: RefObject<HTMLElement | null>, html: string): v
     };
   }, [ref, html]);
 }
+```
+
+- [ ] **Step 3a: Add the preference to `prefs`**
+
+The hook reads the setting, so the preference method lands here (Task 9 adds its tests and the Settings card). In `web/src/lib/prefs.ts`, add a key next to the others:
+
+```ts
+const DIAGRAMS_KEY = 'inked.diagrams';
+```
+
+and these two members to the `prefs` object, after `setSemanticChoice`:
+
+```ts
+  /** Draw Mermaid diagrams in notes. On unless this browser turned it off; on too when storage is blocked. */
+  diagrams(): boolean {
+    try {
+      return localStorage.getItem(DIAGRAMS_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  },
+  setDiagrams(on: boolean): void {
+    try {
+      if (on) localStorage.removeItem(DIAGRAMS_KEY);
+      else localStorage.setItem(DIAGRAMS_KEY, 'off');
+    } catch {
+      /* storage blocked: keep default */
+    }
+  },
 ```
 
 - [ ] **Step 4: Run the hook tests to verify they pass**
@@ -2159,7 +2222,7 @@ Expected: PASS (`tsc -b`, the main build and the frame build).
 - [ ] **Step 10: Commit**
 
 ```bash
-git add web/src/diagrams/useDiagrams.ts web/src/diagrams/useDiagrams.test.tsx web/src/pages/NotePane.tsx web/src/pages/NodePreview.tsx web/src/state/store.ts web/src/styles/note.css web/src/markdown/render.test.ts web/src/state
+git add web/src/diagrams/useDiagrams.ts web/src/diagrams/useDiagrams.test.tsx web/src/lib/prefs.ts web/src/pages/NotePane.tsx web/src/pages/NodePreview.tsx web/src/state/store.ts web/src/styles/note.css web/src/markdown/render.test.ts web/src/state
 git commit -m "feat(web): draw mermaid fences as diagrams in note view
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
@@ -2167,13 +2230,200 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 9: Docs
+### Task 9: The Settings toggle
+
+**Files:**
+- Create: `web/src/pages/SettingsDiagrams.tsx`
+- Modify: `web/src/pages/SettingsPage.tsx` (render the new card after `<SemanticSearch />`, ~line 47)
+- Test: `web/src/pages/SettingsDiagrams.test.tsx`; a prefs test (add to `web/src/lib/prefs.test.ts` if that file exists, otherwise create it)
+
+**Interfaces:**
+- Consumes: `prefs.diagrams()` and `prefs.setDiagrams(on)` (added to `prefs.ts` in Task 8 Step 3a); `clearDiagrams()` from `../diagrams/diagramRender` (Task 7).
+- Produces: `DiagramSettings` component (no props), a card with `id="diagrams-h"` on its heading.
+
+- [ ] **Step 1: Write the failing tests**
+
+Prefs (create `web/src/lib/prefs.test.ts` if it does not exist, otherwise add the `describe` to it):
+
+```ts
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { prefs } from './prefs';
+
+afterEach(() => {
+  localStorage.clear();
+  vi.restoreAllMocks();
+});
+
+describe('prefs.diagrams', () => {
+  it('is on by default', () => {
+    expect(prefs.diagrams()).toBe(true);
+  });
+  it('round-trips off and on', () => {
+    prefs.setDiagrams(false);
+    expect(prefs.diagrams()).toBe(false);
+    expect(localStorage.getItem('inked.diagrams')).toBe('off');
+    prefs.setDiagrams(true);
+    expect(prefs.diagrams()).toBe(true);
+    expect(localStorage.getItem('inked.diagrams')).toBeNull();
+  });
+  it('is on when storage is unavailable, and setting it does not throw', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(prefs.diagrams()).toBe(true);
+    expect(() => prefs.setDiagrams(false)).not.toThrow();
+  });
+});
+```
+
+If `prefs.test.ts` already exists, keep its existing header (`// @vitest-environment` line and imports) and merge; do not duplicate imports.
+
+`web/src/pages/SettingsDiagrams.test.tsx`:
+
+```tsx
+// @vitest-environment jsdom
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const clearDiagrams = vi.fn();
+vi.mock('../diagrams/diagramRender', () => ({ clearDiagrams: () => clearDiagrams() }));
+
+const { DiagramSettings } = await import('./SettingsDiagrams');
+
+let root: Root | null = null;
+let host: HTMLElement | null = null;
+afterEach(() => {
+  act(() => root?.unmount());
+  host?.remove();
+  root = host = null;
+  localStorage.clear();
+  clearDiagrams.mockReset();
+});
+
+async function mount() {
+  host = document.createElement('div');
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => root!.render(<DiagramSettings />));
+  return host;
+}
+const box = (el: HTMLElement) => el.querySelector('input[type="checkbox"]') as HTMLInputElement;
+
+describe('DiagramSettings', () => {
+  it('shows the preference, on by default, under a labelled heading', async () => {
+    const el = await mount();
+    expect(box(el).checked).toBe(true);
+    expect(el.querySelector('#diagrams-h')!.textContent).toBe('Diagrams');
+    expect(el.textContent).toContain('Draw Mermaid diagrams in notes');
+    expect(el.textContent).toContain('this browser only');
+  });
+
+  it('turning it off stores the choice and removes any existing renderer', async () => {
+    const el = await mount();
+    await act(async () => box(el).click());
+    expect(box(el).checked).toBe(false);
+    expect(localStorage.getItem('inked.diagrams')).toBe('off');
+    expect(clearDiagrams).toHaveBeenCalledTimes(1);
+  });
+
+  it('turning it back on stores the choice without touching the renderer', async () => {
+    localStorage.setItem('inked.diagrams', 'off');
+    const el = await mount();
+    expect(box(el).checked).toBe(false);
+    await act(async () => box(el).click());
+    expect(box(el).checked).toBe(true);
+    expect(localStorage.getItem('inked.diagrams')).toBeNull();
+    expect(clearDiagrams).not.toHaveBeenCalled();
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npm test -w web -- src/lib/prefs.test.ts src/pages/SettingsDiagrams.test.tsx`
+Expected: the `SettingsDiagrams` tests FAIL (cannot resolve `./SettingsDiagrams`). The prefs tests already PASS because Task 8 added the method; that is fine, they pin it.
+
+- [ ] **Step 3: Implement the card**
+
+`web/src/pages/SettingsDiagrams.tsx`:
+
+```tsx
+import { useState } from 'react';
+import { clearDiagrams } from '../diagrams/diagramRender';
+import { prefs } from '../lib/prefs';
+
+/** Per-browser switch for drawing Mermaid diagrams (see docs/architecture.md, "Diagrams"). */
+export function DiagramSettings() {
+  const [on, setOn] = useState(prefs.diagrams());
+  return (
+    <section className="card" aria-labelledby="diagrams-h">
+      <h2 id="diagrams-h" className="card-title">
+        Diagrams
+      </h2>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) => {
+            const next = e.target.checked;
+            prefs.setDiagrams(next);
+            // Turning it off also removes a renderer that is already running.
+            if (!next) clearDiagrams();
+            setOn(next);
+          }}
+        />
+        <span>Draw Mermaid diagrams in notes</span>
+      </label>
+      <p className="field-hint">
+        On by default. The first diagram in a session loads a hidden renderer from this server, in the background; later
+        diagrams are drawn in your browser without any request. Nothing about a diagram leaves your browser. When this is off,
+        nothing is loaded and diagrams stay as plain text. This setting applies to this browser only.
+      </p>
+    </section>
+  );
+}
+```
+
+In `web/src/pages/SettingsPage.tsx`, add `import { DiagramSettings } from './SettingsDiagrams';` beside the `AskSettings` import, and render it after `<SemanticSearch />`:
+
+```tsx
+      <SemanticSearch />
+      <DiagramSettings />
+      <AskSettings />
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `npm test -w web -- src/lib/prefs.test.ts src/pages/SettingsDiagrams.test.tsx`
+Expected: PASS.
+Run: `npm test -w web`
+Expected: all PASS (the Settings page tests, if any, still pass with the extra card).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add web/src/pages/SettingsDiagrams.tsx web/src/pages/SettingsDiagrams.test.tsx web/src/pages/SettingsPage.tsx web/src/lib/prefs.test.ts
+git commit -m "feat(web): per-browser setting to turn diagrams off
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 10: Docs
 
 **Files:**
 - Modify: `docs/architecture.md`, `docs/mcp.md`, `docs/deploy.md`
 
 **Interfaces:**
-- Consumes: the behavior built in Tasks 1 to 8.
+- Consumes: the behavior built in Tasks 1 to 9.
 - Produces: nothing code depends on.
 
 - [ ] **Step 1: Add a Diagrams section to `docs/architecture.md`**
@@ -2190,6 +2440,8 @@ Mermaid cannot run under the app's CSP: it measures text by inserting inline-sty
 The page and the frame talk over a `MessageChannel` handed over once (`inked-diagram-connect`, with the theme read from the CSS variables). The page sends `{ type: 'render', id, source }` and gets back the SVG string, or a failure (`oversized`, `syntax`, `load`). A frame that does not answer in 30 seconds is removed and replaced on the next request. The frame runs Mermaid with `securityLevel: 'strict'`, HTML labels off, `maxTextSize` 20 000 and `maxEdges` 200, and a `secure` list that stops a note's `%%{init}%%` directive from changing the theme or injecting CSS.
 
 The SVG that comes back is untrusted. The page sanitizes it with DOMPurify (no script, `foreignObject`, event attributes or external `href`), applies its `<style>` text through a constructed stylesheet (no `@import`, no external `url()`), and applies each `style=""` attribute through CSSOM, which the strict CSP allows. A diagram that is too large, has a syntax error, cannot load or times out stays a code block with a one-line note. Rendered diagrams are cached in memory by source and dropped, with the iframe, whenever the keys are dropped (lock and sign-out). Ask answers are never drawn: a mermaid fence in an LLM answer stays a code block. In `vite dev` the frame is proxied to the backend, so run `npm run build` once and keep the backend running to see diagrams there.
+
+Drawing diagrams is optional. A per-browser preference (`prefs.diagrams()`, localStorage key `inked.diagrams`, on by default, switched in Settings under "Diagrams") controls it, and the server never learns it. When it is off the hook creates no iframe and makes no request to `/frame/`; each mermaid block stays a code block with the note "Diagrams are off. Turn them on in Settings." Turning it off also removes a renderer that is already running.
 ```
 
 - [ ] **Step 2: Add a short note to `docs/mcp.md`**
@@ -2199,7 +2451,7 @@ After the `## Adding images` section, add:
 ```markdown
 ## Diagrams
 
-Notes can hold diagrams written in Mermaid. Put the diagram in a fenced block tagged `mermaid`; Inked draws it in the browser when the note is viewed, and the source stays plain text in the note, so `read_note` and search see it as written. Diagrams need no tool, no action and no setting.
+Notes can hold diagrams written in Mermaid. Put the diagram in a fenced block tagged `mermaid`; Inked draws it in the browser when the note is viewed, and the source stays plain text in the note, so `read_note` and search see it as written. Diagrams need no tool and no action. Each browser can turn drawing off under Settings, "Diagrams"; the source then stays plain text.
 ```
 
 - [ ] **Step 3: Note the `/frame/` headers in `docs/deploy.md`**
@@ -2221,7 +2473,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 10: Production build, real-browser check, bundle size
+### Task 11: Production build, real-browser check, bundle size
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-10-15-mermaid-diagrams-design.md` (the Open items line)
@@ -2256,6 +2508,8 @@ Put these in notes and switch each to view mode. Read the console filtered to `C
 12. Open `http://localhost:8098/frame/frame.html` directly in a tab: it loads and does nothing (no handshake). Open `http://localhost:8098/frame/nope` : 404 JSON.
 13. Kill-switch: in the page console run `document.querySelector('iframe.diagram-frame').remove()`, then switch to another note with a diagram and back. The diagram is drawn again (the next render after a lost frame recovers once its timeout fires, up to 30 s; note how long it took and whether the note showed the timeout line meanwhile).
 14. An Ask answer containing a mermaid fence, if an Ask connection is available. Stays a code block. If Ask cannot be used, skip it and say so.
+15. The setting. Settings page shows a "Diagrams" card with the box checked. Untick it while a diagram note was viewed earlier in the session: `document.querySelector('iframe.diagram-frame')` is `null` straight away. Open a note with a diagram: the code block stays with "Diagrams are off. Turn them on in Settings." beneath it, and the network log shows no request to `/frame/` after the toggle (reload the page first, then open the note, to prove none is made from a cold start). Tick it again: the note draws.
+16. In case 15 with a fresh reload and the setting off, confirm `performance.getEntriesByType('resource').filter(e => e.name.includes('/frame/'))` is empty.
 
 If any case fails, fix it with a new failing test first (TDD), re-run `npm test -w web`, rebuild, and repeat the failed case.
 
