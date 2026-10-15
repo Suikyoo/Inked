@@ -1,6 +1,6 @@
 # Images in notes: design
 
-Status: design approved in conversation on 2026-10-15. Written spec awaiting review.
+Status: approved; implemented per docs/superpowers/plans/2026-10-15-images.md.
 
 ## Goal
 
@@ -80,7 +80,7 @@ The fetch runs on the user's machine, so it needs its own guards:
 
 - **URL:** `https:` only. Resolve DNS and refuse loopback, private, link-local and other reserved ranges (IPv4 and IPv6). Connect to the resolved address, not the name (defeats DNS rebinding). Re-validate every redirect hop, at most 3 hops. Timeout, and abort past the size cap.
 - **Path:** refused unless it resolves (after symlink resolution) inside a folder listed in a new config key `imageDirs` (default empty, so `path` is off until the user opts in). Non-image bytes are refused regardless.
-- **Audit:** the local audit log records the source (URL or path) and the image id, never the bytes.
+- **Audit:** the local audit log records the vault id and the image id only, matching the log's ids-only rule. The URL, the path and the bytes are never logged.
 - `docs/mcp.md` states that the URL is requested from the user's IP and that the model provider sees the returned token only.
 
 ## Section 3: renderer and editor (web)

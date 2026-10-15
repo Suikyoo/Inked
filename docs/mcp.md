@@ -155,6 +155,15 @@ Put that command and its arguments in the client's MCP settings (see below). A f
 
 Changes made on the settings page the AI opens apply at once. Changes made with `inked-mcp config` in a terminal, or by editing the file by hand, reach a running AI client the next time it checks its status, or after you reconnect inked in /mcp.
 
+## Adding images
+
+Grant the single action `image.create` (it is in no group and is off by default) to let the AI use `add_image`. The tool takes a vault and one of:
+
+- `url`: a public `https://` image link. The MCP downloads it on your machine, from your IP address, so the host sees that request. It refuses addresses that are not public (loopback, private and link-local ranges, in IPv4 and IPv6), connects to the address it checked, re-checks every redirect (at most 3), and stops at 10 MB.
+- `path`: a local file. This is off until you list absolute folders in the config file, for example `"imageDirs": ["C:\\Users\\you\\Pictures\\notes"]`. A file is read only if it resolves, after symlinks, inside one of those folders.
+
+Only PNG, JPEG, GIF and WebP are accepted, judged by the file's bytes. The MCP encrypts the image with the vault key before upload, so the server never sees it, and returns `![alt](inked://id)` for the AI to put in a note. The audit log records the vault and image id, never the URL, the path or the bytes. The settings page keeps your `imageDirs` when you apply changes; edit them in the file.
+
 ## Connect a client
 
 ### Claude Code (plugin)

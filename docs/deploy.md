@@ -112,6 +112,10 @@ Set `INKED_LLM_ORIGINS` to the OpenAI-compatible provider origins the browser ma
 
 Claude works through Anthropic's OpenAI-compatible endpoint: add `https://api.anthropic.com` to `INKED_LLM_ORIGINS` (for example `INKED_LLM_ORIGINS=https://api.openai.com,https://api.anthropic.com`), then in Settings use base URL `https://api.anthropic.com/v1`, a Claude model name such as `claude-sonnet-5-5`, and an Anthropic API key. Inked sends Anthropic's `anthropic-dangerous-direct-browser-access: true` header on those requests, which Anthropic requires before it accepts calls made directly from a browser.
 
+## Images and disk
+
+Notes can hold images (encrypted in the browser, stored in the same SQLite file). The database therefore grows with them, so size the volume and the backups accordingly. `INKED_IMAGE_QUOTA_MB` caps each user's total (default 1024, whole MiB, at least 1); one image is at most 10 MiB. An over-quota upload is refused with `quota_exceeded`. Deleting a vault deletes its images; there is no per-image delete yet.
+
 ## 7. Accepted risk
 
 Any container placed on `cloudflared-net` can reach nginx and could forge `CF-Connecting-IP`, which would let it choose the IP that login lockouts are keyed on. Only trusted containers belong on that network. The Docker host itself can do the same: its bridge gateway address sits inside the trusted range, so a process on the host can also set `CF-Connecting-IP`. The per-account lockout cap still applies.
