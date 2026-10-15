@@ -14,6 +14,8 @@ function failureText(r: Failed): string {
 }
 
 function addNote(pre: HTMLElement, text: string): void {
+  // The effect can run twice on the same DOM (StrictMode in dev): one note per block.
+  if (pre.nextElementSibling?.matches('.diagram-note')) return;
   const note = document.createElement('p');
   note.className = 'diagram-note';
   note.setAttribute('role', 'note');
@@ -62,12 +64,23 @@ export function useDiagrams(ref: RefObject<HTMLElement | null>, html: string): v
       }
       const show = (r: DiagramResult) => {
         if (!live || !pre.isConnected) return;
-        if (r.ok) pre.replaceWith(figureFor(r));
-        else addNote(pre, failureText(r));
+        if (!r.ok) return addNote(pre, failureText(r));
+        try {
+          pre.replaceWith(figureFor(r));
+        } catch {
+          // A result the page cannot mount leaves the code block in place.
+          addNote(pre, 'Diagram error');
+        }
       };
       const cached = peekDiagram(source);
       if (cached) show(cached);
-      else void renderDiagram(source).then(show);
+      else {
+        void renderDiagram(source)
+          .then(show)
+          .catch(() => {
+            if (live && pre.isConnected) addNote(pre, 'Diagram error');
+          });
+      }
     }
     return () => {
       live = false;

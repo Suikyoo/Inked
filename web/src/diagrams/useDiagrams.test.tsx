@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useRef } from 'react';
+import { StrictMode, act, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiagramResult } from './diagramRender';
@@ -160,5 +160,68 @@ describe('useDiagrams', () => {
     localStorage.setItem('inked.diagrams', 'off');
     const el = await mount(block(''));
     expect(el.querySelector('.diagram-note')).toBeNull();
+  });
+
+  it('keeps the block and adds a note when mounting the shadow throws, without throwing out of the effect', async () => {
+    renderDiagram.mockResolvedValue(ok());
+    mountShadow.mockImplementation(() => {
+      throw new Error('no shadow');
+    });
+    const el = await mount(block('graph TD; A-->B'));
+    expect(el.querySelector('pre')).not.toBeNull();
+    expect(el.querySelector('div.diagram')).toBeNull();
+    expect(el.querySelector('.diagram-note')!.textContent).toBe('Diagram error');
+  });
+
+  it('keeps the block and adds a note when the svg has no element', async () => {
+    renderDiagram.mockResolvedValue({ ...ok(), svg: '' });
+    const el = await mount(block('graph TD; A-->B'));
+    expect(el.querySelector('pre')).not.toBeNull();
+    expect(el.querySelectorAll('.diagram-note')).toHaveLength(1);
+    expect(el.querySelector('.diagram-note')!.textContent).toBe('Diagram error');
+  });
+
+  it('survives a bad cached result too', async () => {
+    peekDiagram.mockReturnValue({ ...ok(), svg: '' });
+    const el = await mount(block('graph TD; A-->B'));
+    expect(el.querySelector('pre')).not.toBeNull();
+    expect(el.querySelector('.diagram-note')!.textContent).toBe('Diagram error');
+  });
+
+  it('adds a note when the render promise rejects', async () => {
+    renderDiagram.mockRejectedValue(new Error('frame died'));
+    const el = await mount(block('graph TD; A-->B'));
+    expect(el.querySelector('pre')).not.toBeNull();
+    expect(el.querySelector('.diagram-note')!.textContent).toBe('Diagram error');
+  });
+
+  it('never duplicates a note when the effect runs twice on the same DOM (StrictMode)', async () => {
+    localStorage.setItem('inked.diagrams', 'off');
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () =>
+      root!.render(
+        <StrictMode>
+          <Host markup={block('graph TD; A-->B')} />
+        </StrictMode>,
+      ),
+    );
+    expect(host.querySelectorAll('.diagram-note')).toHaveLength(1);
+  });
+
+  it('never duplicates a failure note when the effect runs twice on the same DOM (StrictMode)', async () => {
+    renderDiagram.mockResolvedValue({ ok: false, reason: 'syntax' });
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () =>
+      root!.render(
+        <StrictMode>
+          <Host markup={block('graph TD; A-->B')} />
+        </StrictMode>,
+      ),
+    );
+    expect(host.querySelectorAll('.diagram-note')).toHaveLength(1);
   });
 });
