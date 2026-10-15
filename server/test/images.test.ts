@@ -106,8 +106,17 @@ describe('image routes', () => {
     const full = await put(alice, av, randomUUID(), randomBytes(60));
     expect(full.statusCode).toBe(413);
     expect(full.json().error).toBe('quota_exceeded');
+    expect(countImages()).toBe(1);
     expect((await put(bob, bv, randomUUID(), randomBytes(60))).statusCode).toBe(201);
     expect((await put(alice, av, randomUUID(), randomBytes(40))).statusCode).toBe(201);
+  });
+  it('does not accept octet-stream on other routes', async () => {
+    const r = await call(t.app, 'POST', '/api/auth/login', { body: randomBytes(1024), headers: OCTET });
+    expect(r.statusCode).toBe(415);
+    const big = await call(t.app, 'POST', '/api/auth/login', { body: randomBytes(5 * 1024 * 1024), headers: OCTET });
+    expect(big.statusCode).toBe(415);
+    const vaultId = await newVault(alice);
+    expect((await put(alice, vaultId, randomUUID(), randomBytes(64))).statusCode).toBe(201);
   });
   it('deletes images with their vault', async () => {
     const vaultId = await newVault(alice);
