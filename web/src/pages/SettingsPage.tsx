@@ -10,6 +10,7 @@ import { CheckIcon, CopyIcon } from '../components/Icons';
 import { RecoveryKeyPanel } from '../components/RecoveryKeyPanel';
 import { isCryptoError } from 'inked-core';
 import { AskSettings } from './SettingsAsk';
+import { DiagramSettings } from './SettingsDiagrams';
 import { prefs } from '../lib/prefs';
 import { copyText, describeError, formatDateTime, MIN_PASSWORD, nextVaultColor, rotationCommitError, VAULT_COLORS } from '../lib/util';
 import { useSemantic, useSemanticStore } from '../semantic/SemanticContext';
@@ -49,6 +50,7 @@ export function SettingsPage() {
 
       <Editing />
       <SemanticSearch />
+      <DiagramSettings />
       <AskSettings />
       <ChangePassword />
       <RecoveryKey />

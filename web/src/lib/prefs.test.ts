@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prefs } from './prefs';
 
 describe('prefs.spellcheck', () => {
@@ -27,5 +27,33 @@ describe('prefs.semanticChoice', () => {
     expect(prefs.semanticChoice()).toBe('on');
     localStorage.setItem('inked.semantic', '0');
     expect(prefs.semanticChoice()).toBeNull();
+  });
+});
+
+describe('prefs.diagrams', () => {
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+  it('is on by default', () => {
+    expect(prefs.diagrams()).toBe(true);
+  });
+  it('round-trips off and on', () => {
+    prefs.setDiagrams(false);
+    expect(prefs.diagrams()).toBe(false);
+    expect(localStorage.getItem('inked.diagrams')).toBe('off');
+    prefs.setDiagrams(true);
+    expect(prefs.diagrams()).toBe(true);
+    expect(localStorage.getItem('inked.diagrams')).toBeNull();
+  });
+  it('is on when storage is unavailable, and setting it does not throw', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(prefs.diagrams()).toBe(true);
+    expect(() => prefs.setDiagrams(false)).not.toThrow();
   });
 });

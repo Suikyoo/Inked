@@ -78,7 +78,7 @@ describe('Settings: Search by meaning', () => {
     expect(host!.querySelector('#semantic-h')?.textContent).toBe('Search by meaning');
     expect(semanticBox().checked).toBe(false);
     expect(text()).toContain('Finds notes by what they’re about, not just their words. On for every device you sign in on.');
-    expect(text()).not.toContain('this browser');
+    expect(host!.querySelector('#semantic-h')!.closest('section')!.textContent).not.toContain('this browser');
     act(() => semanticBox().click());
     expect(setEnabled).toHaveBeenCalledWith(true);
     expect(bars()).toEqual(['Work · 3 / 5 notes']);
