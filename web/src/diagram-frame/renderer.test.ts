@@ -73,6 +73,16 @@ describe('createRenderer', () => {
     expect(typeof cfg.themeCSS).toBe('string');
   });
 
+  it('keeps diagrams at their natural size (no shrink-to-fit) for every diagram type', async () => {
+    const { renderer, initialize } = make();
+    await renderer.render('a', 'graph TD; A-->B');
+    const cfg = initialize.mock.calls[0][0];
+    for (const key of ['flowchart', 'sequence', 'class', 'state', 'er', 'gantt', 'journey', 'pie', 'requirement', 'gitGraph', 'mindmap', 'timeline']) {
+      expect(cfg[key], key).toMatchObject({ useMaxWidth: false });
+    }
+    expect(cfg.flowchart.htmlLabels).toBe(false);
+  });
+
   it('refuses an oversized source without loading anything', async () => {
     const { renderer, loadMermaid, render } = make();
     const r = await renderer.render('a', `graph TD;\n${'A-->B;\n'.repeat(5000)}`);

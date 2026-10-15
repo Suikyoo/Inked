@@ -40,7 +40,19 @@ export function createRenderer(deps: RendererDeps) {
           maxTextSize: MAX_TEXT_SIZE,
           maxEdges: MAX_EDGES,
           htmlLabels: false,
-          flowchart: { htmlLabels: false },
+          // Natural size, not shrink-to-fit: a wide diagram scrolls in its wrapper.
+          flowchart: { htmlLabels: false, useMaxWidth: false },
+          sequence: { useMaxWidth: false },
+          class: { useMaxWidth: false },
+          state: { useMaxWidth: false },
+          er: { useMaxWidth: false },
+          gantt: { useMaxWidth: false },
+          journey: { useMaxWidth: false },
+          pie: { useMaxWidth: false },
+          requirement: { useMaxWidth: false },
+          gitGraph: { useMaxWidth: false },
+          mindmap: { useMaxWidth: false },
+          timeline: { useMaxWidth: false },
           suppressErrorRendering: true,
           // Keys a note's %%{init}%% directive may not change: Mermaid's own list plus the look.
           secure: [
