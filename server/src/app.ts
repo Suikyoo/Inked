@@ -56,6 +56,20 @@ function securityHeaders(llmOrigins: readonly string[]): Record<string, string> 
   };
 }
 
+/** The diagram renderer page: inline styles allowed, no network, always sandboxed, framed only by this origin. */
+function frameHeaders(base: Record<string, string>): Record<string, string> {
+  return {
+    ...base,
+    'content-security-policy':
+      "sandbox allow-scripts; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+      "font-src 'self'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; " +
+      "form-action 'none'; frame-ancestors 'self'",
+    // A sandboxed document has an opaque origin, so its module scripts and fonts are CORS requests.
+    // Everything under /frame is public static code and fonts.
+    'access-control-allow-origin': '*',
+  };
+}
+
 const SAFE_METHODS = new Set(['GET', 'HEAD']);
 const isApiPath = (url: string) => /^\/api(\/|\?|$)/.test(url);
 
@@ -80,6 +94,11 @@ const isModelsPath = (url: string) => {
   return p === '/models' || p.startsWith('/models/');
 };
 
+const isFramePath = (url: string) => {
+  const p = routedPathname(url);
+  return p === '/frame' || p.startsWith('/frame/');
+};
+
 /** Error code for Fastify's own 4xx errors (body too large, bad JSON, ...). */
 function clientErrorCode(err: FastifyError, status: number): string {
   if (status === 413) return 'too_large';
@@ -101,6 +120,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const db = openDb(path.join(opts.dataDir, 'inked.db'));
   const llmOrigins = opts.llmOrigins ?? [];
   const headers = securityHeaders(llmOrigins);
+  const frameHdrs = frameHeaders(headers);
 
   const app = Fastify({
     bodyLimit: BODY_LIMIT,
@@ -160,7 +180,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   app.addHook('onSend', async (request, reply, payload) => {
-    reply.headers(headers);
+    reply.headers(isFramePath(request.url) ? frameHdrs : headers);
     if (isApiPath(request.url) && !reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
     return payload;
   });
@@ -217,8 +237,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   }
 
   app.setNotFoundHandler((request, reply) => {
-    // A missing model file is a plain 404, never the SPA shell.
-    if (isModelsPath(request.url)) return reply.code(404).send({ error: 'not_found' });
+    // A missing model or frame file is a plain 404, never the SPA shell.
+    if (isModelsPath(request.url) || isFramePath(request.url)) return reply.code(404).send({ error: 'not_found' });
     if (hasWeb && SAFE_METHODS.has(request.method) && !isApiPath(request.url)) {
       return reply.sendFile('index.html');
     }

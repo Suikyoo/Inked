@@ -157,6 +157,60 @@ describe('SPA hosting', () => {
   });
 });
 
+describe('diagram frame hosting', () => {
+  const FRAME_CSP =
+    "sandbox allow-scripts; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
+
+  function makeFrameDist() {
+    const dir = mkdtempSync(path.join(tmpdir(), 'inked-web-'));
+    mkdirSync(path.join(dir, 'assets'));
+    mkdirSync(path.join(dir, 'frame', 'assets'), { recursive: true });
+    writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Inked</title>');
+    writeFileSync(path.join(dir, 'frame', 'frame.html'), '<!doctype html><title>Diagram renderer</title>');
+    writeFileSync(path.join(dir, 'frame', 'assets', 'frame-abc123.js'), 'console.log(2)');
+    return dir;
+  }
+
+  it('serves the frame page and its assets with their own CSP and CORS', async () => {
+    webDist = makeFrameDist();
+    t = await makeApp({ webDist });
+
+    const page = await t.app.inject({ method: 'GET', url: '/frame/frame.html' });
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain('Diagram renderer');
+    expect(page.headers['content-security-policy']).toBe(FRAME_CSP);
+    expect(page.headers['access-control-allow-origin']).toBe('*');
+    expect(page.headers['x-content-type-options']).toBe('nosniff');
+    expect(page.headers['cache-control']).toBe('no-cache');
+
+    const js = await t.app.inject({ method: 'GET', url: '/frame/assets/frame-abc123.js' });
+    expect(js.statusCode).toBe(200);
+    expect(js.headers['content-security-policy']).toBe(FRAME_CSP);
+    expect(js.headers['access-control-allow-origin']).toBe('*');
+    expect(js.headers['cache-control']).toContain('immutable');
+  });
+
+  it('leaves the app and the API on the strict CSP with no CORS header', async () => {
+    webDist = makeFrameDist();
+    t = await makeApp({ webDist });
+    for (const url of ['/', '/v/123/n/456', '/assets/none.js', '/api/status', '/api/nope']) {
+      const res = await t.app.inject({ method: 'GET', url });
+      expect(res.headers).toMatchObject(EXPECTED_HEADERS);
+      expect(res.headers['access-control-allow-origin']).toBeUndefined();
+    }
+  });
+
+  it('never answers an unknown /frame path with the SPA shell', async () => {
+    webDist = makeFrameDist();
+    t = await makeApp({ webDist });
+    for (const url of ['/frame', '/frame/', '/frame/nope.html', '/frame/assets/missing.js']) {
+      const res = await t.app.inject({ method: 'GET', url });
+      expect(res.statusCode, url).toBe(404);
+      expect(res.json(), url).toEqual({ error: 'not_found' });
+    }
+  });
+});
+
 describe('trusted proxy', () => {
   async function hammer(app: TestApp['app'], username: string, xff: string, n: number) {
     const codes: number[] = [];
