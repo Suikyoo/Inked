@@ -174,3 +174,44 @@ describe('internal links', () => {
     expect(dom(ok).querySelector('a[data-wikilink][data-internal]')).not.toBeNull();
   });
 });
+
+describe('images', () => {
+  const ID = '3f2b8c1e-5d4a-4e7b-9a6c-1d2e3f4a5b6c';
+
+  it('renders an inked:// image as a src-less placeholder carrying the id', () => {
+    const img = dom(renderMarkdown(`![a chart](inked://${ID})`)).querySelector('img')!;
+    expect(img.getAttribute('data-inked-image')).toBe(ID);
+    expect(img.getAttribute('alt')).toBe('a chart');
+    expect(img.hasAttribute('src')).toBe(false);
+  });
+  it('keeps the placeholder inside lists and links', () => {
+    const out = dom(renderMarkdown(`- item ![x](inked://${ID})\n\n[![y](inked://${ID})](https://example.com)`));
+    expect(out.querySelectorAll('img[data-inked-image]')).toHaveLength(2);
+  });
+  it('turns a public image into a plain external link and never loads it', () => {
+    const out = dom(renderMarkdown('![logo](https://example.com/a.png)'));
+    expect(out.querySelector('img')).toBeNull();
+    const a = out.querySelector('a')!;
+    expect(a.getAttribute('href')).toBe('https://example.com/a.png');
+    expect(a.textContent).toBe('logo');
+    expect(a.getAttribute('target')).toBe('_blank');
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+  it('shows the url when a public image has no alt text', () => {
+    expect(dom(renderMarkdown('![](https://example.com/a.png)')).querySelector('a')!.textContent).toBe('https://example.com/a.png');
+  });
+  it('never emits a javascript: or data: image', () => {
+    const out = renderMarkdown('![x](javascript:alert(1)) ![y](data:text/html;base64,PHNjcmlwdD4=)');
+    expect(out).not.toMatch(/<img/i);
+    expect(out).not.toMatch(/href="javascript:/i);
+  });
+  it('ignores a malformed inked uri', () => {
+    const out = dom(renderMarkdown('![x](inked://not-a-uuid) ![y](inked://' + ID + '/extra)'));
+    expect(out.querySelector('img')).toBeNull();
+  });
+  it('escapes alt text', () => {
+    const img = dom(renderMarkdown(`![a "q" <b>](inked://${ID})`)).querySelector('img')!;
+    expect(img.getAttribute('alt')).toBe('a "q" <b>');
+    expect(dom(renderMarkdown(`![a "q" <b>](inked://${ID})`)).querySelector('b')).toBeNull();
+  });
+});

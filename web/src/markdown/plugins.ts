@@ -1,3 +1,4 @@
+import { parseImageUri } from 'inked-core';
 import type MarkdownIt from 'markdown-it';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
@@ -103,4 +104,19 @@ export function wikiLinkTargets(src: string): Set<string> {
   const out = new Set<string>();
   for (const m of src.matchAll(WIKI_RE)) out.add(m[1].trim().toLowerCase());
   return out;
+}
+
+/**
+ * Images: `inked://<id>` becomes a src-less placeholder (`data-inked-image`) that the view fills in after
+ * decrypting; every other image becomes a plain link, so nothing public is ever fetched.
+ */
+export function images(md: MarkdownIt): void {
+  md.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    const src = token.attrGet('src') ?? '';
+    const alt = self.renderInlineAsText(token.children ?? [], options, env);
+    const id = parseImageUri(src);
+    if (id) return `<img data-inked-image="${id}" alt="${escapeHtml(alt)}">`;
+    return `<a href="${escapeHtml(src)}">${escapeHtml(alt || src)}</a>`;
+  };
 }

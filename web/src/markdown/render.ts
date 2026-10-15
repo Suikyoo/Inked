@@ -1,6 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import createDOMPurify, { type DOMPurify } from 'dompurify';
-import { taskLists, wikiLinks, type WikiLinkEnv } from './plugins';
+import { images, taskLists, wikiLinks, type WikiLinkEnv } from './plugins';
 
 export { toggleTaskAtLine, wikiLinkTargets } from './plugins';
 
@@ -8,6 +8,7 @@ export { toggleTaskAtLine, wikiLinkTargets } from './plugins';
 const md = new MarkdownIt('default', { html: false, linkify: false, typographer: false, breaks: false });
 md.use(wikiLinks);
 md.use(taskLists);
+md.use(images);
 
 let purifier: DOMPurify | null = null;
 
