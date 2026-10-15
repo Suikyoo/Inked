@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG, isAction, loadConfig, parseConfig } from '../src/policy';
+import { ACTIONS, DEFAULT_CONFIG, GROUPS, isAction, loadConfig, parseConfig, resolvePolicy } from '../src/policy';
 
 describe('policy actions added for in-client setup', () => {
   let home: string;
@@ -36,5 +36,27 @@ describe('policy actions added for in-client setup', () => {
     } catch (e) {
       expect((e as Error).message).not.toContain(home);
     }
+  });
+});
+
+describe('image.create and imageDirs', () => {
+  const dir = path.resolve('image-test-dir');
+  it('is a single action, in no group, and off by default', () => {
+    expect(ACTIONS).toContain('image.create');
+    expect(Object.values(GROUPS).flat()).not.toContain('image.create');
+    const p = resolvePolicy(parseConfig({ version: 1, vaults: '*', actions: ['@read', '@write'] }), []);
+    expect(p.actions.has('image.create')).toBe(false);
+    expect(p.imageDirs).toEqual([]);
+  });
+  it('can be granted, with absolute image folders', () => {
+    const p = resolvePolicy(parseConfig({ version: 1, vaults: '*', actions: ['image.create'], imageDirs: [dir] }), []);
+    expect(p.actions.has('image.create')).toBe(true);
+    expect(p.imageDirs).toEqual([dir]);
+  });
+  it.each([['not-absolute'], [''], [42]])('refuses imageDirs entry %j', (bad) => {
+    expect(() => parseConfig({ version: 1, vaults: '*', actions: ['@read'], imageDirs: [bad] })).toThrow(/imageDirs/);
+  });
+  it('refuses imageDirs that is not a list', () => {
+    expect(() => parseConfig({ version: 1, vaults: '*', actions: ['@read'], imageDirs: dir })).toThrow(/imageDirs/);
   });
 });

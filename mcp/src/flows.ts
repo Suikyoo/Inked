@@ -54,7 +54,7 @@ function brokenConfigView(file: string | undefined, vaults: NamedVault[]): Confi
   }
   if (!cfg) {
     const d = parseConfig(DEFAULT_CONFIG);
-    return { allVaults: false, vaultIds: new Set(), actions: new Set(d.actions), writesPerMinute: d.writesPerMinute };
+    return { allVaults: false, vaultIds: new Set(), actions: new Set(d.actions), writesPerMinute: d.writesPerMinute, imageDirs: [] };
   }
   const vaultIds = new Set<string>();
   if (cfg.vaults !== '*') {
@@ -67,7 +67,7 @@ function brokenConfigView(file: string | undefined, vaults: NamedVault[]): Confi
       }
     }
   }
-  return { allVaults: cfg.vaults === '*', vaultIds, actions: new Set(cfg.actions), writesPerMinute: cfg.writesPerMinute };
+  return { allVaults: cfg.vaults === '*', vaultIds, actions: new Set(cfg.actions), writesPerMinute: cfg.writesPerMinute, imageDirs: [...cfg.imageDirs] };
 }
 
 /** The user-facing steps: each opens a local page, waits for the user, and applies the result to the runtime. */
@@ -185,6 +185,7 @@ export class Flows {
           vaults: p.vaults ?? (current.allVaults ? '*' : [...current.vaultIds]),
           actions: p.actions ?? [...current.actions],
           limits: { writesPerMinute: p.writesPerMinute ?? current.writesPerMinute },
+          ...(current.imageDirs.length ? { imageDirs: current.imageDirs } : {}),
         });
         proposed = viewOf(resolvePolicy(cfg, vaults));
       } catch (e) {

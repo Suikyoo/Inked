@@ -41,7 +41,7 @@ export function signInPage<T>(opts: {
 
 const SECTIONS: { title: string; items: [Action, string][] }[] = [
   { title: 'Read', items: [['vault.list', 'See vault names'], ['tree.read', 'See folders and note titles'], ['note.read', 'Read notes'], ['search', 'Search notes']] },
-  { title: 'Write', items: [['folder.create', 'Create folders'], ['note.create', 'Create notes'], ['note.append', 'Add to the end of notes'], ['note.update', 'Rewrite notes']] },
+  { title: 'Write', items: [['folder.create', 'Create folders'], ['note.create', 'Create notes'], ['note.append', 'Add to the end of notes'], ['note.update', 'Rewrite notes'], ['image.create', 'Add images to notes (fetches web links; reads folders you list as imageDirs in the config file)']] },
   { title: 'Organize', items: [['note.move', 'Move notes'], ['folder.rename', 'Rename folders'], ['folder.move', 'Move folders']] },
   {
     title: 'Manage',
@@ -99,7 +99,7 @@ ${SECTIONS.map(
       if (!Number.isInteger(writesPerMinute) || writesPerMinute < 1 || writesPerMinute > 1000) {
         throw new PageError('Writes per minute must be a whole number from 1 to 1000.');
       }
-      return opts.onSubmit({ allVaults, vaultIds: allVaults ? new Set() : vaultIds, actions, writesPerMinute });
+      return opts.onSubmit({ allVaults, vaultIds: allVaults ? new Set() : vaultIds, actions, writesPerMinute, imageDirs: opts.current.imageDirs });
     },
     done: opts.done,
   };

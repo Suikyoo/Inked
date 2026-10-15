@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { configPath } from './home';
 
 export const ACTIONS = [
   'vault.list', 'tree.read', 'note.read', 'search',
   'folder.create', 'note.create', 'note.append', 'note.update',
   'note.move', 'folder.rename', 'folder.move',
-  'vault.create', 'config.change',
+  'vault.create', 'image.create', 'config.change',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
@@ -34,6 +35,7 @@ export interface ParsedConfig {
   vaults: '*' | string[];
   actions: ReadonlySet<Action>;
   writesPerMinute: number;
+  imageDirs: readonly string[];
 }
 
 export const isAction = (s: string): s is Action => (ACTIONS as readonly string[]).includes(s);
@@ -43,7 +45,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 export function parseConfig(raw: unknown): ParsedConfig {
   if (!isObj(raw)) throw new ConfigError('Config must be a JSON object');
   for (const k of Object.keys(raw)) {
-    if (!['version', 'vaults', 'actions', 'limits'].includes(k)) throw new ConfigError(`Unknown config key "${k}"`);
+    if (!['version', 'vaults', 'actions', 'limits', 'imageDirs'].includes(k)) throw new ConfigError(`Unknown config key "${k}"`);
   }
   if (raw.version !== 1) throw new ConfigError('Config "version" must be 1');
 
@@ -78,7 +80,15 @@ export function parseConfig(raw: unknown): ParsedConfig {
       writesPerMinute = w;
     }
   }
-  return { vaults, actions, writesPerMinute };
+  const imageDirs: string[] = [];
+  if (raw.imageDirs !== undefined) {
+    const d = raw.imageDirs;
+    if (!Array.isArray(d) || !d.every((x) => typeof x === 'string' && x.trim() !== '' && path.isAbsolute(x))) {
+      throw new ConfigError('Config "imageDirs" must be a list of absolute folder paths');
+    }
+    imageDirs.push(...(d as string[]));
+  }
+  return { vaults, actions, writesPerMinute, imageDirs };
 }
 
 /** With no `file`, a missing default config means read-only access to every vault. */
@@ -101,6 +111,7 @@ export function loadConfig(file?: string): ParsedConfig {
 export interface Policy {
   readonly actions: ReadonlySet<Action>;
   readonly writesPerMinute: number;
+  readonly imageDirs: readonly string[];
   readonly allVaults: boolean;
   readonly vaultIds: ReadonlySet<string>;
   allows(action: Action, vaultId?: string): boolean;
@@ -129,6 +140,7 @@ export function resolvePolicy(cfg: ParsedConfig, vaults: { id: string; name: str
   return {
     actions: cfg.actions,
     writesPerMinute: cfg.writesPerMinute,
+    imageDirs: cfg.imageDirs,
     allVaults,
     vaultIds: ids,
     vaultAllowed,

@@ -9,6 +9,7 @@ export interface ConfigFile {
   vaults: '*' | string[];
   actions: string[];
   limits?: { writesPerMinute?: number };
+  imageDirs?: string[];
 }
 
 /** Access settings with vaults resolved to ids: what the settings page shows and edits. */
@@ -17,6 +18,7 @@ export interface ConfigView {
   vaultIds: Set<string>;
   actions: Set<Action>;
   writesPerMinute: number;
+  imageDirs: string[];
 }
 
 export interface NamedVault {
@@ -30,6 +32,7 @@ export function viewOf(policy: Policy): ConfigView {
     vaultIds: new Set(policy.vaultIds),
     actions: new Set(policy.actions),
     writesPerMinute: policy.writesPerMinute,
+    imageDirs: [...policy.imageDirs],
   };
 }
 
@@ -59,6 +62,7 @@ export function toConfigFile(view: ConfigView, vaults: NamedVault[]): ConfigFile
     vaults: view.allVaults ? '*' : vaults.filter((v) => view.vaultIds.has(v.id)).map((v) => vaultRef(v.id, vaults)),
     actions: compressActions(view.actions),
     limits: { writesPerMinute: view.writesPerMinute },
+    ...(view.imageDirs.length ? { imageDirs: view.imageDirs } : {}),
   };
 }
 

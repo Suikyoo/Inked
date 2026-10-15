@@ -13,6 +13,7 @@ const view = (over: Partial<ConfigView> = {}): ConfigView => ({
   vaultIds: new Set(['a']),
   actions: new Set<Action>(['vault.list']),
   writesPerMinute: 120,
+  imageDirs: [],
   ...over,
 });
 const none = { done: () => '' };
@@ -52,7 +53,7 @@ describe('config page', () => {
     let got: ConfigView | undefined;
     const p = configPage({ vaults: V, current: view(), onSubmit: async (v) => (got = v), ...none });
     await p.submit(new URLSearchParams([['vault', 'a'], ['vault', 'zzz'], ['action', 'search'], ['action', 'nope'], ['wpm', '30']]));
-    expect(got).toEqual({ allVaults: false, vaultIds: new Set(['a']), actions: new Set(['search']), writesPerMinute: 30 });
+    expect(got).toEqual({ allVaults: false, vaultIds: new Set(['a']), actions: new Set(['search']), writesPerMinute: 30, imageDirs: [] });
   });
 
   it('refuses no vaults, no actions, or a bad rate', async () => {
@@ -79,5 +80,19 @@ describe('create-vault page', () => {
     const p = createVaultPage({ name: 'x', color: '#45A89E', onSubmit: async () => 0, ...none });
     await expect(p.submit(new URLSearchParams({ name: ' ', color: '#45A89E' }))).rejects.toThrow('Give the vault a name.');
     await expect(p.submit(new URLSearchParams({ name: 'x', color: '#000000' }))).rejects.toThrow('Pick one of the colors.');
+  });
+});
+
+describe('configPage and imageDirs', () => {
+  it('keeps the image folders when the user applies the page', async () => {
+    const page = configPage({
+      vaults: [],
+      current: { allVaults: true, vaultIds: new Set(), actions: new Set(['note.read']), writesPerMinute: 60, imageDirs: ['/x'] },
+      onSubmit: async (v) => v,
+      done: () => 'ok',
+    });
+    const out = await page.submit(new URLSearchParams([['all', 'on'], ['action', 'note.read'], ['action', 'image.create'], ['wpm', '60']]));
+    expect(out.imageDirs).toEqual(['/x']);
+    expect(out.actions.has('image.create')).toBe(true);
   });
 });
