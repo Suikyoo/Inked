@@ -146,3 +146,9 @@ The SVG scales with `max-width: 100%` through Mermaid's own inline `max-width`. 
 - Measured size of the frame's Mermaid chunks (record after the first production build).
 - Follow-up: teach the `inked-notes` skill in the plugin repo to prefer mermaid fences for diagrams.
 - Possible later optimization: an encrypted diagram cache in the existing image store, to skip re-rendering. Not needed now; rendering is fast and the cache is per session.
+
+## Probe result, revision 2 (Task 4): FAILED on one criterion
+
+Date: 2026-10-15. mermaid 11.17.2 (`npm ls -w web mermaid`). The real frame, client and host, served by the real server under the real CSP, showed: the sandboxed frame loads from an opaque origin and the handshake completes (`small`, `big`, `directive` all `ok: true`); layout is correct at 22px monospace (`big` has `overflow: []` and the labels sit inside their boxes in the screenshot); `themeFillApplied: true` and `inlineStyleApplied: true` for all three; the `%%{init}%%` directive was ignored (`redInjected: false`, `themeFillApplied: true`).
+
+Failing criterion: `mainViolations` was not `[]`. The parent page logged 138 CSP violations: 3 `style-src-elem: inline` and 135 `style-src-attr: inline`, all reported asynchronously after the SVG was handed to the page. A side experiment showed they come from the probe's display path parsing the SVG string with `DOMParser` in the parent page (the `<style>` elements and `style="..."` attributes in the markup), not from `adoptedStyleSheets`, `importNode`, `style.cssText` or `CSSStyleSheet.replaceSync`, which logged none. The display path therefore needs to avoid parsing Mermaid's inline style markup in the parent document, or the frame must send a style-free structure, before the design can be confirmed.
