@@ -27,6 +27,7 @@ import { NotePane } from './NotePane';
 const ID = '3f2b8c1e-5d4a-4e7b-9a6c-1d2e3f4a5b6c';
 let root: Root | null = null;
 let host: HTMLElement | null = null;
+let rerender: () => void = () => undefined;
 afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
@@ -48,15 +49,15 @@ function mount(store: Partial<AppStore>) {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() =>
-    root!.render(
-      <MemoryRouter initialEntries={[{ pathname: '/v/v1/n/n1', state: { mode: 'edit' } }]}>
-        <StoreProvider store={full}>
-          <NotePane vault={state.vaults.v1!} noteId="n1" />
-        </StoreProvider>
-      </MemoryRouter>,
-    ),
+  const element = (
+    <MemoryRouter initialEntries={[{ pathname: '/v/v1/n/n1', state: { mode: 'edit' } }]}>
+      <StoreProvider store={full}>
+        <NotePane vault={state.vaults.v1!} noteId="n1" />
+      </StoreProvider>
+    </MemoryRouter>
   );
+  rerender = () => act(() => root!.render(element));
+  rerender();
   return host.querySelector('textarea')!;
 }
 
@@ -127,5 +128,34 @@ describe('pasting and dropping images into the editor', () => {
     await flush();
     expect(host!.querySelector('[role="alert"]')).not.toBeNull();
     expect(setBody.mock.calls.at(-1)![0]).not.toContain(`inked://${ID}`);
+  });
+
+  it('does not touch the editor when the pane unmounts before a failed upload settles', async () => {
+    let reject!: (e: Error) => void;
+    const prepareImage = vi.fn(async () => ({ id: ID, bytes: new Uint8Array([1]) }));
+    const uploadImage = vi.fn(() => new Promise<void>((_, r) => (reject = r)));
+    const ta = mount({ prepareImage, uploadImage } as Partial<AppStore>);
+    await act(async () => void ta.dispatchEvent(clipboardEvent('paste', [png()])));
+    await flush();
+    expect(setBody).toHaveBeenCalledTimes(1);
+    act(() => root!.unmount());
+    await act(async () => reject(new Error('boom')));
+    await flush();
+    expect(setBody).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the error but writes nothing when the token is already gone from the body', async () => {
+    let reject!: (e: Error) => void;
+    const prepareImage = vi.fn(async () => ({ id: ID, bytes: new Uint8Array([1]) }));
+    const uploadImage = vi.fn(() => new Promise<void>((_, r) => (reject = r)));
+    const ta = mount({ prepareImage, uploadImage } as Partial<AppStore>);
+    await act(async () => void ta.dispatchEvent(clipboardEvent('paste', [png()])));
+    await flush();
+    expect(setBody).toHaveBeenCalledTimes(1);
+    rerender(); // the mocked editor body (no token) is rendered again
+    await act(async () => reject(new Error('boom')));
+    await flush();
+    expect(setBody).toHaveBeenCalledTimes(1);
+    expect(host!.querySelector('[role="alert"]')).not.toBeNull();
   });
 });

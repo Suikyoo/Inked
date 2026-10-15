@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ClipboardEvent, type DragEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type RefObject } from 'react';
 import { imageToken } from 'inked-core';
 import { describeError } from '../lib/util';
 import { ImageRejectedError } from '../state/imageStore';
@@ -41,6 +41,13 @@ export function useImageInsert(o: ImageInsertOptions) {
   bodyRef.current = o.body;
   const opts = useRef(o);
   opts.current = o;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const insert = useCallback(async (files: File[], at: { start: number; end: number }) => {
     const { store, vaultId, textRef, setBody } = opts.current;
@@ -49,6 +56,7 @@ export function useImageInsert(o: ImageInsertOptions) {
     for (const file of files) {
       try {
         const image = await store.prepareImage(vaultId, file);
+        if (!mounted.current) return;
         const token = imageToken(image.id);
         const next = insertAt(bodyRef.current, start, end, token);
         bodyRef.current = next.body;
@@ -56,12 +64,16 @@ export function useImageInsert(o: ImageInsertOptions) {
         start = end = next.caret;
         window.requestAnimationFrame(() => textRef.current?.setSelectionRange(next.caret, next.caret));
         void store.uploadImage(vaultId, image).catch((e) => {
-          const cleaned = bodyRef.current.replace(token, '');
-          bodyRef.current = cleaned;
-          setBody(cleaned);
+          if (!mounted.current) return;
+          if (bodyRef.current.includes(token)) {
+            const cleaned = bodyRef.current.replace(token, '');
+            bodyRef.current = cleaned;
+            setBody(cleaned);
+          }
           setError(`Could not upload the image. ${describeError(e)}`);
         });
       } catch (e) {
+        if (!mounted.current) return;
         setError(e instanceof ImageRejectedError ? e.message : describeError(e));
       }
     }
