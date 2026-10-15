@@ -19,15 +19,15 @@ Success: a fresh AI session can continue a module from the vault alone, every wr
 One folder per module, created with `create_folder` (which creates its `Index`). Notes:
 
 - `Index`: goal, audience and level, prerequisites, full numbered lesson plan (plain text titles), a `Written so far` list of `[[Lesson NN - Title]]` links, and a `Next up` line naming the next lesson. Updated after every batch.
-- `Lesson NN - Title`: titles fixed at planning time so links stay stable.
+- `Lesson NN - Title`: titles fixed at planning time so links stay stable. The title includes the topic (for example `Lesson 02 - Tides and the moon`) because titles are unique per vault.
 
 Resume in a new session: `search` for the module, `read_note` the Index, `read_note` the last written lesson for tone and level, continue from `Next up`.
 
 ## Lesson anatomy
 
-Order: one-line goal; why it matters; core explanation in short chunks; one Mermaid diagram per key idea; a worked example; optional image; `Recap` bullets; `Check yourself` (three questions) with an `Answers` heading at the end; `Prev` / `Next` `[[links]]` and a link to the Index; sources at the end.
+Order: one-line goal; why it matters; core explanation in short chunks; one Mermaid diagram per key idea; a worked example; optional image; `Recap` bullets; `Check yourself` (three questions) with an `Answers` heading at the end; `Prev` `[[link]]` and a link to the Index (a `Next` link is never written ahead: when lesson N lands, the AI appends `Next: [[Lesson N+1 ...]]` to lesson N-1 with `append_to_note`, because links only resolve to existing notes); sources at the end.
 
-About 5-10 minutes to read. One idea cluster per lesson.
+About 600 words (3-5 minutes) plus diagrams, matching `inked-note-style`'s split rule. One idea per lesson; split bigger topics into more lessons.
 
 ## Media rules
 
