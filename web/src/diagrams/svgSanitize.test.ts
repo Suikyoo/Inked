@@ -77,6 +77,30 @@ describe('sanitizeCss @import statements', () => {
   });
 });
 
+describe('sanitizeCss @import without whitespace', () => {
+  it('removes @import"x"; but not @important-like text', () => {
+    expect(sanitizeCss('@import"https://evil.test/a.css";\n.a{color:red}')).toBe('\n.a{color:red}');
+    expect(sanitizeCss('.a{--x:@important}')).toBe('.a{--x:@important}');
+  });
+});
+
+describe('escaped url in presentation attributes', () => {
+  it('removes attributes containing a backslash, keeps ordinary ones', () => {
+    const r = prepareDiagramSvg(
+      svg(
+        '<rect fill="\\75rl(https://evil.test/x)"/><rect filter="\\75rl(https://evil.test/f.svg#a)"/>' +
+          '<path marker-end="u\\72l(https://evil.test)"/>' +
+          '<g class="node" fill="#24222c" marker-end="url(#arrow)"><rect/></g>',
+      ),
+      '',
+    )!;
+    expect(r.svg).not.toMatch(/evil\.test|\\/);
+    expect(r.svg).toContain('class="node"');
+    expect(r.svg).toContain('fill="#24222c"');
+    expect(r.svg).toContain('marker-end="url(#arrow)"');
+  });
+});
+
 describe('isSafeCss', () => {
   it('accepts typical Mermaid css', () => {
     expect(isSafeCss('#d1 .node rect{fill:#24222c;stroke:#7452e0}')).toBe(true);

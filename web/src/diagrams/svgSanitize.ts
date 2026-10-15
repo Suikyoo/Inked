@@ -41,7 +41,8 @@ function getPurifier(): DOMPurify {
       if (attr.name === 'data-inline-style') {
         if (isSafeCss(attr.value)) node.setAttribute(attr.name, sanitizeCss(attr.value));
         else node.removeAttribute(attr.name);
-      } else if (!onlyFragmentUrls(attr.value)) {
+      } else if (attr.value.includes('\\') || !onlyFragmentUrls(attr.value)) {
+        // Browsers decode CSS escapes in presentation attributes, so \75rl( would slip past the url( check.
         node.removeAttribute(attr.name);
       }
     }
@@ -52,7 +53,7 @@ function getPurifier(): DOMPurify {
 
 /** Drop @import and any url() that is not a same-document fragment. */
 export function sanitizeCss(css: string): string {
-  return css.replace(/@import\s+[^;{}\n]*;?/gi, '').replace(/url\(\s*(?!['"]?#)[^)]*\)/gi, 'none');
+  return css.replace(/@import(?![\w-])[^;{}\n]*;?/gi, '').replace(/url\(\s*(?!['"]?#)[^)]*\)/gi, 'none');
 }
 
 /**
