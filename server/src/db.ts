@@ -85,6 +85,14 @@ CREATE TABLE IF NOT EXISTS user_settings (
   enc_settings TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS images (
+  id         TEXT PRIMARY KEY,
+  vault_id   TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+  size       INTEGER NOT NULL,
+  enc_blob   BLOB NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS images_vault ON images(vault_id);
 `;
 
 export function openDb(file: string): Db {

@@ -16,8 +16,9 @@ import { inviteRoutes } from './routes/invites.js';
 import { noteRoutes } from './routes/notes.js';
 import { vaultRoutes } from './routes/vaults.js';
 import { settingsRoutes } from './routes/settings.js';
+import { imageRoutes } from './routes/images.js';
 import { vectorRoutes } from './routes/vectors.js';
-import { BODY_LIMIT } from './schemas.js';
+import { BODY_LIMIT, IMAGE_BLOB_MAX } from './schemas.js';
 
 export interface AppOptions {
   dataDir: string;
@@ -151,6 +152,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     defaultJsonParser(request, body as string, done);
   });
 
+  // Encrypted images arrive as raw bytes; the cap is the route's, not the 4 MiB JSON limit.
+  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: IMAGE_BLOB_MAX }, (_request, body, done) => {
+    done(null, body);
+  });
+
   // CSRF: every state-changing request must carry the custom header (SameSite=Strict does the rest).
   app.addHook('onRequest', async (request) => {
     if (!SAFE_METHODS.has(request.method) && request.headers['x-inked'] !== '1') {
@@ -191,6 +197,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   folderRoutes(app, ctx);
   noteRoutes(app, ctx);
   vectorRoutes(app, ctx);
+  imageRoutes(app, ctx);
   settingsRoutes(app, ctx);
 
   // The SPA is optional: without a built web/dist the server is API-only.

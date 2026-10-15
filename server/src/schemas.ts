@@ -64,3 +64,13 @@ export const DEFAULT_KDF_PARAMS: KdfParams = { alg: 'argon2id', m: 65536, t: 3, 
 
 /** Fixed key order so stored and fake params serialize identically. */
 export const normalizeKdfParams = (p: KdfParams): KdfParams => ({ alg: p.alg, m: p.m, t: p.t, p: p.p });
+
+/** An encrypted image is iv[12] || ciphertext || tag[16]: at most a 10 MiB image plus 28 bytes, at least 1 byte plus 28. */
+export const IMAGE_BLOB_MAX = 10 * 1024 * 1024 + 28;
+export const IMAGE_BLOB_MIN = 29;
+
+export const imageParams = {
+  type: 'object',
+  required: ['vaultId', 'imageId'],
+  properties: { vaultId: uuid, imageId: uuid },
+} as const;
