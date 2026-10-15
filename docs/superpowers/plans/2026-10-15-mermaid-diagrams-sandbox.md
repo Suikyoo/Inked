@@ -4,7 +4,7 @@
 
 **Goal:** A ```` ```mermaid ```` fence in a note is drawn as a themed SVG diagram in view mode. Mermaid runs in a sandboxed iframe with its own CSP; the main page keeps its strict CSP.
 
-**Architecture:** A separate Vite build produces `dist/frame/` (Mermaid and two fonts). The server serves `/frame/*` with its own CSP (inline styles allowed, no network, `sandbox`) and CORS. The note view talks to the iframe over a `MessageChannel`, gets back an SVG string, sanitizes it, lifts its `<style>` into a constructed stylesheet and its `style=""` attributes into CSSOM writes (both CSP-safe, as the revision 1 probe confirmed), and swaps the code block for a `<figure>`. Any failure leaves the code block and adds a one-line note.
+**Architecture:** A separate Vite build produces `dist/frame/` (Mermaid and two fonts). The server serves `/frame/*` with its own CSP (inline styles allowed, no network, `sandbox`) and CORS. The note view talks to the iframe over a `MessageChannel`, gets back `{ svg, css }` (the frame lifted Mermaid's `<style>` blocks into `css` and its `style=""` attributes into `data-inline-style`), sanitizes both, applies the css through a constructed stylesheet and each `data-inline-style` through CSSOM writes (both CSP-safe, as the revision 1 probe confirmed), and swaps the code block for a `<figure>`. Any failure leaves the code block and adds a one-line note.
 
 **Tech Stack:** TypeScript, React 18, `mermaid` 11 (already added to `web/package.json` by an earlier task), DOMPurify, Fastify, Vite (second build config), vitest + jsdom.
 
@@ -18,9 +18,10 @@ Copied from the spec. Every task's requirements include these.
 - The main app's CSP stays exactly as in `securityHeaders` of `server/src/app.ts` (`style-src 'self'`; no inline `<style>`, no `style="..."` attribute strings; CSSOM writes are fine). Only `/frame/*` responses differ.
 - `/frame/*` response headers: `Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'` and `Access-Control-Allow-Origin: *`, plus the other existing security headers unchanged. No `'unsafe-eval'`. An unknown path under `/frame` (including `/frame` and `/frame/`) is a 404 JSON `{ "error": "not_found" }`, never the SPA shell.
 - The iframe is `<iframe sandbox="allow-scripts" src="/frame/frame.html">`: no `allow-same-origin`. It is created on the first diagram, hidden with the CSS class `diagram-frame` (`visibility: hidden`, off-screen, fixed size; never `display: none`).
-- Protocol (all after the handshake on a `MessageChannel`): parent posts `{ type: 'inked-diagram-connect', theme }` with `port2` transferred, target origin `'*'`; the frame accepts only the first such message with `event.source === window.parent` and one port, and replies `{ type: 'ready' }`. Requests `{ type: 'render', id, source }`; replies `{ type: 'result', id, ok: true, svg }` or `{ type: 'result', id, ok: false, reason: 'oversized' | 'syntax' | 'load', message? }`. Both sides validate every message with a type guard and ignore the rest. The parent treats the SVG as untrusted.
+- Protocol (all after the handshake on a `MessageChannel`): parent posts `{ type: 'inked-diagram-connect', theme }` with `port2` transferred, target origin `'*'`; the frame accepts only the first such message with `event.source === window.parent` and one port, and replies `{ type: 'ready' }`. Requests `{ type: 'render', id, source }`; replies `{ type: 'result', id, ok: true, svg, css }` or `{ type: 'result', id, ok: false, reason: 'oversized' | 'syntax' | 'load', message? }`. Both sides validate every message with a type guard and ignore the rest. The parent treats the SVG as untrusted.
 - Timeouts: no `ready` within 15 s is a load failure; no result within 30 s is `timeout` and the parent removes the iframe and makes a new one on the next request. `load` and `timeout` results are never cached.
 - Mermaid config in the frame: `startOnLoad: false`, `securityLevel: 'strict'`, `theme: 'base'`, `themeVariables` from the connect message, `maxTextSize` 20 000, `maxEdges` 200, `htmlLabels: false` and `flowchart.htmlLabels: false`, and `secure` extended with `theme`, `themeCSS`, `themeVariables`, `fontFamily`. Public Sans 400, 500 and 600 are loaded (3 s cap) before the first render.
+- The page never parses markup that contains `<style>` or `style="..."`: its CSP reports a violation for each, even in a detached `DOMParser` document (found by the first Task 4 gate run). The frame lifts them (`liftStyles`: styles to `css`, each style attribute to `data-inline-style`) and sends `{ svg, css }`; the page applies `css` through a constructed stylesheet and each `data-inline-style` through CSSOM.
 - SVG sanitizer (parent): removes `script`, `foreignObject`, event attributes and any `href` / `xlink:href` that is not a same-document fragment (`#...`). CSS: no `@import`, no `url()` except `url(#fragment)`. The note sanitizer `sanitizeHtml` is unchanged.
 - `markdown-it` gets no mermaid rule. The fence stays `pre > code.language-mermaid`. `renderUntrustedMarkdown` output (Ask answers) is never hydrated.
 - Cache: in memory only, keyed by trimmed source, at most 50 entries. `clearDiagrams()` empties it and removes the iframe, and is called from `enterUnlocked` and `dropKeys` in `web/src/state/store.ts` next to `this.images.clear()`.
@@ -977,6 +978,149 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
+### Task 3b: Style lifting moves into the frame (amends Tasks 2 and 3)
+
+The first Task 4 gate run failed on one criterion: the main page logged 138 CSP violations (`style-src-elem` and `style-src-attr`, all `inline`). They came from parsing Mermaid's SVG string with `DOMParser` in the page: a document created by `DOMParser` inherits the page's CSP, and every `<style>` element and `style="..."` attribute in the markup it parses is reported, even though the document is detached. The fix is that the page never parses markup that contains either. The frame, whose CSP allows inline styles, lifts the styles out and sends `{ svg, css }`. This task amends the code of Tasks 2 and 3; Task 5 and Task 7 are written for the new shape.
+
+**Files:**
+- Create: `web/src/diagram-frame/liftStyles.ts`
+- Modify: `web/src/diagrams/protocol.ts`, `web/src/diagram-frame/renderer.ts`, `web/src/diagrams/frameClient.ts`
+- Test: create `web/src/diagram-frame/liftStyles.test.ts`; modify `web/src/diagrams/protocol.test.ts`, `web/src/diagram-frame/renderer.test.ts`, `web/src/diagrams/frameClient.test.ts`
+
+**Interfaces:**
+- Consumes: the Task 2 and Task 3 code as committed.
+- Produces:
+  - `liftStyles(raw: string): { svg: string; css: string } | null` in `liftStyles.ts` (frame side). `svg` has no `<style>` and no `style` attribute (each attribute is kept as `data-inline-style="<css text>"`); `css` is the text of the removed `<style>` blocks. `null` when `raw` holds no `<svg>`.
+  - `RenderResult` ok variant is now `{ type: 'result'; id: string; ok: true; svg: string; css: string }`, and `isRenderResult` requires `css` to be a string.
+  - `FrameOutcome` ok variant is now `{ ok: true; svg: string; css: string }`. The size cap applies to `svg.length + css.length`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`web/src/diagram-frame/liftStyles.test.ts`:
+
+```ts
+// @vitest-environment jsdom
+import { describe, expect, it } from 'vitest';
+import { liftStyles } from './liftStyles';
+
+const svg = (inner: string, attrs = '') =>
+  `<svg id="d1" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" ${attrs}>${inner}</svg>`;
+
+describe('liftStyles', () => {
+  it('lifts <style> blocks out of the svg and returns their text', () => {
+    const r = liftStyles(svg('<style>#d1 .node{fill:red}</style><rect class="node"/>'))!;
+    expect(r.svg).not.toContain('<style');
+    expect(r.css).toContain('#d1 .node{fill:red}');
+    expect(r.svg).toContain('class="node"');
+  });
+
+  it('moves style attributes, root included, to data-inline-style', () => {
+    const r = liftStyles(svg('<rect style="fill:#f9f;stroke:#333"/>', 'style="max-width: 300px;"'))!;
+    expect(r.svg).not.toMatch(/\sstyle=/);
+    expect(r.svg).toContain('data-inline-style="fill:#f9f;stroke:#333"');
+    expect(r.svg).toContain('data-inline-style="max-width: 300px;"');
+  });
+
+  it('keeps the structure Mermaid needs', () => {
+    const r = liftStyles(svg('<defs><marker id="m"><path d="M0 0"/></marker></defs><g class="node"><rect/><text>hi</text></g>'))!;
+    expect(r.svg).toContain('<marker');
+    expect(r.svg).toContain('<text>hi</text>');
+    expect(r.svg).toContain('viewBox="0 0 10 10"');
+    expect(r.css).toBe('');
+  });
+
+  it('joins several <style> blocks', () => {
+    const r = liftStyles(svg('<style>.a{fill:red}</style><style>.b{fill:blue}</style>'))!;
+    expect(r.css).toContain('.a{fill:red}');
+    expect(r.css).toContain('.b{fill:blue}');
+  });
+
+  it('returns null when there is no svg', () => {
+    expect(liftStyles('<div>no</div>')).toBeNull();
+    expect(liftStyles('')).toBeNull();
+  });
+});
+```
+
+Amend the existing tests:
+
+- `web/src/diagrams/protocol.test.ts`: the accepted ok result becomes `{ type: 'result', id: 'a', ok: true, svg: '<svg/>', css: '' }`; in the wrong-shapes test replace `isRenderResult({ type: 'result', id: 'a', ok: true })` with three expectations that are all `false`: ok result with no `svg`, ok result with `svg: '<svg/>'` and no `css`, and ok result with `svg: '<svg/>'` and `css: 5`.
+- `web/src/diagram-frame/renderer.test.ts`: the success expectation becomes `{ type: 'result', id: 'inked-dg-1', ok: true, svg: '<svg id="inked-dg-1"></svg>', css: '' }`. Add two tests: (a) when the mocked `render` resolves `<svg id="x" style="opacity:0.5"><style>#x .n{fill:red}</style><rect class="n"/></svg>`, the result is ok, its `svg` contains no `<style` and no ` style=`, contains `data-inline-style="opacity:0.5"`, and its `css` contains `#x .n{fill:red}`; (b) when the mocked `render` resolves `{ svg: '<div>not an svg</div>' }`, the result is `{ type: 'result', id: 'a', ok: false, reason: 'syntax' }`.
+- `web/src/diagrams/frameClient.test.ts`: every ok result the fake frame posts gains `css: ''`; every expectation `{ ok: true, svg: X }` becomes `{ ok: true, svg: X, css: '' }`; the oversized test posts `svg: 'x'.repeat(MAX_SVG_SIZE)` with `css: 'y'` (together over the cap) and still expects `{ ok: false, reason: 'oversized' }`; add one test that a result with a `css` string is passed through (`css: '#a{fill:red}'` comes back unchanged).
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npm test -w web -- src/diagram-frame src/diagrams/protocol.test.ts src/diagrams/frameClient.test.ts`
+Expected: `liftStyles.test.ts` FAILS (cannot resolve `./liftStyles`); the amended protocol, renderer and client tests FAIL.
+
+- [ ] **Step 3: Implement**
+
+`web/src/diagram-frame/liftStyles.ts`:
+
+```ts
+/**
+ * Runs in the frame, whose CSP allows inline styles. Takes Mermaid's SVG string apart so the page never has to
+ * parse inline-styled markup: the page's CSP reports a violation for every <style> element and style="..."
+ * attribute in any document it parses, even a detached one. The svg that comes back has no <style> and no style
+ * attribute (each attribute is kept as data-inline-style for the page to apply through CSSOM); the css is the
+ * text of the removed <style> blocks.
+ */
+export function liftStyles(raw: string): { svg: string; css: string } | null {
+  const doc = new DOMParser().parseFromString(`<body>${raw}</body>`, 'text/html');
+  const svg = doc.body.querySelector('svg');
+  if (!svg) return null;
+  let css = '';
+  for (const style of Array.from(svg.querySelectorAll('style'))) {
+    css += `${style.textContent ?? ''}\n`;
+    style.remove();
+  }
+  for (const el of [svg, ...Array.from(svg.querySelectorAll('[style]'))]) {
+    const value = el.getAttribute('style');
+    if (value === null) continue;
+    el.removeAttribute('style');
+    el.setAttribute('data-inline-style', value);
+  }
+  return { svg: svg.outerHTML, css };
+}
+```
+
+In `web/src/diagrams/protocol.ts`: change the ok variant of `RenderResult` to include `css: string`, and in `isRenderResult` change the ok branch to `if (v.ok === true) return typeof v.svg === 'string' && typeof v.css === 'string';`.
+
+In `web/src/diagram-frame/renderer.ts`: import `liftStyles` from `./liftStyles`, and in the `try` after `const { svg } = await mermaid.render(id, text);` replace the return with:
+
+```ts
+        const lifted = liftStyles(svg);
+        if (!lifted) return { type: 'result', id, ok: false, reason: 'syntax' };
+        return { type: 'result', id, ok: true, svg: lifted.svg, css: lifted.css };
+```
+
+In `web/src/diagrams/frameClient.ts`: change `FrameOutcome`'s ok variant to `{ ok: true; svg: string; css: string }`, and in the message handler replace the two ok branches with:
+
+```ts
+          else if (d.svg.length + d.css.length > MAX_SVG_SIZE) settle({ ok: false, reason: 'oversized' });
+          else settle({ ok: true, svg: d.svg, css: d.css });
+```
+
+- [ ] **Step 4: Run the tests to verify they pass, then type-check and build**
+
+Run: `npm test -w web -- src/diagram-frame src/diagrams/protocol.test.ts src/diagrams/frameClient.test.ts`
+Expected: PASS, output pristine.
+Run: `npx tsc -b` (in `web`)
+Expected: PASS.
+Run: `npm run build -w web`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add web/src/diagram-frame web/src/diagrams/protocol.ts web/src/diagrams/protocol.test.ts web/src/diagrams/frameClient.ts web/src/diagrams/frameClient.test.ts
+git commit -m "fix(web): lift Mermaid styles in the frame so the page never parses inline styles
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
+---
+
 ### Task 4: Gate probe (throwaway): the real frame under the real CSP
 
 This is the gate for the rest of the plan. The probe harness is deleted at the end of the task. Only the recorded result is committed.
@@ -1062,31 +1206,20 @@ const big: DiagramTheme = { ...base, fontFamily: 'monospace', fontSize: '22px' }
 
 const results: Record<string, unknown> = {};
 
-function show(name: string, svg: string) {
-  const doc = new DOMParser().parseFromString(`<body>${svg}</body>`, 'text/html');
-  const el = doc.body.querySelector('svg') as SVGElement;
-  let css = '';
-  for (const s of Array.from(el.querySelectorAll('style'))) {
-    css += `${s.textContent}\n`;
-    s.remove();
-  }
-  for (const n of [el, ...Array.from(el.querySelectorAll<SVGElement>('[style]'))]) {
-    const v = n.getAttribute('style');
-    n.removeAttribute('style');
-    if (v) n.setAttribute('data-inline-style', v);
-  }
+function show(name: string, svg: string, css: string) {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(css);
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-  const live = document.importNode(el, true) as SVGElement;
+  const host = document.createElement('section');
+  host.id = `host-${name}`;
+  // The frame already lifted <style> and style="...": this markup has neither, so parsing it logs no violation.
+  host.innerHTML = svg;
+  const live = host.querySelector('svg') as SVGElement;
   for (const n of [live, ...Array.from(live.querySelectorAll<SVGElement>('[data-inline-style]'))]) {
     const v = n.getAttribute('data-inline-style');
     if (v) n.style.cssText = v;
     n.removeAttribute('data-inline-style');
   }
-  const host = document.createElement('section');
-  host.id = `host-${name}`;
-  host.append(live);
   document.body.append(host);
   return { live, css };
 }
@@ -1099,7 +1232,7 @@ async function run(name: string, theme: DiagramTheme, source: string) {
     results[name] = { ok: false, reason: out.reason, message: out.message };
     return;
   }
-  const { live, css } = show(name, out.svg);
+  const { live, css } = show(name, out.svg, out.css);
   await new Promise((r) => setTimeout(r, 100));
   const overflow: string[] = [];
   for (const g of Array.from(live.querySelectorAll('g.node'))) {
@@ -1117,6 +1250,7 @@ async function run(name: string, theme: DiagramTheme, source: string) {
     inlineStyleApplied: styled ? getComputedStyle(styled).fill === 'rgb(255, 0, 255)' : null,
     overflow,
     redInjected: /red\s*!important/.test(out.svg),
+    leftoverStyle: /<style|\sstyle=/.test(out.svg),
   };
 }
 
@@ -1166,7 +1300,8 @@ All of these must hold:
 - `big` (22px monospace) has `overflow: []`, and in the screenshot its labels sit inside their boxes. This is the result that failed in revision 1.
 - `small` and `big` have `themeFillApplied: true` and `inlineStyleApplied: true`.
 - `directive` has `redInjected: false` and `themeFillApplied: true` (the `%%{init}%%` directive was ignored).
-- `mainViolations` is `[]` (the parent page logged no CSP violation at all).
+- `leftoverStyle` is `false` for all three (the frame sent no `<style>` and no `style` attribute).
+- `mainViolations` is `[]` (the parent page logged no CSP violation at all). The first run of this probe, before Task 3b, failed exactly here.
 
 If every condition holds, go on. **If any fails, STOP.** Delete the harness (Step 5), record the failing values in the spec, commit that, and report to the user. Do not start Task 5.
 
@@ -1183,12 +1318,12 @@ Expected: nothing is modified except what the next step adds (and `web/dist` is 
 
 - [ ] **Step 6: Record the result in the spec and commit**
 
-Append to the end of `docs/superpowers/specs/2026-10-15-mermaid-diagrams-design.md`:
+Append to the end of `docs/superpowers/specs/2026-10-15-mermaid-diagrams-design.md` (it already holds the first run's FAILED section; keep it):
 
 ```markdown
-## Probe result, revision 2 (Task 4)
+## Probe result, revision 2, second run (Task 4)
 
-Date and mermaid version: <fill from the run>. The real frame, client and host, served by the real server under the real CSP, showed: the sandboxed frame loads from an opaque origin (script, chunks and fonts pass CORS under the frame CSP) and the handshake completes; layout is correct at 22px monospace (no label overflows its box); the theme fill and a per-node inline style survive the display path; a note's `%%{init}%%` directive is ignored; and the main page logged no CSP violation. The design in this revision is confirmed.
+Date and mermaid version: <fill from the run>. The first run failed only on `mainViolations` (see the section above). After the frame took over lifting `<style>` and `style=""` (Task 3b), the second run showed: the real frame, client and host, served by the real server under the real CSP, showed: the sandboxed frame loads from an opaque origin (script, chunks and fonts pass CORS under the frame CSP) and the handshake completes; layout is correct at 22px monospace (no label overflows its box); the theme fill and a per-node inline style survive the display path; a note's `%%{init}%%` directive is ignored; and the main page logged no CSP violation. The design in this revision is confirmed.
 ```
 
 Replace `<fill from the run>` with the real date and the output of `npm ls -w web mermaid` before committing.
@@ -1209,9 +1344,9 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Test: `web/src/diagrams/svgSanitize.test.ts`
 
 **Interfaces:**
-- Consumes: nothing from earlier tasks.
+- Consumes: nothing from earlier tasks. Its inputs are the `svg` and `css` that the frame sends (Task 3b: `svg` has no `<style>` and no `style` attribute; each attribute is `data-inline-style`).
 - Produces:
-  - `prepareDiagramSvg(raw: string): { svg: string; css: string } | null`. `svg` has no `<style>` and no `style` attributes (each became `data-inline-style="<css text>"`); `css` is the sanitized text of the removed `<style>` blocks. Returns `null` when `raw` holds no `<svg>`.
+  - `prepareDiagramSvg(svg: string, css: string): { svg: string; css: string } | null`. Sanitizes the svg (the input is untrusted: it came from another window) and the css. Returns `null` when nothing svg-like survives. `data-inline-style` attributes are kept for the mount step.
   - `sanitizeCss(css: string): string`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1227,16 +1362,14 @@ const svg = (inner: string, attrs = '') =>
   `<svg id="d1" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" ${attrs}>${inner}</svg>`;
 
 describe('prepareDiagramSvg', () => {
-  it('lifts <style> blocks out of the svg and returns their text', () => {
-    const r = prepareDiagramSvg(svg('<style>#d1 .node{fill:red}</style><rect class="node"/>'))!;
-    expect(r.svg).not.toContain('<style');
-    expect(r.css).toContain('#d1 .node{fill:red}');
+  it('returns the sanitized svg and the sanitized css', () => {
+    const r = prepareDiagramSvg(svg('<rect class="node"/>'), '#d1 .node{fill:red}')!;
     expect(r.svg).toContain('class="node"');
+    expect(r.css).toBe('#d1 .node{fill:red}');
   });
 
-  it('moves style attributes, root included, to data-inline-style', () => {
-    const r = prepareDiagramSvg(svg('<rect style="fill:#f9f;stroke:#333"/>', 'style="max-width: 300px;"'))!;
-    expect(r.svg).not.toMatch(/\sstyle=/);
+  it('keeps data-inline-style attributes for the mount step, root included', () => {
+    const r = prepareDiagramSvg(svg('<rect data-inline-style="fill:#f9f;stroke:#333"/>', 'data-inline-style="max-width: 300px;"'), '')!;
     expect(r.svg).toContain('data-inline-style="fill:#f9f;stroke:#333"');
     expect(r.svg).toContain('data-inline-style="max-width: 300px;"');
   });
@@ -1247,6 +1380,7 @@ describe('prepareDiagramSvg', () => {
         '<script>alert(1)</script><foreignObject><div>x</div></foreignObject><rect onclick="a()"/>' +
           '<a href="https://evil.test"><text>t</text></a><use xlink:href="https://evil.test/x.svg#a"/><use href="#ok"/>',
       ),
+      '',
     )!;
     expect(r.svg).not.toMatch(/<script|foreignObject|onclick|evil\.test/i);
     expect(r.svg).toContain('href="#ok"');
@@ -1255,19 +1389,25 @@ describe('prepareDiagramSvg', () => {
   it('keeps the structure Mermaid needs', () => {
     const r = prepareDiagramSvg(
       svg('<defs><marker id="m"><path d="M0 0"/></marker></defs><g class="node"><rect/><text>hi</text></g>'),
+      '',
     )!;
     expect(r.svg).toContain('<marker');
     expect(r.svg).toContain('<text>hi</text>');
     expect(r.svg).toContain('viewBox="0 0 10 10"');
   });
 
-  it('returns null when there is no svg', () => {
-    expect(prepareDiagramSvg('<div>no</div>')).toBeNull();
-    expect(prepareDiagramSvg('')).toBeNull();
+  it('strips a style element and a style attribute even if the frame sends them', () => {
+    const r = prepareDiagramSvg(svg('<style>.a{fill:red}</style><rect style="fill:red"/>'), '')!;
+    expect(r.svg).not.toMatch(/<style|\sstyle=/);
   });
 
-  it('sanitizes the lifted css', () => {
-    const r = prepareDiagramSvg(svg('<style>@import url(https://evil.test/a.css); .a{background:url(https://evil.test/x.png)}</style>'))!;
+  it('returns null when there is no svg', () => {
+    expect(prepareDiagramSvg('<div>no</div>', '')).toBeNull();
+    expect(prepareDiagramSvg('', '')).toBeNull();
+  });
+
+  it('sanitizes the css', () => {
+    const r = prepareDiagramSvg(svg('<rect/>'), '@import url(https://evil.test/a.css); .a{background:url(https://evil.test/x.png)}')!;
     expect(r.css).not.toContain('evil.test');
   });
 });
@@ -1300,9 +1440,9 @@ Expected: FAIL (cannot resolve `./svgSanitize`).
 import createDOMPurify, { type DOMPurify } from 'dompurify';
 
 export interface PreparedDiagram {
-  /** Sanitized SVG with no <style> and no style="" (each became data-inline-style). */
+  /** Sanitized SVG. Style attributes, if the frame lifted them, are data-inline-style. */
   svg: string;
-  /** Sanitized text of the <style> blocks that were lifted out. */
+  /** Sanitized css text for the constructed stylesheet. */
   css: string;
 }
 
@@ -1328,30 +1468,15 @@ export function sanitizeCss(css: string): string {
 }
 
 /**
- * Turn the renderer's SVG string into something the strict CSP allows. The CSP bans inline <style> and style="..."
- * strings, so both are taken out here: the css goes to a constructed stylesheet, and each style attribute is kept
- * as data-inline-style for the mount step to apply through CSSOM. The input is untrusted (it came from another
- * window), so it is also sanitized.
+ * The frame is another window, so what it sends is untrusted: sanitize the svg and the css before they touch the
+ * page. The frame has already lifted <style> and style="..." out of the svg (the page's CSP reports each one as a
+ * violation when parsed); a hostile frame that sends them anyway has them stripped here.
  */
-export function prepareDiagramSvg(raw: string): PreparedDiagram | null {
-  // A detached document: nothing is applied or fetched while we edit it.
-  const doc = new DOMParser().parseFromString(`<body>${raw}</body>`, 'text/html');
-  const svg = doc.body.querySelector('svg');
-  if (!svg) return null;
-  let css = '';
-  for (const style of Array.from(svg.querySelectorAll('style'))) {
-    css += `${style.textContent ?? ''}\n`;
-    style.remove();
-  }
-  for (const el of [svg, ...Array.from(svg.querySelectorAll('[style]'))]) {
-    const value = el.getAttribute('style');
-    if (value === null) continue;
-    el.removeAttribute('style');
-    el.setAttribute('data-inline-style', value);
-  }
-  const clean = getPurifier().sanitize(svg.outerHTML, {
+export function prepareDiagramSvg(svg: string, css: string): PreparedDiagram | null {
+  const clean = getPurifier().sanitize(svg, {
     USE_PROFILES: { svg: true, svgFilters: true },
     FORBID_TAGS: ['style', 'script', 'foreignObject'],
+    FORBID_ATTR: ['style'],
   });
   if (!clean.includes('<svg')) return null;
   return { svg: clean, css: sanitizeCss(css) };
@@ -1367,7 +1492,7 @@ Expected: PASS. If a case fails because DOMPurify drops or renames something (fo
 
 ```bash
 git add web/src/diagrams/svgSanitize.ts web/src/diagrams/svgSanitize.test.ts
-git commit -m "feat(web): sanitize and CSP-prepare diagram SVG
+git commit -m "feat(web): sanitize diagram SVG and CSS from the frame
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
@@ -1582,8 +1707,10 @@ vi.mock('./frameClient', () => ({ createFrameClient: (c: () => Promise<unknown>)
 vi.mock('./frameHost', () => ({ connectFrame: (t: unknown) => connectFrame(t) }));
 vi.mock('./theme', () => ({ readDiagramTheme: () => ({ darkMode: true, tag: 'theme' }) }));
 
+// What the frame sends after lifting: no <style>, no style attribute.
 const OK_SVG =
-  '<svg id="inked-dg-1" viewBox="0 0 1 1" xmlns="http://www.w3.org/2000/svg"><style>#inked-dg-1 .n{fill:red}</style><rect class="n"/></svg>';
+  '<svg id="inked-dg-1" viewBox="0 0 1 1" xmlns="http://www.w3.org/2000/svg"><rect class="n" data-inline-style="opacity: 0.5"/></svg>';
+const OK_CSS = '#inked-dg-1 .n{fill:red}';
 
 async function load() {
   vi.resetModules();
@@ -1600,12 +1727,13 @@ beforeEach(() => {
 describe('renderDiagram', () => {
   it('renders through the frame, sanitizes, and returns the css separately', async () => {
     const mod = await load();
-    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG });
+    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG, css: OK_CSS });
     const r = await mod.renderDiagram('  graph TD; A-->B\n');
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.id).toMatch(/^inked-dg-\d+$/);
     expect(r.svg).not.toContain('<style');
+    expect(r.svg).toContain('data-inline-style="opacity: 0.5"');
     expect(r.css).toContain('.n{fill:red}');
     expect(frame.render).toHaveBeenCalledWith(r.id, 'graph TD; A-->B');
   });
@@ -1613,7 +1741,7 @@ describe('renderDiagram', () => {
   it('connects the frame lazily, once, with the current theme', async () => {
     const mod = await load();
     expect(createFrameClient).not.toHaveBeenCalled();
-    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG });
+    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG, css: OK_CSS });
     await mod.renderDiagram('graph TD; A-->B');
     await mod.renderDiagram('graph TD; B-->C');
     expect(createFrameClient).toHaveBeenCalledTimes(1);
@@ -1640,13 +1768,13 @@ describe('renderDiagram', () => {
 
   it('treats svg that sanitizes to nothing as a syntax failure', async () => {
     const mod = await load();
-    frame.render.mockResolvedValue({ ok: true, svg: '<div>not an svg</div>' });
+    frame.render.mockResolvedValue({ ok: true, svg: '<div>not an svg</div>', css: '' });
     expect(await mod.renderDiagram('graph TD; A-->B')).toMatchObject({ ok: false, reason: 'syntax' });
   });
 
   it('caches by source: one render, same object, and peek sees it once settled', async () => {
     const mod = await load();
-    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG });
+    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG, css: OK_CSS });
     expect(mod.peekDiagram('graph TD; A-->B')).toBeUndefined();
     const p = mod.renderDiagram('graph TD; A-->B');
     expect(mod.peekDiagram('graph TD; A-->B')).toBeUndefined();
@@ -1662,14 +1790,14 @@ describe('renderDiagram', () => {
     frame.render.mockResolvedValueOnce({ ok: false, reason });
     expect(await mod.renderDiagram('graph TD; A-->B')).toEqual({ ok: false, reason });
     expect(mod.peekDiagram('graph TD; A-->B')).toBeUndefined();
-    frame.render.mockResolvedValueOnce({ ok: true, svg: OK_SVG });
+    frame.render.mockResolvedValueOnce({ ok: true, svg: OK_SVG, css: OK_CSS });
     expect((await mod.renderDiagram('graph TD; A-->B')).ok).toBe(true);
     expect(frame.render).toHaveBeenCalledTimes(2);
   });
 
   it('keeps at most 50 results', async () => {
     const mod = await load();
-    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG });
+    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG, css: OK_CSS });
     for (let i = 0; i < 51; i++) await mod.renderDiagram(`graph TD; A${i}-->B`);
     expect(mod.peekDiagram('graph TD; A0-->B')).toBeUndefined();
     expect(mod.peekDiagram('graph TD; A50-->B')).toBeDefined();
@@ -1677,7 +1805,7 @@ describe('renderDiagram', () => {
 
   it('clearDiagrams empties the cache and resets the frame', async () => {
     const mod = await load();
-    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG });
+    frame.render.mockResolvedValue({ ok: true, svg: OK_SVG, css: OK_CSS });
     await mod.renderDiagram('graph TD; A-->B');
     mod.clearDiagrams();
     expect(frame.reset).toHaveBeenCalledTimes(1);
@@ -1771,7 +1899,7 @@ async function draw(text: string): Promise<DiagramResult> {
   const out = await frameClient().render(id, text);
   if (!out.ok) return { ok: false, reason: out.reason, message: out.message };
   // The frame is another window: its svg is untrusted.
-  const prepared = prepareDiagramSvg(out.svg);
+  const prepared = prepareDiagramSvg(out.svg, out.css);
   if (!prepared) return { ok: false, reason: 'syntax' };
   return { ok: true, id, ...prepared };
 }

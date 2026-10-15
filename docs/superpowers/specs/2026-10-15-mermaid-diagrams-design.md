@@ -60,7 +60,7 @@ All traffic after the handshake uses a `MessageChannel`, so no other window can 
 1. The parent creates the channel and, on the iframe's `load`, sends `{ type: 'inked-diagram-connect', theme }` with `port2` in the transfer list, to target origin `'*'` (the frame's origin is opaque).
 2. The frame accepts the first such message only if `event.source === window.parent`, keeps `ports[0]`, configures Mermaid from `theme` on first use, and replies `{ type: 'ready' }`.
 3. Parent to frame: `{ type: 'render', id, source }`. `id` is a string the parent makes unique (`inked-dg-<n>`) and Mermaid uses as the SVG id, so cached results never collide.
-4. Frame to parent: `{ type: 'result', id, ok: true, svg }` or `{ type: 'result', id, ok: false, reason: 'oversized' | 'syntax' | 'load', message? }`.
+4. Frame to parent: `{ type: 'result', id, ok: true, svg, css }` or `{ type: 'result', id, ok: false, reason: 'oversized' | 'syntax' | 'load', message? }`.
 
 Both sides validate every message with a type guard and ignore anything else. The parent treats the returned SVG as untrusted and runs it through the sanitizer. The frame only ever receives diagram text; it has no keys and no other note content.
 
@@ -74,7 +74,7 @@ Runs in the frame. Mermaid is imported on the first `render`. Config: `startOnLo
 
 1. `markdown-it` is unchanged. A `mermaid` fence is an ordinary `pre > code.language-mermaid` block. If a render fails, or the app is locked, the reader sees readable source.
 2. A hook, `useDiagrams`, mirrors `useInkedImages`. After the note HTML is in the DOM it finds `code.language-mermaid` blocks and asks `renderDiagram(source)` for each.
-3. `renderDiagram` trims the source, refuses it over 20 000 characters, checks a cache keyed by source, and otherwise asks the frame client to render. The reply goes through `prepareDiagramSvg` (below). The result `{ id, svg, css }` is cached in memory.
+3. `renderDiagram` trims the source, refuses it over 20 000 characters, checks a cache keyed by source, and otherwise asks the frame client to render. The reply `{ svg, css }` goes through `prepareDiagramSvg` (below). The result `{ id, svg, css }` is cached in memory.
 4. The hook swaps the block for a `<figure class="diagram" role="img">` with an `aria-label` ("Diagram", or the SVG `<title>` when present).
 5. In-flight renders are cancelled when the note HTML changes or the component unmounts; a late result must not write into a replaced DOM.
 
@@ -84,9 +84,10 @@ Where it runs: note view in `NotePane` and `NodePreview`. It never runs for `Ask
 
 This is the part the probe confirmed.
 
-- Sanitize the SVG string with a separate DOMPurify profile: keep SVG shapes, text and markers; remove `script`, `foreignObject`, event attributes and any `href` or `xlink:href` that is not a same-document fragment. The note sanitizer `sanitizeHtml` is unchanged.
-- Cut every `<style>` out of the SVG and apply its sanitized text (no `@import`, no `url()` other than `url(#fragment)`) through a constructed stylesheet in `document.adoptedStyleSheets`, shared per diagram id and removed when the last figure using it goes.
-- Move each `style=""` attribute into `data-inline-style` while the SVG is still a string (a detached parse), then write it back with `el.style.cssText` after the SVG is in the page. CSSOM writes are what React `style` props already use here.
+- The frame, not the page, takes Mermaid's markup apart (`liftStyles`, in the frame): it cuts every `<style>` out of the SVG into a `css` string and moves each `style=""` attribute into `data-inline-style`, then sends `{ svg, css }`. The page must never parse markup that contains either: the page's CSP reports a violation for every `<style>` element and `style` attribute in any document it parses, even a detached `DOMParser` one (the first gate run logged 138 of them). So the page only ever sees style-free SVG.
+- The page sanitizes what it receives, because the frame is another window: the SVG with a separate DOMPurify profile (keep SVG shapes, text and markers; remove `script`, `foreignObject`, event attributes, any leftover `<style>` or `style` attribute, and any `href` or `xlink:href` that is not a same-document fragment), and the css (no `@import`, no `url()` other than `url(#fragment)`). The note sanitizer `sanitizeHtml` is unchanged.
+- The sanitized css goes into a constructed stylesheet in `document.adoptedStyleSheets`, shared per diagram id and removed when the last figure using it goes.
+- Each `data-inline-style` is written back with `el.style.cssText` once the SVG is in the page. CSSOM writes are what React `style` props already use here.
 
 ### Theme
 
