@@ -11,6 +11,7 @@ import { usePhone } from '../lib/usePhone';
 import { describeError, formatDate, relativeTime, wordCount } from '../lib/util';
 import { folderPath, titleIndex, useAppState, useStore, vaultStats } from '../state/StoreContext';
 import type { VaultView } from '../state/store';
+import { useImageInsert } from './imagePaste';
 import { useInkedImages } from './useInkedImages';
 import { useNoteEditor, type SaveStatus } from './useNoteEditor';
 
@@ -111,6 +112,14 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
   const titleRef = useRef<HTMLInputElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const articleRef = useRef<HTMLElement>(null);
+  const imageInsert = useImageInsert({
+    store,
+    vaultId: vault.id,
+    textRef,
+    body: editor.body,
+    setBody: editor.setBody,
+    disabled: state.locking,
+  });
 
   // Pick the initial mode once the note has loaded.
   useEffect(() => {
@@ -261,6 +270,11 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
             {titleError}
           </p>
         )}
+        {imageInsert.error && (
+          <p className="doc-alert" role="alert">
+            {imageInsert.error}
+          </p>
+        )}
         {editor.save === 'conflict' && (
           <div className="doc-alert is-conflict" role="alert">
             <span>This note was changed somewhere else after you opened it. Your latest edits are not saved.</span>
@@ -296,6 +310,9 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
             aria-label={`Markdown source of ${head?.title ?? 'note'}`}
             value={editor.body}
             onChange={(e) => editor.setBody(e.target.value)}
+            onPaste={imageInsert.onPaste}
+            onDrop={imageInsert.onDrop}
+            onDragOver={imageInsert.onDragOver}
             readOnly={state.locking}
             spellCheck={prefs.spellcheck()}
             placeholder={'# Heading\n\nWrite in Markdown. Link notes with [[Note title]].'}
