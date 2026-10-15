@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build -c vite.frame.config.ts",
+    "build:frame": "vite build -c vite.frame.config.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "models:fetch": "node ../scripts/fetch-model.mjs public/models"
