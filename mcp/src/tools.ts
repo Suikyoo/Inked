@@ -102,6 +102,21 @@ const NOTE_TOOLS: readonly NoteToolDef[] = [
     touched: (a, r) => ({ vaultId: r.vaultId, ids: [a.noteId] }),
   },
   {
+    name: 'add_image', action: 'image.create', title: 'Add image',
+    description:
+      'Upload an image (PNG, JPEG, GIF or WebP, up to 10 MB) to a vault and get Markdown to put in a note. ' +
+      'Give a public https url, or a local path inside a folder the user listed. ' +
+      'Write the returned markdown into a note with create_note, append_to_note or update_note.',
+    shape: {
+      vault,
+      url: z.string().url().optional().describe('Public https:// link to an image'),
+      path: z.string().min(1).optional().describe('Absolute path to an image file inside an allowed folder'),
+      alt: z.string().max(200).optional().describe('Short description for the image'),
+    },
+    run: (o, a) => o.addImage(a.vault, { url: a.url, path: a.path }, a.alt),
+    touched: (_a, r) => ({ vaultId: r.vaultId, ids: [r.id] }),
+  },
+  {
     name: 'move_note', action: 'note.move', title: 'Move note',
     description: 'Move a note to another folder in the same vault.',
     shape: { noteId, folder }, run: (o, a) => o.moveNote(a.noteId, a.folder), touched: (a, r) => ({ vaultId: r.vaultId, ids: [a.noteId] }),
@@ -186,6 +201,7 @@ export function buildInstructions(registered: readonly string[]): string {
   if (has('create_note') || has('create_notes')) lines.push('Link notes with [[Exact Title]]; a link appears in the concept map once a note with that title exists.');
   if (has('append_to_note')) lines.push('Prefer append_to_note for adding content.');
   if (has('update_note')) lines.push(`Before update_note, ${has('read_note') ? 'read_note and pass its updatedAt' : 'pass the updatedAt you last saw'} as baseUpdatedAt. On a conflict, re-read, merge, retry once, then ask the user.`);
+  if (has('add_image')) lines.push('add_image uploads an image to a vault and returns Markdown (![alt](inked://id)); put it in a note with a write tool.');
   if (has('change_config')) lines.push('To change which vaults or actions you may use, call change_config; the user approves in their browser.');
   if (has('create_vault')) lines.push('create_vault asks the user to approve the new vault in their browser.');
   lines.push('If a tool you need is missing or refused, tell the user; do not work around it. Deleting is done in the Inked web app.');

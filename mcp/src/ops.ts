@@ -3,15 +3,20 @@ import {
   encryptFolderMeta,
   encryptNoteBody,
   encryptNoteMeta,
+  encryptImage,
   encryptVaultMeta,
+  imageToken,
   INDEX_TITLE,
   indexBody,
+  MAX_IMAGE_BYTES,
   searchBodies,
   searchTitles,
+  sniffImageType,
   type SearchEntry,
   VAULT_COLORS,
 } from 'inked-core';
 import { ApiError, ToolError } from './errors';
+import { fetchImageUrl, readImageFile } from './image-source';
 import { toToolMessage } from './messages';
 import type { Action, Policy } from './policy';
 import { WriteLimiter } from './ratelimit';
@@ -80,6 +85,13 @@ interface NoteWrite {
   folderIdAfter: string | null;
 }
 
+export interface ImageSource {
+  fetchUrl(url: string): Promise<Uint8Array>;
+  readFile(path: string, dirs: readonly string[]): Promise<Uint8Array>;
+}
+
+const DEFAULT_IMAGE_SOURCE: ImageSource = { fetchUrl: fetchImageUrl, readFile: readImageFile };
+
 /** Domain operations. Each re-checks the policy, so a tool that forgot to cannot bypass it. */
 export class Ops {
   readonly limiter: WriteLimiter;
@@ -89,6 +101,7 @@ export class Ops {
     readonly model: VaultModel,
     readonly policy: Policy,
     limiter?: WriteLimiter,
+    readonly imageSource: ImageSource = DEFAULT_IMAGE_SOURCE,
   ) {
     this.limiter = limiter ?? new WriteLimiter(policy.writesPerMinute);
   }
@@ -234,6 +247,29 @@ export class Ops {
     const folderId = this.model.resolveFolder(snap, folderRef);
     this.spend(1);
     return this.putNote(snap, folderId, clean, body);
+  }
+
+  async addImage(
+    vaultRef: string,
+    src: { url?: string; path?: string },
+    alt?: string,
+  ): Promise<{ id: string; vaultId: string; markdown: string; size: number }> {
+    this.need('image.create');
+    if ((src.url === undefined) === (src.path === undefined)) throw new ToolError('invalid', 'Give exactly one of url or path.');
+    const snap = await this.model.snapshot((await this.model.vault(vaultRef)).id);
+    this.need('image.create', snap.vault.id);
+    this.spend(1);
+    const bytes =
+      src.url !== undefined
+        ? await this.imageSource.fetchUrl(src.url)
+        : await this.imageSource.readFile(src.path!, this.policy.imageDirs);
+    if (bytes.length > MAX_IMAGE_BYTES) throw new ToolError('invalid', 'The image is larger than 10 MB.');
+    if (!sniffImageType(bytes)) throw new ToolError('invalid', 'Only PNG, JPEG, GIF and WebP images are supported.');
+    const id = crypto.randomUUID();
+    const vid = snap.vault.id;
+    const blob = await encryptImage(snap.key, vid, id, bytes);
+    await this.session.call(() => this.session.api.uploadImage(vid, id, blob));
+    return { id, vaultId: vid, markdown: imageToken(id, alt), size: bytes.length };
   }
 
   async createNotes(vaultRef: string, items: { folder: string | null; title: string; body: string }[]) {

@@ -36,6 +36,8 @@ Use `append_to_note` to add content. Use `update_note` for a full rewrite only w
 
 Before `create_note`, use `search` to check whether a note on the topic already exists. Pick the folder from the tree. If unsure where something belongs, ask the user instead of inventing folders. `move_note`, `rename_folder` and `move_folder` reorganize what exists; use them only when asked.
 
+`add_image` uploads one image (a public https link, or a file in a folder the user allowed) and returns Markdown like `![alt](inked://id)`; put that in a note with `create_note`, `append_to_note` or `update_note`. It needs the `image.create` action, which no group includes.
+
 ## Research builds
 
 The main use. Follow this order:

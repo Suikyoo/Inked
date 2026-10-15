@@ -62,10 +62,11 @@ export class InkedApi {
     }
   }
 
-  private async request<T>(method: Method, path: string, body?: unknown, bound = false): Promise<T> {
+  private async request<T>(method: Method, path: string, body?: unknown, bound = false, raw?: Uint8Array): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (method !== 'GET') headers['X-Inked'] = '1';
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (raw) headers['Content-Type'] = 'application/octet-stream';
+    else if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (bound && this.userId) headers['X-Inked-User'] = this.userId;
     const sent = this.session;
     const cookies: string[] = [];
@@ -79,7 +80,7 @@ export class InkedApi {
       res = await this.f(this.baseUrl + path, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: raw ?? (body === undefined ? undefined : JSON.stringify(body)),
         redirect: 'manual',
         signal: AbortSignal.timeout(this.timeoutMs),
       });
@@ -146,4 +147,8 @@ export class InkedApi {
     id: string,
     body: { encMeta?: string; encBody?: string; folderId?: string | null; baseUpdatedAt?: string },
   ) => this.request<{ note: NoteHeadDTO }>('PUT', `/api/notes/${enc(id)}`, body, true);
+  uploadImage = (vaultId: string, imageId: string, blob: Uint8Array) =>
+    this.request<{ id: string; size: number; createdAt: string }>(
+      'POST', `/api/vaults/${enc(vaultId)}/images/${enc(imageId)}`, undefined, true, blob,
+    );
 }

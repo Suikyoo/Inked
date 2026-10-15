@@ -65,7 +65,7 @@ describe('MCP tools', () => {
       ['get_tree', 'inked_status', 'list_vaults', 'read_note', 'search', 'sign_out'],
     );
     expect(await names((await connect(null)).client)).toContain('change_config');
-    const everything = await names((await connect(cfg(['@read', '@write', '@organize', '@manage', 'config.change']))).client);
+    const everything = await names((await connect(cfg(['@read', '@write', '@organize', '@manage', 'image.create', 'config.change']))).client);
     expect(everything).toEqual(TOOL_NAMES.filter((n) => n !== 'sign_in').sort());
     expect(await names((await connect({ version: 1, vaults: ['Nope'], actions: ['@read'] })).client)).toEqual(
       ['change_config', 'inked_status', 'sign_out'],
