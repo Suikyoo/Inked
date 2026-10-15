@@ -33,6 +33,7 @@ import {
   type KdfParams,
 } from 'inked-core';
 import { argon2InWorker } from '../lib/argon2Worker';
+import { clearDiagrams } from '../diagrams/diagramRender';
 import { INDEX_TITLE, indexBody, indexNoteOf, decryptImage, encryptImage } from 'inked-core';
 import { blobBytes, ImageStore, validateImage } from './imageStore';
 
@@ -570,6 +571,7 @@ export class AppStore {
     this.userKey = userKey;
     this.vaultKeys.clear();
     this.images.clear();
+    clearDiagrams();
     this.ownStamps.clear();
     this.unseenSaves.clear();
     this.readyTrees.clear();
@@ -588,6 +590,7 @@ export class AppStore {
     this.userKey = null;
     this.vaultKeys.clear();
     this.images.clear();
+    clearDiagrams();
     this.ownStamps.clear();
     this.unseenSaves.clear();
     this.readyTrees.clear();

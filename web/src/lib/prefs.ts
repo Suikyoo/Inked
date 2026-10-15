@@ -1,5 +1,6 @@
 const KEY = 'inked.spellcheck';
 const SEMANTIC_KEY = 'inked.semantic';
+const DIAGRAMS_KEY = 'inked.diagrams';
 
 export type SemanticChoice = 'on' | 'off' | null;
 
@@ -32,6 +33,22 @@ export const prefs = {
     try {
       if (v === null) localStorage.removeItem(SEMANTIC_KEY);
       else localStorage.setItem(SEMANTIC_KEY, v);
+    } catch {
+      /* storage blocked: keep default */
+    }
+  },
+  /** Draw Mermaid diagrams in notes. On unless this browser turned it off; on too when storage is blocked. */
+  diagrams(): boolean {
+    try {
+      return localStorage.getItem(DIAGRAMS_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  },
+  setDiagrams(on: boolean): void {
+    try {
+      if (on) localStorage.removeItem(DIAGRAMS_KEY);
+      else localStorage.setItem(DIAGRAMS_KEY, 'off');
     } catch {
       /* storage blocked: keep default */
     }

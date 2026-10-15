@@ -345,6 +345,30 @@ a.crumb:hover {
   color: var(--code-text);
   white-space: pre;
 }
+.md .diagram {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  background: var(--side);
+  border: 1px solid var(--side-border);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+}
+.md .diagram-note {
+  margin: -12px 0 20px;
+  font: 400 12px/1.5 var(--font-ui);
+  color: var(--muted-2);
+}
+/* The hidden renderer iframe: laid out (Mermaid measures text) but invisible and off-screen. */
+.diagram-frame {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 1200px;
+  height: 800px;
+  border: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
 .md blockquote {
   margin: 0 0 22px;
   padding: 10px 14px;

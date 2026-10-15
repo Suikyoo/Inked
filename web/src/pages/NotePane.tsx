@@ -13,6 +13,7 @@ import { folderPath, titleIndex, useAppState, useStore, vaultStats } from '../st
 import type { VaultView } from '../state/store';
 import { useImageInsert } from './imagePaste';
 import { useInkedImages } from './useInkedImages';
+import { useDiagrams } from '../diagrams/useDiagrams';
 import { useNoteEditor, type SaveStatus } from './useNoteEditor';
 
 const SAVE_LABEL: Record<SaveStatus, string> = {
@@ -176,6 +177,7 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
     });
   }, [mode, editor.status, editor.body, titles, vault.id]);
   useInkedImages(articleRef, vault.id, html);
+  useDiagrams(articleRef, html);
 
   const graph = useVaultGraph(state, vault.id);
   const backlinks = useMemo(() => (graph ? incomingLinks(graph, noteId) : []), [graph, noteId]);

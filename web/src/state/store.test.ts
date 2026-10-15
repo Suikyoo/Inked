@@ -26,6 +26,8 @@ vi.mock('inked-core', async (orig) => {
 });
 /** While `hold` is set, every key derivation waits for it, so a test can act during a sign-in's KDF phase. */
 const kdfGate = vi.hoisted(() => ({ hold: null as null | Promise<void>, entered: 0 }));
+const clearDiagrams = vi.hoisted(() => vi.fn());
+vi.mock('../diagrams/diagramRender', () => ({ clearDiagrams }));
 vi.mock('../lib/argon2Worker', async () => {
   const { argon2id } = await import('hash-wasm');
   return { argon2InWorker: async (pw: Uint8Array, salt: Uint8Array, p: { m: number; t: number; p: number }) => {
@@ -1871,5 +1873,13 @@ describe('images', () => {
     await s.lock();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:img/1');
     expect(s.images.peek(v.id, prepared.id)).toBeNull();
+  });
+
+  it('lock drops every cached diagram', async () => {
+    const s = await registeredStore();
+    clearDiagrams.mockClear();
+    api.logout.mockResolvedValue({ ok: true });
+    await s.lock();
+    expect(clearDiagrams).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { renderMarkdown, sanitizeHtml, toggleTaskAtLine, wikiLinkTargets } from './render';
+import { renderMarkdown, renderUntrustedMarkdown, sanitizeHtml, toggleTaskAtLine, wikiLinkTargets } from './render';
 
 const dom = (html: string) => {
   const d = document.createElement('div');
@@ -42,6 +42,11 @@ describe('sanitizer', () => {
 });
 
 describe('markdown features', () => {
+  it('leaves a mermaid fence as an ordinary code block, in notes and in untrusted output', () => {
+    const src = '```mermaid\ngraph TD; A-->B\n```';
+    expect(renderMarkdown(src)).toContain('<pre><code class="language-mermaid">');
+    expect(renderUntrustedMarkdown(src)).toContain('<pre><code class="language-mermaid">');
+  });
   it('renders GFM tables, strikethrough and fenced code', () => {
     const d = dom(renderMarkdown('| a | b |\n|---|---|\n| 1 | 2 |\n\n~~old~~\n\n```bash\necho hi\n```\n'));
     expect(d.querySelector('table td')?.textContent).toBe('1');

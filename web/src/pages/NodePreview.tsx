@@ -10,6 +10,7 @@ import { useVaultGraph } from '../map/useVaultGraphs';
 import { renderMarkdown } from '../markdown/render';
 import { followNoteLink } from './NotePane';
 import { useInkedImages } from './useInkedImages';
+import { useDiagrams } from '../diagrams/useDiagrams';
 import { useSemantic, useSemanticStore } from '../semantic/SemanticContext';
 import { folderPath, useAppState, useStore } from '../state/StoreContext';
 import type { AppState } from '../state/store';
@@ -35,6 +36,7 @@ function Markdown({ body, ready, vaultId }: { body: string | undefined; ready: b
   );
   const articleRef = useRef<HTMLElement>(null);
   useInkedImages(articleRef, vaultId, html);
+  useDiagrams(articleRef, html);
   if (body === undefined) return <p className="preview-hint">{ready ? 'No text available.' : 'Decrypting…'}</p>;
   if (!body.trim()) return <p className="preview-hint">This note is empty.</p>;
   // Sanitised by DOMPurify in renderMarkdown, as in NotePane.
