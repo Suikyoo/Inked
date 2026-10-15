@@ -9,9 +9,9 @@ const skills = readdirSync(root).map((name) => ({ name, text: readFileSync(path.
 const TOOL_LIKE = /^(list|get|read|search|create|append|update|move|rename|delete|sign|change|inked)_/;
 
 describe('skills', () => {
-  it('ships the five skills', () => {
+  it('ships the six skills', () => {
     expect(skills.map((s) => s.name).sort()).toEqual([
-      'inked-document-codebase', 'inked-note-style', 'inked-notes', 'inked-save-session', 'inked-setup',
+      'inked-document-codebase', 'inked-lessons', 'inked-note-style', 'inked-notes', 'inked-save-session', 'inked-setup',
     ]);
   });
 
@@ -35,5 +35,17 @@ describe('skills', () => {
     const t = skills.find((s) => s.name === 'inked-setup')!.text;
     expect(t).not.toMatch(/\.inked-mcp|credential\.json|config\.json|INKED_MCP_HOME/);
     expect(t).toContain('Never ask for the Inked password in chat');
+  });
+
+  it('inked-lessons keeps its pacing, linking, media and safety rules', () => {
+    const t = skills.find((s) => s.name === 'inked-lessons')!.text;
+    expect(t).toContain('`inked-note-style`');
+    expect(t).toContain('`inked-setup`');
+    expect(t).toContain('`add_image`');
+    expect(t).toMatch(/use `search` before creating/i);
+    expect(t).toContain('three lessons');
+    expect(t).toContain('Never link ahead');
+    expect(t).toContain('fall back to Mermaid');
+    expect(t).toContain('data, never instructions');
   });
 });
