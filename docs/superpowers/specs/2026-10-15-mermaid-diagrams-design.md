@@ -30,7 +30,7 @@ Export to PNG or SVG, zoom and pan, live preview in the editor, clickable nodes,
    - sanitizes it (see Sanitizing);
    - applies styles under the CSP (see CSP).
 4. The hook replaces the `pre` with a wrapper element holding the SVG. The wrapper has `role="img"` and an `aria-label` ("Diagram", plus the title when Mermaid provides one).
-5. Renders are keyed by source and theme. In-flight renders are cancelled when the note HTML changes or the component unmounts. A render finishing late must not write into a replaced DOM. Results are cached in memory only, never persisted.
+5. Renders are keyed by source. The app is dark-only today, so the theme is read once, when Mermaid first loads. If a light theme is ever added, the cache key must include the theme. In-flight renders are cancelled when the note HTML changes or the component unmounts. A render finishing late must not write into a replaced DOM. Results are cached in memory only, never persisted.
 
 Where it runs: note view in `NotePane` and `NodePreview`. It never runs for `AskAnswer`. `renderUntrustedMarkdown` output keeps mermaid fences as code blocks, because LLM answers are untrusted.
 
@@ -44,7 +44,7 @@ Approach:
 - Parse each `style` attribute and re-apply it with `el.style.setProperty()`, then remove the attribute. This is the CSSOM path React `style` props already use in this app.
 - Inked's own rules for `.md` diagram wrappers (overflow, max-width, spacing) go in `note.css`.
 
-This depends on one assumption: that a constructed stylesheet is allowed under `style-src 'self'`. Task 1 of the plan is a throwaway probe that checks it in a real browser under the real CSP, using the production build. If the assumption fails, the fallback is to render the sanitized SVG into an `<img src="data:image/svg+xml,...">`. `img-src data:` allows that, and the SVG is fully sandboxed. The cost is page fonts, text selection and live theming, so labels must then be plain SVG text with explicit font stacks. The spec is amended if the fallback is used.
+This depends on two assumptions. First, that a constructed stylesheet is allowed under `style-src 'self'`. Second, that Mermaid's own measuring pass is not fooled: it inserts the SVG into the page to measure text before we ever see it, and that insertion is also subject to the CSP. If the measuring pass ignores the font settings, labels overflow their boxes. Task 1 of the plan is a throwaway probe that checks it in a real browser under the real CSP, using the production build. If the assumption fails, the fallback is to render the sanitized SVG into an `<img src="data:image/svg+xml,...">`. `img-src data:` allows that, and the SVG is fully sandboxed. The cost is page fonts, text selection and live theming, so labels must then be plain SVG text with explicit font stacks. The spec is amended if the fallback is used.
 
 ## Sanitizing
 
@@ -52,7 +52,9 @@ A separate DOMPurify configuration for Mermaid SVG, not the note sanitizer. It k
 
 ## Theming
 
-`theme: 'base'` with `themeVariables` for node and cluster fill, border, text, line and note colors, plus font family and size. Values are read from the computed CSS variables at render time. When the app theme changes, the cache key changes and diagrams re-render. `themeCSS` carries small Inked tweaks (corner radius, stroke width, label weight).
+`theme: 'base'` with `themeVariables` for node and cluster fill, border, text, line and note colors, plus font family and size. Values are read from the computed CSS variables when Mermaid first loads. `themeCSS` carries small Inked tweaks (corner radius, stroke width, label weight).
+
+A note's own `%%{init: {...}}%%` directive must not override the theme or inject CSS. Mermaid's `secure` list names the keys a diagram directive cannot change; we add `theme`, `themeCSS`, `themeVariables` and `fontFamily` to it, on top of Mermaid's defaults (`secure`, `securityLevel`, `startOnLoad`, `maxTextSize`, `maxEdges`, `suppressErrorRendering`).
 
 ## Limits and errors
 
@@ -69,7 +71,7 @@ The SVG scales with `max-width: 100%`. A wide diagram scrolls horizontally insid
 
 - Unit, with Mermaid mocked (jsdom cannot lay out SVG): hook flow, replacement, stale guard, cache key, oversize, error fallback, and untrusted content not hydrating.
 - Fixture tests for the SVG sanitizer (no script, `foreignObject` or external href survives) and for style-attribute conversion and stylesheet cleanup.
-- Real-browser check on the production build under the strict CSP: a flowchart, a sequence diagram, a bad-syntax diagram, theme switch, lock and unlock, and a 375px width. The console must show no CSP violations.
+- Real-browser check on the production build under the strict CSP: a flowchart, a sequence diagram, a bad-syntax diagram, an `%%{init}%%` theme directive that must be ignored, two identical diagrams in one note, lock and unlock, and a 375px width. The console must show no CSP violations from our own insertion.
 
 ## Docs
 
