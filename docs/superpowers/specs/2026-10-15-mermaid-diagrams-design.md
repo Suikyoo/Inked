@@ -115,7 +115,7 @@ Locking or signing out drops the keys, and `store.images.clear()` already drops 
 
 ### Phone
 
-The SVG scales with `max-width: 100%` through Mermaid's own inline `max-width`. A wide diagram scrolls horizontally inside its wrapper, like `pre` does in `phone.css`.
+A diagram keeps its natural size: the frame configures Mermaid with `useMaxWidth: false` for each diagram type, so the SVG carries real `width` and `height` instead of shrinking to the container (shrink-to-fit made wide diagrams unreadably small on a phone; found in the Task 11 browser check). A diagram wider than the column scrolls horizontally inside its wrapper, like `pre` does in `phone.css`.
 
 ### Dev server
 
