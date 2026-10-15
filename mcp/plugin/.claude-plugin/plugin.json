@@ -1,6 +1,6 @@
 {
   "name": "inked",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Sign in, read and build linked notes in your Inked vaults: the inked-mcp server plus setup and writing skills.",
   "author": { "name": "Inked" }
 }

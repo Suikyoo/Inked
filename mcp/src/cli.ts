@@ -15,7 +15,7 @@ import { createCredential, Session } from './session';
 import { createInkedServer } from './tools';
 import { listAllVaults } from './vault-model';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const USAGE = `Usage: inked-mcp <command>
 
   login               Sign in once and save a credential (not your password) to ~/.inked-mcp
