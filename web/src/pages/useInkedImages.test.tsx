@@ -53,6 +53,18 @@ describe('useInkedImages', () => {
     expect(el.querySelector('img')!.getAttribute('src')).toBe('blob:cached');
     expect(get).not.toHaveBeenCalled();
   });
+  it.each([
+    ['resolved', { peek: () => null, get: async () => ({ ok: true, url: 'blob:bad' }) }],
+    ['cached', { peek: () => 'blob:bad', get: vi.fn() }],
+  ])('replaces a %s image that fails to decode with the unavailable box', async (_n, images) => {
+    const el = await mount(images);
+    const img = el.querySelector('img')!;
+    await act(async () => {
+      img.dispatchEvent(new Event('error'));
+    });
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.querySelector('.img-unavailable')).not.toBeNull();
+  });
   it('replaces a missing, foreign or corrupt image with an unavailable box and leaves the rest of the note', async () => {
     const el = await mount({ peek: () => null, get: async () => ({ ok: false }) });
     expect(el.querySelector('img')).toBeNull();

@@ -24,6 +24,10 @@ export function useInkedImages(ref: RefObject<HTMLElement | null>, vaultId: stri
     for (const img of Array.from(root.querySelectorAll<HTMLImageElement>('img[data-inked-image]'))) {
       const id = img.dataset.inkedImage!;
       const cached = store.images.peek(vaultId, id);
+      // A blob that decrypts but does not decode would show the browser's broken icon.
+      img.onerror = () => {
+        if (img.isConnected) img.replaceWith(unavailable(img.alt));
+      };
       if (cached) {
         img.src = cached;
         continue;
