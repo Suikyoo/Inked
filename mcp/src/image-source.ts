@@ -47,8 +47,24 @@ export interface FetchDeps {
 
 const bare = (hostname: string) => (hostname.startsWith('[') ? hostname.slice(1, -1) : hostname);
 
+/** Runs `onExpire` after `ms` unless the returned function is called first. */
+export function armDeadline(ms: number, onExpire: () => void): () => void {
+  const timer = setTimeout(onExpire, ms);
+  return () => clearTimeout(timer);
+}
+
 function httpsHop(url: URL, address: string, family: 4 | 6): Promise<HopResult> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve0, reject0) => {
+    // `timeout` below is idle time only; this caps the whole hop so a slow drip cannot run forever.
+    const disarm = armDeadline(TIMEOUT_MS, () => req.destroy(new ToolError('invalid', 'The download took too long.')));
+    const resolve = (r: HopResult) => {
+      disarm();
+      resolve0(r);
+    };
+    const reject = (e: unknown) => {
+      disarm();
+      reject0(e);
+    };
     const host = bare(url.hostname);
     const req = httpsRequest(
       {
@@ -66,8 +82,9 @@ function httpsHop(url: URL, address: string, family: 4 | 6): Promise<HopResult> 
       (res) => {
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400) {
-          res.resume();
           resolve({ status, location: res.headers.location ?? null, body: null });
+          res.destroy();
+          req.destroy();
           return;
         }
         const chunks: Buffer[] = [];
@@ -86,7 +103,9 @@ function httpsHop(url: URL, address: string, family: 4 | 6): Promise<HopResult> 
       },
     );
     req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', () => reject(new ToolError('invalid', 'Could not download that image.')));
+    req.on('error', (e) =>
+      reject(e instanceof ToolError ? e : new ToolError('invalid', 'Could not download that image.')),
+    );
     req.end();
   });
 }

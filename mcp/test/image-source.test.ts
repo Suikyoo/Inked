@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MAX_IMAGE_BYTES } from 'inked-core';
 import { ToolError } from '../src/errors';
-import { assertPublicAddress, fetchImageUrl, readImageFile, type FetchDeps, type HopResult } from '../src/image-source';
+import { armDeadline, assertPublicAddress, fetchImageUrl, readImageFile, type FetchDeps, type HopResult } from '../src/image-source';
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const ok = (body: Uint8Array): HopResult => ({ status: 200, location: null, body });
@@ -147,5 +147,22 @@ describe('readImageFile', () => {
     const big = path.join(allowed, 'big.png');
     writeFileSync(big, Buffer.alloc(MAX_IMAGE_BYTES + 1, 1));
     await expect(readImageFile(big, [allowed])).rejects.toMatchObject({ kind: 'invalid' });
+  });
+});
+
+describe('armDeadline', () => {
+  it('fires after the delay, and not once disarmed', () => {
+    vi.useFakeTimers();
+    try {
+      const a = vi.fn();
+      const b = vi.fn();
+      armDeadline(1000, a);
+      armDeadline(1000, b)();
+      vi.advanceTimersByTime(1000);
+      expect(a).toHaveBeenCalledTimes(1);
+      expect(b).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
