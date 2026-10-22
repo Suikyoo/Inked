@@ -5,6 +5,7 @@ export interface ObVault { id: string; name: string; color: string; updatedAt: s
 export interface ObFolder { id: string; vaultId: string; parentId: string | null; name: string }
 export interface ObNote { id: string; vaultId: string; folderId: string | null; title: string; body: string; createdAt: string; updatedAt: string }
 export interface ObPayload { vaults: ObVault[]; folders: ObFolder[]; notes: ObNote[] }
+export interface ObPublicResponse extends ObPayload { label: string }   // GET /api/ob/:token
 export interface PublishRequest {
   kind: 'vault' | 'folder' | 'note';
   vaultName: string; color: string;

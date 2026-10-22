@@ -15,6 +15,7 @@ import { folderRoutes } from './routes/folders.js';
 import { inviteRoutes } from './routes/invites.js';
 import { noteRoutes } from './routes/notes.js';
 import { openboardImageRoutes, openboardRoutes } from './routes/openboard.js';
+import { openboardPublicRoutes } from './routes/openboardPublic.js';
 import { vaultRoutes } from './routes/vaults.js';
 import { settingsRoutes } from './routes/settings.js';
 import { imageRoutes } from './routes/images.js';
@@ -139,6 +140,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     cookieSecure: opts.cookieSecure,
     limiter: new FailureLimiter(),
     accountLimiter: new FailureLimiter(30, 15 * 60_000, 15 * 60_000),
+    obLimiter: new FailureLimiter(20, 60_000),
     llmOrigins,
     imageQuotaBytes: opts.imageQuotaBytes ?? DEFAULT_IMAGE_QUOTA_MB * 1024 * 1024,
     setupToken: opts.setupToken ?? (countUsers(db) === 0 ? randomBytes(16).toString('base64url') : null),
@@ -156,6 +158,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     deleteExpiredSessions(db);
     ctx.limiter.prune();
     ctx.accountLimiter.prune();
+    ctx.obLimiter.prune();
   }, 60 * 60 * 1000);
   sweeper.unref();
   app.addHook('onClose', async () => {
@@ -224,6 +227,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
   settingsRoutes(app, ctx);
   openboardRoutes(app, ctx);
+  openboardPublicRoutes(app, ctx);
 
   // The SPA is optional: without a built web/dist the server is API-only.
   const hasWeb = existsSync(path.join(opts.webDist, 'index.html'));

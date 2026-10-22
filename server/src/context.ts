@@ -13,6 +13,8 @@ export interface AppContext {
   limiter: FailureLimiter;
   /** Per-username cap, independent of client IP. */
   accountLimiter: FailureLimiter;
+  /** Per-IP cap on failed public openboard token lookups. */
+  obLimiter: FailureLimiter;
   /** One-time first-run setup token; null once setup is done (or was not needed). */
   setupToken: string | null;
   /** Origins the browser may call for Ask (CSP connect-src and /api/status). */

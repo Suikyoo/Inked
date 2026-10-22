@@ -388,6 +388,31 @@ export function deleteLink(db: Db, userId: string, id: string): void {
   if (res.changes === 0) throw notFound();
 }
 
+// ---- Public (token) access ----
+
+/** The link a public token names, or null. Callers check the token's shape first. */
+export function findLinkByToken(db: Db, token: string): { id: string; label: string; userId: string } | null {
+  const row = db.prepare('SELECT id, label, user_id FROM ob_links WHERE token = ?').get(token) as
+    | { id: string; label: string; user_id: string }
+    | undefined;
+  return row ? { id: row.id, label: row.label, userId: row.user_id } : null;
+}
+
+/** The vaults granted to the link, with folders and notes, bodies included. */
+export function grantedPayload(db: Db, linkId: string): ObPayload {
+  return contentForVaults(db, linkVaultIds(db, linkId));
+}
+
+/** True when the published vault is granted to the link. */
+export function isVaultGranted(db: Db, linkId: string, vaultId: string): boolean {
+  return db.prepare('SELECT 1 FROM ob_link_vaults WHERE link_id = ? AND ob_vault_id = ?').get(linkId, vaultId) !== undefined;
+}
+
+/** Counts one public view of the link. */
+export function bumpViews(db: Db, linkId: string): void {
+  db.prepare('UPDATE ob_links SET views = views + 1 WHERE id = ?').run(linkId);
+}
+
 // ---- Images ----
 
 export type ObImageMime = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
@@ -453,6 +478,14 @@ export function putImage(
     );
     return { id: imageId, size: data.length };
   });
+}
+
+/** A stored published image's bytes and sniffed mime, or null. */
+export function getImage(db: Db, vaultId: string, imageId: string): { mime: ObImageMime; data: Buffer } | null {
+  const row = db.prepare('SELECT mime, data FROM ob_images WHERE vault_id = ? AND id = ?').get(vaultId, imageId) as
+    | { mime: ObImageMime; data: Uint8Array }
+    | undefined;
+  return row ? { mime: row.mime, data: Buffer.from(row.data.buffer, row.data.byteOffset, row.data.byteLength) } : null;
 }
 
 /** Note bodies in the vault that contain the image id as a substring (candidates for an exact reference). */
