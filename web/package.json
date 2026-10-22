@@ -9,6 +9,7 @@
     "build:frame": "vite build -c vite.frame.config.ts",
     "preview": "vite preview",
     "test": "vitest run",
+    "check:openboard": "node scripts/check-openboard-bundle.mjs",
     "models:fetch": "node ../scripts/fetch-model.mjs public/models"
   },
   "dependencies": {

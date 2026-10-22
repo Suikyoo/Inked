@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NoteView, TreeView } from '../state/store';
-import { ConceptMap, resetWriteOnForTests, type ConceptMapProps, type MapSelection } from './ConceptMap';
+import { ConceptMap, noteHref, resetWriteOnForTests, type ConceptMapProps, type MapSelection } from './ConceptMap';
 import { folder, note, tree, vault } from './fixtures';
 import { buildVaultGraph } from './graph';
 import { layoutVault } from './layout';
@@ -37,6 +37,8 @@ function Where() {
   return <p data-testid="where">{useLocation().pathname}</p>;
 }
 type Props = Partial<ConceptMapProps> & { entries: MapEntry[] };
+/** Every onOpenNote call when a test renders without a Router. */
+let onOpenNote = vi.fn<(vaultId: string, noteId: string) => void>();
 /** Every onSelect call, in order. The harness also feeds the selection back, as HomePage does. */
 let onSelect = vi.fn<(s: MapSelection | null) => void>();
 function Controlled(p: Props) {
@@ -48,6 +50,7 @@ function Controlled(p: Props) {
       loading={false}
       now={NOW}
       selected={selected}
+      onOpenNote={onOpenNote}
       {...p}
       onSelect={(s) => {
         onSelect(s);
@@ -56,11 +59,16 @@ function Controlled(p: Props) {
     />
   );
 }
+/** As HomePage wires it: opening a note navigates to it. */
+function Routed(p: Props) {
+  const navigate = useNavigate();
+  return <Controlled onOpenNote={(v, n) => navigate(noteHref(v, n))} {...p} />;
+}
 function ui(p: Props) {
   return (
     <MemoryRouter initialEntries={['/']}>
       <Routes>
-        <Route path="/" element={<Controlled {...p} />} />
+        <Route path="/" element={<Routed {...p} />} />
         <Route path="/v/:v/n/:n" element={<Where />} />
       </Routes>
     </MemoryRouter>
@@ -76,6 +84,7 @@ function render(p: Props) {
 beforeEach(() => {
   vi.useFakeTimers();
   onSelect = vi.fn<(s: MapSelection | null) => void>();
+  onOpenNote = vi.fn<(vaultId: string, noteId: string) => void>();
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -138,6 +147,18 @@ describe('ConceptMap', () => {
     render({ entries: [entry(base())] });
     key(node('n2'), 'Enter');
     expect(host!.querySelector('[data-testid="where"]')?.textContent).toBe('/v/v1/n/n2');
+  });
+
+  it('renders without a Router and opens a note through onOpenNote', () => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    act(() => root!.render(<Controlled entries={[entry(base())]} />));
+    expect(nodes().map((n) => n.dataset.note).sort()).toEqual(['n1', 'n2', 'n3']);
+    click(node('n1'));
+    expect(onOpenNote).not.toHaveBeenCalled();
+    key(node('n2'), 'Enter');
+    expect(onOpenNote.mock.calls).toEqual([['v1', 'n2']]);
   });
 
   it('Space on a dot selects the note for the preview and does not open it', () => {

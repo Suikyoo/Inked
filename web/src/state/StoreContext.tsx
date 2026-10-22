@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { titleIndex } from '../lib/titles';
 import { buildEntry, type SearchEntry } from 'inked-core';
-import { AppStore, type AppState, type FolderView, type TreeView, type VaultView } from './store';
+import { AppStore, type AppState, type FolderView, type TreeView } from './store';
 
 const StoreCtx = createContext<AppStore | null>(null);
 
@@ -34,26 +34,7 @@ export function folderPath(tree: TreeView | undefined, folderId: string | null):
   return out;
 }
 
-const WEEK = 7 * 86400_000;
-
-export interface VaultStats {
-  noteCount: number;
-  active7d: number;
-  /** 0..1 ink level: share of notes edited this week. */
-  level: number;
-}
-
-export function vaultStats(vault: VaultView, tree: TreeView | undefined, now = Date.now()): VaultStats {
-  let noteCount = vault.noteCount;
-  let active7d = vault.activeNoteCount7d;
-  if (tree?.status === 'ready') {
-    const notes = Object.values(tree.notes);
-    noteCount = notes.length;
-    active7d = notes.filter((n) => now - Date.parse(n.updatedAt) < WEEK).length;
-  }
-  const level = Math.max(0, Math.min(1, active7d / Math.max(noteCount, 1)));
-  return { noteCount, active7d, level };
-}
+export { vaultStats, type VaultStats } from './vaultStats';
 
 export function useSearchEntries(state: AppState): SearchEntry[] {
   const { trees, vaults, vaultOrder } = state;

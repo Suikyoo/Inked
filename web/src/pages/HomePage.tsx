@@ -7,7 +7,7 @@ import { useAsk, useAskStore } from '../ask/AskContext';
 import { AskAnswer, askLitIds } from '../ask/AskAnswer';
 import { useAccountSettings } from '../state/AccountSettingsContext';
 import { uniqueTitle } from '../components/VaultTree';
-import { ConceptMap, type MapSelection } from '../map/ConceptMap';
+import { ConceptMap, noteHref, type MapSelection } from '../map/ConceptMap';
 import { useVaultGraphs } from '../map/useVaultGraphs';
 import { highlightSegments, searchBodies, searchTitles, type SearchEntry, type SemanticInput } from 'inked-core';
 import { ProgressBar } from '../components/ProgressBar';
@@ -392,7 +392,7 @@ export function HomePage({ focusVault }: { focusVault?: string } = {}) {
         {(state.vaultsStatus !== 'ready' || vaults.length > 0) &&
           (showMap ? (
           <section className="map" aria-label="Concept map">
-            <ConceptMap entries={mapEntries} neighbours={neighbours} hits={asking ? litIds : hitIds} hot={hot} loading={treesPending} selected={selected} onSelect={setSelected} fitRequest={fitRequest} focusVault={focusVault} saves={saves} onSavesPlayed={onSavesPlayed} searching={asking || q.length > 0} />
+            <ConceptMap entries={mapEntries} neighbours={neighbours} hits={asking ? litIds : hitIds} hot={hot} loading={treesPending} selected={selected} onSelect={setSelected} onOpenNote={(v, n) => navigate(noteHref(v, n))} fitRequest={fitRequest} focusVault={focusVault} saves={saves} onSavesPlayed={onSavesPlayed} searching={asking || q.length > 0} />
           </section>
           ) : (
             <div className="map-load">

@@ -3,7 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./indexNote": "./src/indexNote.ts",
+    "./images": "./src/images.ts",
+    "./errors": "./src/crypto/errors.ts",
+    "./vaultColors": "./src/vaultColors.ts"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"

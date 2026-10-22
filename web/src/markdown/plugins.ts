@@ -1,4 +1,4 @@
-import { parseImageUri } from 'inked-core';
+import { parseImageUri } from 'inked-core/images';
 import type MarkdownIt from 'markdown-it';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';

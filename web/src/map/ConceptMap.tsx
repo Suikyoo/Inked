@@ -1,5 +1,4 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { VaultIcon } from '../brand/VaultIcon';
 import { FitIcon, MinusIcon, PlusIcon, ResetIcon } from '../components/Icons';
 import { relativeTime } from '../lib/util';
@@ -10,7 +9,7 @@ import { planRipples } from './ripples';
 import { useSpringDrag } from './useSpringDrag';
 import { arrowDir, buildScene, chainPath, curvePath, densityClass, edgeWidth, HIERARCHY_BEND, linkPath, nearestInDirection, selRingRadius, THREAD_BEND } from './scene';
 import { fit, panBy, toScreen, useViewport, zoomAt, type Bounds, type Size } from './useViewport';
-import type { MapEntry } from './useVaultGraphs';
+import type { MapEntry } from './mapEntries';
 
 const FALLBACK: Size = { w: 800, h: 480 };
 const DRAG_PX = 4;
@@ -72,6 +71,8 @@ export interface ConceptMapProps {
   selected: MapSelection | null;
   /** Called with the clicked node, or null when Escape or a background click clears the selection. */
   onSelect: (s: MapSelection | null) => void;
+  /** Called when a note is opened (Enter on its dot). The map has no router; the owner decides where that goes. */
+  onOpenNote: (vaultId: string, noteId: string) => void;
   /** When `n` changes, the map fits that folder or hub with the animated fit (the preview's "Zoom to folder"). */
   fitRequest?: { sel: MapSelection; n: number } | null;
   /** Opened from a vault: until the user moves the map, it frames this vault instead of every vault, easing in. */
@@ -96,8 +97,7 @@ const NO_TICKS: ReadonlyMap<string, { seq: number; delay: number }> = new Map();
 const similarityText = (s: number) => s.toFixed(2).replace(/^0/, '');
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
-export function ConceptMap({ entries, hits, hot, searching: queryActive = false, loading, selected, onSelect, fitRequest = null, focusVault = null, neighbours = NO_NEIGHBOURS, saves = null, onSavesPlayed, now = Date.now() }: ConceptMapProps) {
-  const navigate = useNavigate();
+export function ConceptMap({ entries, hits, hot, searching: queryActive = false, loading, selected, onSelect, onOpenNote, fitRequest = null, focusVault = null, neighbours = NO_NEIGHBOURS, saves = null, onSavesPlayed, now = Date.now() }: ConceptMapProps) {
   const uid = 'cm' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const frameRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -851,7 +851,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
                   // Enter opens the note; Space selects it, as a click does, for the preview.
                   const open = e.key === 'Enter';
                   if (!activates(e)) return;
-                  if (open) navigate(noteHref(dot.vaultId, dot.id));
+                  if (open) onOpenNote(dot.vaultId, dot.id);
                   else pick({ kind: 'note', vaultId: dot.vaultId, id: dot.id }, !e.repeat);
                 }}
                 onPointerEnter={() => setHoverSoon(dot.id)}

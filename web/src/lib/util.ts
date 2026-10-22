@@ -1,7 +1,7 @@
 import { isApiError } from '../api/client';
-import { isCryptoError } from 'inked-core';
+import { isCryptoError } from 'inked-core/errors';
 
-export { nextVaultColor, VAULT_COLORS } from 'inked-core';
+export { nextVaultColor, VAULT_COLORS } from 'inked-core/vaultColors';
 
 export const USERNAME_RE = /^[a-z0-9_.-]{3,32}$/;
 export const MIN_PASSWORD = 10;
