@@ -1,0 +1,451 @@
+/* Openboard editor: the visitor board's top bar, rail rows, map and drawer (openboard.css), plus tabs,
+   link rows and the published-content side panel. Colours and motion come from tokens.css. */
+
+/* ---- Top bar and tabs ---------------------------------------------------------------------- */
+.obe-top {
+  min-height: 48px;
+  padding: 0 16px;
+}
+.obe-brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.obe-brand .wordmark {
+  font-size: 18px;
+}
+.obe-brand-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-2);
+}
+.obe-tabs {
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: flex;
+  gap: 4px;
+}
+.obe-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--dur-1);
+}
+.obe-tab::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ink-light);
+  transform: scaleX(0);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.obe-tab:hover {
+  color: var(--text);
+}
+.obe-tab[aria-selected='true'] {
+  color: var(--text-strong);
+}
+.obe-tab[aria-selected='true']::after {
+  transform: scaleX(1);
+}
+.obe-tab:focus-visible {
+  outline: 2px solid var(--ink-light);
+  outline-offset: -6px;
+  border-radius: var(--radius);
+}
+
+.obe-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.obe-error {
+  margin: 0;
+}
+.obe-banner {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--side-border);
+}
+
+/* ---- Links tab ----------------------------------------------------------------------------- */
+.obe-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 16px 48px;
+}
+.obe-head,
+.obe-links,
+.obe-page > .obe-empty {
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.obe-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.obe-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+.obe-lead {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-2);
+}
+.obe-empty {
+  padding: 32px 16px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.obe-empty p {
+  margin: 0;
+}
+.obe-links {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--side);
+}
+.obe-link {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+}
+.obe-link + .obe-link {
+  border-top: 1px solid var(--line);
+}
+.obe-link-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.obe-link-label {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: italic 600 15px/1.3 var(--font-serif);
+  color: var(--text-strong);
+}
+.obe-url {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 12px/1.5 var(--font-mono);
+  color: var(--ink-light);
+  text-overflow: ellipsis;
+}
+.obe-url:focus-visible {
+  outline: 2px solid var(--ink-light);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.obe-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.obe-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.obe-chips.is-none {
+  font-size: 11.5px;
+  color: var(--muted-3);
+}
+.obe-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.obe-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+}
+.obe-views {
+  font-size: 11.5px;
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+}
+.obe-actions {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.obe-copy-status {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--muted-2);
+}
+
+/* Link dialogs */
+.obe-form .input {
+  width: 100%;
+}
+.obe-checklist {
+  margin: 4px 0 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.obe-checklist legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+.obe-check {
+  align-items: center;
+  gap: 8px;
+  min-height: var(--row);
+  padding: 0 6px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.obe-check:hover {
+  background: var(--hover);
+}
+.obe-check-name {
+  font: italic 500 14px/1.2 var(--font-serif);
+  color: var(--text);
+}
+
+/* ---- Published content tab ----------------------------------------------------------------- */
+.obe-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.obe-side {
+  flex: 0 0 280px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--side);
+  border-right: 1px solid var(--side-border);
+}
+.obe-side-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  height: 40px;
+  padding: 12px 12px 0;
+}
+.obe-side-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-2);
+}
+.obe-side-count {
+  font-size: 11px;
+  color: var(--muted-3);
+}
+.obe-side-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 16px;
+}
+.obe-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--radius);
+}
+.obe-tree-row > .ob-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.obe-tree-row.is-active > .ob-row {
+  background: var(--row-selected);
+  color: var(--text-strong);
+}
+.obe-unpublish {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--error);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--dur-1),
+    background-color var(--dur-1);
+}
+.obe-tree-row:hover .obe-unpublish,
+.obe-tree-row:focus-within .obe-unpublish,
+.obe-unpublish:focus-visible {
+  opacity: 1;
+}
+.obe-unpublish:hover {
+  background: var(--error-bg);
+}
+.obe-unpublish:focus-visible {
+  outline: 2px solid var(--ink-light);
+  outline-offset: -1px;
+}
+/* No hover on touch screens: keep the action visible. */
+@media (hover: none) {
+  .obe-unpublish {
+    opacity: 1;
+  }
+}
+
+.obe-stage {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.obe-stage-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 10px 16px 0;
+}
+.obe-select {
+  width: auto;
+  max-width: 240px;
+}
+.obe-stage-note {
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--muted-3);
+}
+.obe-stage > .obe-error {
+  padding: 6px 16px 0;
+}
+.obe-stage-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+/* ---- Phone --------------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .obe-top {
+    flex-wrap: wrap;
+    gap: 0 8px;
+    padding: 6px 12px 0;
+  }
+  .obe-tabs {
+    order: 2;
+    flex: 1 1 100%;
+    height: 38px;
+  }
+  .obe-tab {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+  .obe-page {
+    padding: 16px 12px 40px;
+  }
+  .obe-head {
+    align-items: flex-start;
+  }
+  .obe-link {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .obe-actions {
+    flex-wrap: wrap;
+  }
+  .obe-copy-status {
+    position: static;
+  }
+  /* The tree, then the map; the panel scrolls as a page. */
+  .obe-panel {
+    overflow-y: auto;
+  }
+  .obe-content {
+    flex-direction: column;
+    flex: 0 0 auto;
+  }
+  .obe-stage {
+    flex: 0 0 auto;
+    height: 62dvh;
+  }
+  .obe-stage-bar {
+    padding: 8px 12px 0;
+  }
+  .obe-select {
+    flex: 1 1 0;
+    max-width: none;
+  }
+  .obe-stage-note {
+    flex: 1 1 100%;
+  }
+  .obe-side {
+    flex: 0 0 auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--side-border);
+  }
+  .obe-side-body {
+    overflow: visible;
+  }
+}

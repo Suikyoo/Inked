@@ -204,3 +204,40 @@ describe('openboard published images', () => {
     expect((await upload(bob, bv, bid, png(90))).statusCode).toBe(201);
   });
 });
+
+describe('owner read of published images', () => {
+  const read = (vaultId: string, imageId: string, cookie?: string) =>
+    call(t.app, 'GET', `/api/openboard/vaults/${vaultId}/images/${imageId}`, cookie ? { cookie } : {});
+
+  it('serves the owner their own image with the hardened image headers', async () => {
+    const id = randomUUID();
+    const vaultId = await publishWith(alice, 'A', [id]);
+    const bytes = png(120);
+    expect((await upload(alice, vaultId, id, bytes)).statusCode).toBe(201);
+    const res = await read(vaultId, id, alice.cookie);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('image/png');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['content-disposition']).toBe('inline');
+    expect(res.headers['content-security-policy']).toBe("default-src 'none'; sandbox");
+    expect(res.headers['cache-control']).toBe('private, max-age=3600');
+    expect(Buffer.compare(res.rawPayload, bytes)).toBe(0);
+  });
+
+  it('is 404 for another user, a missing image and an unknown vault', async () => {
+    const id = randomUUID();
+    const vaultId = await publishWith(alice, 'A', [id]);
+    expect((await upload(alice, vaultId, id, png())).statusCode).toBe(201);
+    expect((await read(vaultId, id, bob.cookie)).statusCode).toBe(404);
+    expect((await read(vaultId, randomUUID(), alice.cookie)).statusCode).toBe(404);
+    expect((await read(randomUUID(), id, alice.cookie)).statusCode).toBe(404);
+  });
+
+  it('requires a session (401) and UUID params (400)', async () => {
+    const id = randomUUID();
+    const vaultId = await publishWith(alice, 'A', [id]);
+    expect((await upload(alice, vaultId, id, png())).statusCode).toBe(201);
+    expect((await read(vaultId, id)).statusCode).toBe(401);
+    expect((await read('not-a-uuid', id, alice.cookie)).statusCode).toBe(400);
+  });
+});

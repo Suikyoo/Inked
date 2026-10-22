@@ -2,16 +2,19 @@
 
 import type { FastifyInstance } from 'fastify';
 import { type AppContext, currentUser, requireUser } from '../context.js';
-import { ApiError } from '../errors.js';
+import { ApiError, notFound } from '../errors.js';
+import { imageHeadersOnSend } from '../openboard/imageHeaders.js';
 import {
   createLink,
   deleteFolder,
   deleteLink,
   deleteNote,
   deleteVault,
+  getImage,
   listContent,
   listLinks,
   OB_IMAGE_MAX,
+  ownsVault,
   previewContent,
   publish,
   putImage,
@@ -151,6 +154,19 @@ export function openboardRoutes(app: FastifyInstance, ctx: AppContext): void {
 
   app.get<{ Querystring: { linkId?: string } }>('/api/openboard/preview', { ...auth, schema: previewSchema }, async (request) =>
     previewContent(db, currentUser(request).id, request.query.linkId),
+  );
+
+  // The owner reads their own published image (the editor's preview); same hardening as the public route.
+  app.get<ObImageParams>(
+    '/api/openboard/vaults/:vaultId/images/:imageId',
+    { ...auth, onSend: imageHeadersOnSend, schema: { params: imageParams } },
+    async (request, reply) => {
+      const { vaultId, imageId } = request.params;
+      if (!ownsVault(db, currentUser(request).id, vaultId)) throw notFound();
+      const image = getImage(db, vaultId, imageId);
+      if (!image) throw notFound();
+      return reply.type(image.mime).send(image.data);
+    },
   );
 }
 

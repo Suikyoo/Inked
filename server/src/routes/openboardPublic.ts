@@ -6,23 +6,12 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppContext } from '../context.js';
 import { ApiError, notFound } from '../errors.js';
 import { bumpViews, findLinkByToken, getImage, grantedPayload, isVaultGranted } from '../openboard/store.js';
+import { imageHeadersOnSend } from '../openboard/imageHeaders.js';
 import { LINK_TOKEN_RE } from '../openboard/token.js';
 import type { ObPublicResponse } from '../openboard/types.js';
 import { UUID_RE } from '../schemas.js';
 
 const uuidRe = new RegExp(UUID_RE);
-
-/**
- * Served image bytes must never render as a page (a GIF89a header followed by HTML sniffs as a gif), so
- * every image response carries its own locked-down policy. Set from a route-level onSend hook, which runs
- * after the app-wide one and so is not overwritten by the default security headers.
- */
-const IMAGE_HEADERS = {
-  'x-content-type-options': 'nosniff',
-  'content-disposition': 'inline',
-  'content-security-policy': "default-src 'none'; sandbox",
-  'cache-control': 'private, max-age=3600',
-} as const;
 
 type TokenParams = { Params: { token: string } };
 type ImageParams = { Params: { token: string; vaultId: string; imageId: string } };
@@ -54,12 +43,7 @@ export function openboardPublicRoutes(app: FastifyInstance, ctx: AppContext): vo
 
   app.get<ImageParams>(
     '/api/ob/:token/images/:vaultId/:imageId',
-    {
-      onSend: async (_request, reply, payload) => {
-        if (reply.statusCode === 200) reply.headers(IMAGE_HEADERS);
-        return payload;
-      },
-    },
+    { onSend: imageHeadersOnSend },
     async (request, reply) => {
       const { token, vaultId, imageId } = request.params;
       const link = linkFor(request, token);

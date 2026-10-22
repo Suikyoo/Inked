@@ -331,6 +331,11 @@ function ownedVaultIds(db: Db, userId: string, vaultIds: readonly string[]): str
   return ids;
 }
 
+/** Whether the published vault exists and belongs to the user. */
+export function ownsVault(db: Db, userId: string, vaultId: string): boolean {
+  return !!db.prepare('SELECT 1 FROM ob_vaults WHERE id = ? AND user_id = ?').get(vaultId, userId);
+}
+
 function setLinkVaults(db: Db, linkId: string, vaultIds: readonly string[]): void {
   db.prepare('DELETE FROM ob_link_vaults WHERE link_id = ?').run(linkId);
   const ins = db.prepare('INSERT INTO ob_link_vaults (link_id, ob_vault_id) VALUES (?, ?)');
