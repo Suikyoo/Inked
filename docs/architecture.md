@@ -185,6 +185,73 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 Cross-Origin-Opener-Policy: same-origin
 ```
 
+## Openboard (the one plaintext exception)
+
+Openboard lets the owner publish chosen vaults, folders or notes as plaintext and share them through secret links. Design: `docs/superpowers/specs/2026-10-22-openboard-design.md`. It is the one deliberate exception to zero-knowledge, and it is opt-in per item. To publish, the browser decrypts the content with the keys it already holds and uploads the plaintext. From then on that content is readable by the server, by anyone holding a link that grants it, and by whoever can read the server's database or backups. Nothing about it is encrypted, and the threat model above does not apply to it. Everything the owner has not published is unchanged: private vaults, folders, notes and images stay ciphertext, the openboard tables never reference the private ones, and no private row is written when something is published.
+
+Published content is a one-shot copy, not a live sync. Editing the private note afterwards does not change the published one; publish again to update it. Unpublishing deletes the published rows (and their images) for good, and deleting a link makes its URL stop working at once.
+
+### Storage
+
+All of these are plaintext and live in the same SQLite file as the private tables:
+
+```
+ob_vaults(id PK, user_id, name, color, created_at, updated_at)
+ob_folders(id PK, vault_id, parent_id, name)
+ob_notes(id PK, vault_id, folder_id, title, body, created_at, updated_at)
+ob_images(vault_id, id, size, mime, data BLOB, created_at)   PK (vault_id, id)
+ob_links(id PK, user_id, label, token UNIQUE, views, created_at)
+ob_link_vaults(link_id, ob_vault_id)                          PK (link_id, ob_vault_id)
+```
+
+Deleting a published vault cascades to its folders, notes, images and link grants; deleting a link cascades to its grants. The link token is stored as is (not hashed) so the editor can show and copy a link again later.
+
+### Routes
+
+Owner routes need a session, and every non-GET needs `X-Inked: 1` like the rest of the API. Anything not owned is a 404.
+
+| method | path | purpose |
+|---|---|---|
+| POST | /api/openboard/publish | publish a vault, folder or note; 201 with the result; 409 `conflict` (with `target` and `removes`) when it would replace something and `overwrite` is false |
+| GET | /api/openboard/content | the owner's published tree |
+| DELETE | /api/openboard/vaults/:id, /folders/:id, /notes/:id | unpublish |
+| POST | /api/openboard/vaults/:vaultId/images/:imageId | upload a published image (raw bytes) |
+| GET | /api/openboard/vaults/:vaultId/images/:imageId | the owner reads their own published image |
+| GET, POST | /api/openboard/links | list links; create one with `{ label, vaultIds }` |
+| PATCH, DELETE | /api/openboard/links/:id | rename or change granted vaults; delete |
+| GET | /api/openboard/preview?linkId= | the content a given link (or every vault, without `linkId`) would show; does not count a view |
+
+The public routes need no session and are GET only:
+
+| method | path | purpose |
+|---|---|---|
+| GET | /api/ob/:token | the link's label and its granted vaults with their trees and bodies; counts one view |
+| GET | /api/ob/:token/images/:vaultId/:imageId | an image, only if its vault is granted to the token |
+
+### Who can read what
+
+Access is only by holding a link; there is no directory, discovery or visitor account. A token looks like `adjective-animal-scene-xxxxxxxxxxxx`, for example `jolly-otter-in-the-sun-k3x9...`: a slug from three word lists, picked with `crypto.randomInt`, then a 12 character base32 suffix (`a-z2-7`) made from 60 random bits. The slug adds some entropy of its own, so the total is over 80 bits, which is what makes guessing impractical.
+
+A request with an unknown token, a deleted link or a malformed token (checked against a pattern before it touches the database) gets the same 404, so a visitor cannot tell a deleted link from one that never existed; so does an image from a vault the link does not grant. Failed lookups, on the page API and the image route alike, are counted per client IP by their own limiter (`obLimiter`, separate from the login limiters): 20 failures lock that IP for 60 s. While locked, the IP gets 429 `locked` with `retryAfter` and a `Retry-After` header even for a valid link. The client IP depends on `TRUST_PROXY`; see `docs/deploy.md`.
+
+A view is counted once per successful `GET /api/ob/:token`, that is, once per open of the visitor page. Image requests and the editor's preview do not count.
+
+### Images
+
+Publishing rewrites a note's `inked://<id>` image references to published image ids, and the browser uploads the decrypted bytes into the published vault. Only png, jpeg, gif and webp are accepted, at most 10 MiB each; the type is decided by the bytes' magic numbers, never by the upload's `Content-Type`, so SVG and anything else is rejected. Because these are plaintext bytes from the owner, every image response carries `X-Content-Type-Options: nosniff`, `Content-Disposition: inline` and `Content-Security-Policy: default-src 'none'; sandbox`, so an image can never be rendered as a page.
+
+### Overwrite
+
+Identity is the name path: vault name, then folder names, then the note title. Publishing to a path that already exists answers 409 with what would be replaced and removed, and the client shows a confirm dialog; on confirm it resends with `overwrite: true`. Overwrite is a true replace, not a merge: whatever the old target held that the new one does not is deleted, and it all happens in one transaction, so declining or failing changes nothing. A different private vault with the same name as a published vault is the same target. Overwriting a vault keeps the published vault's id and replaces its contents in place, so existing link grants survive.
+
+### Surfaces
+
+- The notes app: the three-dots menu on a vault, folder or note has "Publish to openboard" (after a notice that the content will be readable), and the sidebar links to the editor. Only the notes app publishes, because only it holds the vault keys.
+- `/openboard`, the editor: its own page, authenticated by the session cookie. It creates and deletes links, picks the vaults each link grants, shows view counts, browses and unpublishes published content, and previews the map as a given link's visitors would see it. It needs no keys.
+- `/ob/<token>`, the visitor page: no login. A map of the granted vaults, a tree rail, a reading drawer and title search. A `[[link]]` to a note that is not published or not granted is plain text.
+
+The server serves `openboard.html` for `/ob` and `/ob/*` and `openboard-editor.html` for `/openboard` and `/openboard/*`, before the SPA fallback. The visitor and editor are separate Vite entries that share the map and Markdown rendering with the notes app but ship no crypto, store or session code; `npm run check:openboard -w web` fails if either bundle pulls any in, and must run after `npm run build -w web`. Published pages use the app's normal CSP.
+
 ## Web app
 
 - React 18 + react-router. Routes: `/setup`, `/join/:token`, `/login`, `/recover`, `/` (home: search + results + concept map of every vault), `/v/:vaultId` (vault: tree), `/v/:vaultId/n/:noteId` (note), `/settings` (password change, invites for admin).

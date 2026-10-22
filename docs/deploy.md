@@ -70,6 +70,14 @@ nginx's error log keeps the image default. Its entries can include the request l
 
 The app's JSON request limit is 4 MiB and nginx allows 5 MiB (`client_max_body_size 5m`), so anything between the two limits reaches Inked, which answers 413. The image upload route (`/api/vaults/<id>/images/<id>`) is the exception: the app allows 10 MiB + 28 bytes there, and nginx allows 11 MiB for that route only.
 
+### Openboard links and the proxy
+
+Openboard (see `docs/architecture.md`) serves published pages at `/ob/<token>` and the owner's editor at `/openboard`. Neither needs any nginx change: both are ordinary requests that `location /` already proxies. The access log is already off, so link tokens in those URLs are not written to nginx's log. Inked's own request log strips query strings, but a token is a path segment, so treat `docker compose logs inked` as able to show `/ob/<token>` URLs.
+
+Inked limits failed token lookups per client IP: 20 failures lock that IP for 60 seconds, and a locked IP is refused even when it holds a valid link. The IP comes from `TRUST_PROXY`, which `compose.yaml` already sets to the `inked-internal` subnet (`172.31.250.0/28`), together with nginx's `CF-Connecting-IP` handling above. If `TRUST_PROXY` is unset or does not cover nginx, every visitor appears to come from the proxy's address, so 20 bad tokens from anyone would lock all visitors out of every link, valid ones included, for a minute.
+
+Request size: nginx allows 5 MiB per request (11 MiB only on the encrypted image route), while Inked accepts up to 64 MiB for an openboard publish and 10 MiB for a published image. A larger request is refused by nginx with 413 before it reaches Inked. Raise `client_max_body_size` for `/api/openboard/` in the nginx template if you publish large vaults or images.
+
 ## 5. First run
 
 ```bash
