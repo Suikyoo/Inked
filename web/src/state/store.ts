@@ -453,6 +453,12 @@ export class AppStore {
     }
   }
 
+  /** Downloads and decrypts one image to its plaintext bytes (publishing to openboard). */
+  async readImage(vaultId: string, imageId: string): Promise<Uint8Array> {
+    const key = this.vaultKey(vaultId);
+    return decryptImage(key, vaultId, imageId, await api.getImage(vaultId, imageId));
+  }
+
   decryptVector(vaultId: string, noteId: string, model: string, ct: string): Promise<Int8Array[]> {
     return decryptNoteVector(this.vaultKey(vaultId), vaultId, noteId, model, ct);
   }

@@ -201,3 +201,25 @@ describe('creating a folder', () => {
     expect(loc.state).toEqual({ mode: 'edit' });
   });
 });
+
+describe('Publish to openboard', () => {
+  const openMenu = (label: string) => click(document.querySelector(`button[aria-label="${label}"]`)!);
+  const menuItem = (name: string) => [...document.querySelectorAll('[role=menuitem]')].find((el) => el.textContent?.trim() === name);
+
+  it('the folder menu offers it and opens the publish notice', () => {
+    const t = base();
+    mount(t, { store: { getState: () => ({ vaults: { v1: vault }, trees: { v1: t } }) } as unknown as Partial<AppStore> });
+    openMenu('Actions for folder Notes');
+    const item = menuItem('Publish to openboard');
+    expect(item).toBeTruthy();
+    click(item!);
+    expect(document.body.textContent).toContain('Published content is stored readable by the server and anyone with a link.');
+    expect(document.body.textContent).toContain('Publish “Notes” to openboard');
+  });
+
+  it('the note menu offers it', () => {
+    mount(base(), { startOpen: ['f1'] });
+    openMenu('Actions for note Alpha');
+    expect(menuItem('Publish to openboard')).toBeTruthy();
+  });
+});

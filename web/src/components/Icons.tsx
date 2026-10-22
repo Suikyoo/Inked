@@ -113,6 +113,13 @@ export const CopyIcon = (p: P) => (
     <path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
   </Svg>
 );
+/** A box with an arrow out: something leaves the private vaults (openboard). */
+export const ShareIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 14.5V4M8 7.5L12 3.5l4 4" />
+    <path d="M8.5 10.5H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1.5" />
+  </Svg>
+);
 export const CheckIcon = (p: P) => (
   <Svg strokeWidth={2.2} {...p}>
     <path d="M5 12.5l4.5 4.5L19 7.5" />

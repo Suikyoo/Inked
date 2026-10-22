@@ -5,7 +5,8 @@ import { inkLevelLabel, VaultIcon } from '../brand/VaultIcon';
 import { describeError, nextVaultColor } from '../lib/util';
 import { useAppState, useStore, vaultStats } from '../state/StoreContext';
 import { PromptDialog } from './Dialog';
-import { LockIcon, MapIcon, MoreIcon, PlusIcon, SettingsIcon } from './Icons';
+import { PublishDialog } from '../openboard/publish/PublishDialog';
+import { LockIcon, MapIcon, MoreIcon, PlusIcon, SettingsIcon, ShareIcon } from './Icons';
 import { Menu } from './Menu';
 import { uniqueTitle, VaultTree } from './VaultTree';
 
@@ -21,6 +22,7 @@ export function Sidebar({ id, onLock }: { id: string; onLock: () => void }) {
   const [newVaultOpen, setNewVaultOpen] = useState(false);
   const [folderSignal, setFolderSignal] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [publishVault, setPublishVault] = useState<string | null>(null);
   // Ink rush: a click on a vault flashes its icon's spokes.
   const [rush, setRush] = useState({ vaultId: '', seq: 0 });
 
@@ -116,6 +118,7 @@ export function Sidebar({ id, onLock }: { id: string; onLock: () => void }) {
                           },
                         },
                         { label: 'New folder', onSelect: () => setFolderSignal((n) => n + 1) },
+                        { label: 'Publish to openboard', onSelect: () => setPublishVault(v.id) },
                         { label: 'Vault settings', onSelect: () => navigate('/settings#vaults') },
                       ]}
                     >
@@ -152,6 +155,10 @@ export function Sidebar({ id, onLock }: { id: string; onLock: () => void }) {
           <SettingsIcon className="item-icon" />
           Settings
         </NavLink>
+        <a href="/openboard" target="_blank" rel="noopener" className="item">
+          <ShareIcon className="item-icon" />
+          Openboard
+        </a>
         <span className="side-meta">
           <LockIcon size={11} strokeWidth={2} />
           Encrypted in your browser
@@ -173,6 +180,9 @@ export function Sidebar({ id, onLock }: { id: string; onLock: () => void }) {
           }
         }}
       />
+      {publishVault && (
+        <PublishDialog store={store} vaultId={publishVault} target={{ kind: 'vault' }} onClose={() => setPublishVault(null)} />
+      )}
     </aside>
   );
 }

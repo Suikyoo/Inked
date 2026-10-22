@@ -38,9 +38,9 @@ function fieldTags(source: string): string[] {
   return tags;
 }
 
-/** Fields nobody types into: checkboxes, colour pickers, hidden and read-only fields, pass-through wrappers. */
+/** Fields nobody types into: checkboxes, radios, colour pickers, hidden and read-only fields, pass-through wrappers. */
 const notTyped = (tag: string) =>
-  /type="(checkbox|color|hidden)"/.test(tag) || /\s(hidden|readOnly)[\s/>]/.test(tag) || /\{\.\.\.\w+\}/.test(tag);
+  /type="(checkbox|radio|color|hidden)"/.test(tag) || /\s(hidden|readOnly)[\s/>]/.test(tag) || /\{\.\.\.\w+\}/.test(tag);
 
 describe('spell-check (I-1)', () => {
   afterEach(() => localStorage.clear());

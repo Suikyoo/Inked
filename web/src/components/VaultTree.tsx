@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { indexNoteOf } from 'inked-core';
 import { prefs } from '../lib/prefs';
+import { PublishDialog } from '../openboard/publish/PublishDialog';
 import { describeError } from '../lib/util';
 import { folderPath, useStore } from '../state/StoreContext';
 import type { FolderView, NoteView, TreeView, VaultView } from '../state/store';
@@ -60,7 +61,8 @@ type DialogState =
   | { kind: 'deleteFolder'; folder: FolderView; noteCount: number }
   | { kind: 'deleteNote'; note: NoteView }
   | { kind: 'moveNote'; note: NoteView }
-  | { kind: 'moveFolder'; folder: FolderView };
+  | { kind: 'moveFolder'; folder: FolderView }
+  | { kind: 'publish'; target: { kind: 'folder' | 'note'; id: string } };
 
 export function VaultTree({
   vault,
@@ -213,6 +215,7 @@ export function VaultTree({
         { label: 'New folder inside', onSelect: () => setDialog({ kind: 'newFolder', parentId: folder.id }) },
         { label: 'Rename', onSelect: () => setRenaming(folder.id) },
         { label: 'Move to…', onSelect: () => setDialog({ kind: 'moveFolder', folder }) },
+        { label: 'Publish to openboard', onSelect: () => setDialog({ kind: 'publish', target: { kind: 'folder', id: folder.id } }) },
         {
           label: 'Delete folder',
           danger: true,
@@ -225,6 +228,7 @@ export function VaultTree({
       { label: 'Open', onSelect: () => openNote(note.id) },
       { label: 'Rename', onSelect: () => setRenaming(note.id) },
       { label: 'Move to folder…', onSelect: () => setDialog({ kind: 'moveNote', note }) },
+      { label: 'Publish to openboard', onSelect: () => setDialog({ kind: 'publish', target: { kind: 'note', id: note.id } }) },
       { label: 'Delete note', danger: true, onSelect: () => setDialog({ kind: 'deleteNote', note }) },
     ];
   };
@@ -565,6 +569,9 @@ export function VaultTree({
           if (target) toggle(target, true);
         }}
       />
+      {dialog.kind === 'publish' && (
+        <PublishDialog store={store} vaultId={vault.id} target={dialog.target} onClose={() => setDialog({ kind: 'none' })} />
+      )}
     </>
   );
 }

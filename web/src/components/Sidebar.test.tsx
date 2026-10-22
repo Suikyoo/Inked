@@ -19,7 +19,7 @@ afterEach(() => {
   host = null;
 });
 
-function mount() {
+function mount(path = '/') {
   const state = {
     vaultsStatus: 'ready',
     vaults: { v1: vault('v1'), v2: vault('v2') },
@@ -34,7 +34,7 @@ function mount() {
   root = createRoot(host);
   act(() =>
     root!.render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[path]}>
         <StoreProvider store={store}>
           <Sidebar id="side" onLock={() => undefined} />
         </StoreProvider>
@@ -52,5 +52,23 @@ describe('Sidebar vault icon', () => {
     act(() => link('Vault v1').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })));
     expect(link('Vault v1').querySelector('.vi-rush')).not.toBeNull();
     expect(link('Vault v2').querySelector('.vi-rush')).toBeNull();
+  });
+});
+
+describe('Sidebar openboard', () => {
+  it('the vault menu offers Publish to openboard next to Vault settings', () => {
+    mount('/v/v1');
+    act(() => void document.querySelector('button[aria-label="Actions for vault Vault v1"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const items = [...document.querySelectorAll('[role=menuitem]')].map((el) => el.textContent?.trim());
+    expect(items).toContain('Publish to openboard');
+    expect(items.indexOf('Publish to openboard')).toBe(items.indexOf('Vault settings') - 1);
+  });
+
+  it('links to the openboard editor in a new tab', () => {
+    mount();
+    const a = [...host!.querySelectorAll('a')].find((el) => el.getAttribute('href') === '/openboard');
+    expect(a?.textContent).toContain('Openboard');
+    expect(a?.getAttribute('target')).toBe('_blank');
+    expect(a?.getAttribute('rel')).toContain('noopener');
   });
 });

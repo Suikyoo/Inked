@@ -542,3 +542,74 @@
   min-height: 0;
   overflow: hidden;
 }
+
+/* Publish to openboard: the destination picker (openboard vaults and folders, plus a new vault). */
+.pub-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.pub-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--row-sm);
+  padding: 0 8px 0 calc(8px + var(--depth, 0) * 14px);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.pub-opt:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.pub-opt:has(input:checked) {
+  background: var(--row-selected);
+  color: var(--text);
+}
+.pub-opt input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--ink);
+}
+.pub-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+}
+.pub-icon {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+}
+.pub-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pub-new {
+  margin-top: 2px;
+  color: var(--ink-light);
+}
+.pub-new-name {
+  padding: 2px 8px 4px 30px;
+}
+.pub-new-name .input {
+  width: 100%;
+}
+.pub-empty {
+  margin: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--muted-2);
+}

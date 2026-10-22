@@ -32,6 +32,8 @@ let requestUser: string | null = null;
 export function setRequestUser(id: string | null) {
   requestUser = id;
 }
+/** The account this tab's data requests name (see setRequestUser), for callers that send their own requests. */
+export const getRequestUser = (): string | null => requestUser;
 
 /** Called when a request naming the signed-in account met another account's session. */
 let onUserMismatch: (() => void) | null = null;
