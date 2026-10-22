@@ -1,10 +1,24 @@
-// Owner API for openboard: publish plaintext content, list it, unpublish it.
+// Owner API for openboard: publish plaintext content, list it, unpublish it, manage links, preview.
 
 import type { FastifyInstance } from 'fastify';
 import { type AppContext, currentUser, requireUser } from '../context.js';
-import { deleteFolder, deleteNote, deleteVault, listContent, publish } from '../openboard/store.js';
+import { ApiError } from '../errors.js';
+import {
+  createLink,
+  deleteFolder,
+  deleteLink,
+  deleteNote,
+  deleteVault,
+  listContent,
+  listLinks,
+  OB_IMAGE_MAX,
+  previewContent,
+  publish,
+  putImage,
+  updateLink,
+} from '../openboard/store.js';
 import type { PublishRequest } from '../openboard/types.js';
-import { idParams } from '../schemas.js';
+import { idParams, imageParams, uuid } from '../schemas.js';
 
 /** Largest published note body, in characters. */
 export const OB_NOTE_BODY_MAX = 1024 * 1024;
@@ -55,6 +69,36 @@ const publishSchema = {
 
 type IdParams = { Params: { id: string } };
 
+/** Link label: 1-80 characters, not only whitespace. */
+const label = { type: 'string', minLength: 1, maxLength: 80, pattern: '\\S' } as const;
+const vaultIds = { type: 'array', maxItems: 1000, items: uuid } as const;
+
+const createLinkSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['label', 'vaultIds'],
+    properties: { label, vaultIds },
+  },
+} as const;
+
+const updateLinkSchema = {
+  params: idParams,
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: { label, vaultIds },
+  },
+} as const;
+
+const previewSchema = {
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    properties: { linkId: uuid },
+  },
+} as const;
+
 export function openboardRoutes(app: FastifyInstance, ctx: AppContext): void {
   const { db } = ctx;
   const auth = { onRequest: requireUser(ctx) };
@@ -85,4 +129,50 @@ export function openboardRoutes(app: FastifyInstance, ctx: AppContext): void {
     deleteNote(db, currentUser(request).id, request.params.id);
     return reply.code(204).send();
   });
+
+  app.get('/api/openboard/links', auth, async (request) => listLinks(db, currentUser(request).id));
+
+  app.post<{ Body: { label: string; vaultIds: string[] } }>(
+    '/api/openboard/links',
+    { ...auth, schema: createLinkSchema },
+    async (request, reply) => reply.code(201).send(createLink(db, currentUser(request).id, request.body)),
+  );
+
+  app.patch<IdParams & { Body: { label?: string; vaultIds?: string[] } }>(
+    '/api/openboard/links/:id',
+    { ...auth, schema: updateLinkSchema },
+    async (request) => updateLink(db, currentUser(request).id, request.params.id, request.body ?? {}),
+  );
+
+  app.delete<IdParams>('/api/openboard/links/:id', { ...auth, schema: { params: idParams } }, async (request, reply) => {
+    deleteLink(db, currentUser(request).id, request.params.id);
+    return reply.code(204).send();
+  });
+
+  app.get<{ Querystring: { linkId?: string } }>('/api/openboard/preview', { ...auth, schema: previewSchema }, async (request) =>
+    previewContent(db, currentUser(request).id, request.query.linkId),
+  );
+}
+
+type ObImageParams = { Params: { vaultId: string; imageId: string } };
+
+/**
+ * Published image upload (raw plaintext bytes). Registered inside the octet-stream parser scope in app.ts,
+ * so any other content type is rejected with 415 before the handler runs.
+ */
+export function openboardImageRoutes(app: FastifyInstance, ctx: AppContext): void {
+  const { db } = ctx;
+  app.post<ObImageParams & { Body: unknown }>(
+    '/api/openboard/vaults/:vaultId/images/:imageId',
+    { onRequest: requireUser(ctx), bodyLimit: OB_IMAGE_MAX, schema: { params: imageParams } },
+    async (request, reply) => {
+      const body = request.body;
+      if (body !== undefined && !Buffer.isBuffer(body)) {
+        throw new ApiError(415, 'unsupported_media_type', 'Send the image as application/octet-stream');
+      }
+      const { vaultId, imageId } = request.params;
+      const saved = putImage(db, currentUser(request).id, vaultId, imageId, body ?? Buffer.alloc(0), ctx.imageQuotaBytes);
+      return reply.code(201).send(saved);
+    },
+  );
 }

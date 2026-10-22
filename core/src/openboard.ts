@@ -16,3 +16,4 @@ export interface PublishRequest {
 }
 export interface PublishResult { vaultId: string; imageRefs: string[] }   // image ids referenced by published bodies
 export interface PublishConflict { error: 'conflict'; target: { kind: 'vault'|'folder'|'note'; name: string; path: string[] }; removes: { folders: number; notes: number } }
+export interface ObLink { id: string; label: string; token: string; vaultIds: string[]; views: number; createdAt: string }

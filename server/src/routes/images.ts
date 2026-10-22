@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { type AppContext, currentUser, requireUser } from '../context.js';
 import { nowIso } from '../db.js';
 import { ApiError, notFound } from '../errors.js';
+import { imageBytesUsed } from '../openboard/store.js';
 import { IMAGE_BLOB_MAX, IMAGE_BLOB_MIN, imageParams } from '../schemas.js';
 import { ownedVault } from './access.js';
 
@@ -24,14 +25,8 @@ export function imageRoutes(app: FastifyInstance, ctx: AppContext): void {
       if (body === undefined || body.length < IMAGE_BLOB_MIN) throw new ApiError(400, 'invalid_request', 'Image data is too short');
       const { imageId } = request.params;
       if (db.prepare('SELECT 1 FROM images WHERE id = ?').get(imageId)) throw new ApiError(409, 'exists');
-      const used = (
-        db
-          .prepare(
-            'SELECT COALESCE(SUM(i.size), 0) AS n FROM images i JOIN vaults v ON v.id = i.vault_id WHERE v.user_id = ?',
-          )
-          .get(userId) as { n: number }
-      ).n;
-      if (used + body.length > ctx.imageQuotaBytes) {
+      // Private and published image bytes share one per-user quota.
+      if (imageBytesUsed(db, userId) + body.length > ctx.imageQuotaBytes) {
         throw new ApiError(413, 'quota_exceeded', 'Image storage is full');
       }
       const now = nowIso();

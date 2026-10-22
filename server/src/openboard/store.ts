@@ -1,11 +1,12 @@
-// All SQL for openboard: published plaintext content (and, later, links and payloads).
+// All SQL for openboard: published plaintext content, published images, links and payloads.
 // Nothing here reads or writes the private encrypted tables.
 
 import { randomUUID } from 'node:crypto';
 import { bumpTimestamp, type Db, type ObFolderRow, type ObNoteRow, type ObVaultRow, nowIso, transaction } from '../db.js';
 import { ApiError, notFound } from '../errors.js';
 import { UUID_RE } from '../schemas.js';
-import type { ObFolder, ObNote, ObPayload, ObVault, PublishConflict, PublishRequest, PublishResult } from './types.js';
+import { generateLinkToken } from './token.js';
+import type { ObFolder, ObLink, ObNote, ObPayload, ObVault, PublishConflict, PublishRequest, PublishResult } from './types.js';
 
 /** A publish that would replace existing content without `overwrite`; maps to 409 with the PublishConflict body. */
 export class PublishConflictError extends ApiError {
@@ -253,6 +254,213 @@ export function listContent(db: Db, userId: string): ObPayload {
     )
     .all(userId) as unknown as ObNoteRow[];
   return { vaults: vaults.map(vaultJson), folders: folders.map(folderJson), notes: notes.map(noteJson) };
+}
+
+/** The given published vaults with their folders and notes, bodies included. Unknown ids are skipped. */
+export function contentForVaults(db: Db, vaultIds: readonly string[]): ObPayload {
+  if (vaultIds.length === 0) return { vaults: [], folders: [], notes: [] };
+  const marks = vaultIds.map(() => '?').join(',');
+  const vaults = db
+    .prepare(`SELECT * FROM ob_vaults WHERE id IN (${marks}) ORDER BY created_at, rowid`)
+    .all(...vaultIds) as unknown as ObVaultRow[];
+  const folders = db
+    .prepare(`SELECT * FROM ob_folders WHERE vault_id IN (${marks}) ORDER BY rowid`)
+    .all(...vaultIds) as unknown as ObFolderRow[];
+  const notes = db
+    .prepare(`SELECT * FROM ob_notes WHERE vault_id IN (${marks}) ORDER BY rowid`)
+    .all(...vaultIds) as unknown as ObNoteRow[];
+  return { vaults: vaults.map(vaultJson), folders: folders.map(folderJson), notes: notes.map(noteJson) };
+}
+
+/**
+ * What the owner's visitors would see, with bodies: the link's vaults, or everything the user has
+ * published when `linkId` is omitted. Never touches the link's view count. 404 unless the link is the user's.
+ */
+export function previewContent(db: Db, userId: string, linkId?: string): ObPayload {
+  if (linkId === undefined) {
+    const rows = db.prepare('SELECT id FROM ob_vaults WHERE user_id = ?').all(userId) as { id: string }[];
+    return contentForVaults(db, rows.map((r) => r.id));
+  }
+  return contentForVaults(db, ownedLink(db, userId, linkId).vaultIds);
+}
+
+// ---- Links ----
+
+interface ObLinkRow {
+  id: string;
+  user_id: string;
+  label: string;
+  token: string;
+  views: number;
+  created_at: string;
+}
+
+/** Attempts at a fresh link token before giving up with 500. */
+const TOKEN_ATTEMPTS = 5;
+
+function linkVaultIds(db: Db, linkId: string): string[] {
+  const rows = db
+    .prepare(
+      `SELECT lv.ob_vault_id AS id FROM ob_link_vaults lv JOIN ob_vaults v ON v.id = lv.ob_vault_id
+       WHERE lv.link_id = ? ORDER BY v.created_at, v.rowid`,
+    )
+    .all(linkId) as { id: string }[];
+  return rows.map((r) => r.id);
+}
+
+const linkJson = (db: Db, row: ObLinkRow): ObLink => ({
+  id: row.id,
+  label: row.label,
+  token: row.token,
+  vaultIds: linkVaultIds(db, row.id),
+  views: row.views,
+  createdAt: row.created_at,
+});
+
+function ownedLink(db: Db, userId: string, id: string): ObLink {
+  const row = db.prepare('SELECT * FROM ob_links WHERE id = ? AND user_id = ?').get(id, userId) as ObLinkRow | undefined;
+  if (!row) throw notFound();
+  return linkJson(db, row);
+}
+
+/** De-duplicated vault ids, all of which must be the user's published vaults (else 400). */
+function ownedVaultIds(db: Db, userId: string, vaultIds: readonly string[]): string[] {
+  const ids = [...new Set(vaultIds)];
+  const owned = db.prepare('SELECT 1 FROM ob_vaults WHERE id = ? AND user_id = ?');
+  for (const id of ids) if (!owned.get(id, userId)) throw invalid(`Unknown published vault ${id}`);
+  return ids;
+}
+
+function setLinkVaults(db: Db, linkId: string, vaultIds: readonly string[]): void {
+  db.prepare('DELETE FROM ob_link_vaults WHERE link_id = ?').run(linkId);
+  const ins = db.prepare('INSERT INTO ob_link_vaults (link_id, ob_vault_id) VALUES (?, ?)');
+  for (const v of vaultIds) ins.run(linkId, v);
+}
+
+const isTokenCollision = (err: unknown) => err instanceof Error && err.message.includes('UNIQUE constraint failed: ob_links.token');
+
+export function listLinks(db: Db, userId: string): ObLink[] {
+  const rows = db
+    .prepare('SELECT * FROM ob_links WHERE user_id = ? ORDER BY created_at, rowid')
+    .all(userId) as unknown as ObLinkRow[];
+  return rows.map((r) => linkJson(db, r));
+}
+
+/** Creates a link with a fresh token, retrying a token collision up to TOKEN_ATTEMPTS times (then 500). */
+export function createLink(
+  db: Db,
+  userId: string,
+  req: { label: string; vaultIds: readonly string[] },
+  newToken: () => string = generateLinkToken,
+): ObLink {
+  return transaction(db, () => {
+    const vaultIds = ownedVaultIds(db, userId, req.vaultIds);
+    const id = randomUUID();
+    const insert = db.prepare('INSERT INTO ob_links (id, user_id, label, token, views, created_at) VALUES (?, ?, ?, ?, 0, ?)');
+    for (let attempt = 1; ; attempt++) {
+      try {
+        insert.run(id, userId, req.label, newToken(), nowIso());
+        break;
+      } catch (err) {
+        if (!isTokenCollision(err)) throw err;
+        if (attempt >= TOKEN_ATTEMPTS) throw new ApiError(500, 'internal', 'Could not generate a unique link token');
+      }
+    }
+    setLinkVaults(db, id, vaultIds);
+    return ownedLink(db, userId, id);
+  });
+}
+
+/** Renames a link and/or replaces its whole vault set, atomically. 404 unless it is the user's. */
+export function updateLink(db: Db, userId: string, id: string, req: { label?: string; vaultIds?: readonly string[] }): ObLink {
+  return transaction(db, () => {
+    ownedLink(db, userId, id);
+    const vaultIds = req.vaultIds === undefined ? undefined : ownedVaultIds(db, userId, req.vaultIds);
+    if (req.label !== undefined) db.prepare('UPDATE ob_links SET label = ? WHERE id = ?').run(req.label, id);
+    if (vaultIds !== undefined) setLinkVaults(db, id, vaultIds);
+    return ownedLink(db, userId, id);
+  });
+}
+
+/** Deletes a link and its grants. 404 unless it is the user's. */
+export function deleteLink(db: Db, userId: string, id: string): void {
+  const res = db.prepare('DELETE FROM ob_links WHERE id = ? AND user_id = ?').run(id, userId);
+  if (res.changes === 0) throw notFound();
+}
+
+// ---- Images ----
+
+export type ObImageMime = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+
+/** Published images carry the private limit: at most 10 MiB of plaintext. */
+export const OB_IMAGE_MAX = 10 * 1024 * 1024;
+/** Shorter than the smallest signature check (webp needs 12 bytes) cannot be a real image. */
+export const OB_IMAGE_MIN = 12;
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** The image type from its magic bytes; null for anything that is not png, jpeg, gif or webp (SVG included). */
+export function sniffImage(buf: Buffer): ObImageMime | null {
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(PNG_SIGNATURE)) return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 6) {
+    const head = buf.toString('latin1', 0, 6);
+    if (head === 'GIF87a' || head === 'GIF89a') return 'image/gif';
+  }
+  if (buf.length >= 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
+/** Bytes the user stores across private (encrypted) and published images; both count against one quota. */
+export function imageBytesUsed(db: Db, userId: string): number {
+  const row = db
+    .prepare(
+      `SELECT
+         (SELECT COALESCE(SUM(i.size), 0) FROM images i JOIN vaults v ON v.id = i.vault_id WHERE v.user_id = ?) +
+         (SELECT COALESCE(SUM(o.size), 0) FROM ob_images o JOIN ob_vaults v ON v.id = o.vault_id WHERE v.user_id = ?) AS n`,
+    )
+    .get(userId, userId) as { n: number };
+  return row.n;
+}
+
+/**
+ * Stores a published image. 404 unless the published vault is the user's and one of its note bodies
+ * references `inked://<imageId>`; 409 if it is already stored; 400 unless it sniffs as a supported
+ * image; 413 when it would take the user over `quotaBytes`.
+ */
+export function putImage(
+  db: Db,
+  userId: string,
+  vaultId: string,
+  imageId: string,
+  data: Buffer,
+  quotaBytes: number,
+): { id: string; size: number } {
+  return transaction(db, () => {
+    if (!db.prepare('SELECT 1 FROM ob_vaults WHERE id = ? AND user_id = ?').get(vaultId, userId)) throw notFound();
+    if (!imageRefsOf(bodiesReferencing(db, vaultId, imageId)).includes(imageId)) throw notFound();
+    if (db.prepare('SELECT 1 FROM ob_images WHERE vault_id = ? AND id = ?').get(vaultId, imageId)) throw new ApiError(409, 'exists');
+    const mime = data.length >= OB_IMAGE_MIN ? sniffImage(data) : null;
+    if (!mime) throw invalid('Not a supported image (png, jpeg, gif or webp)');
+    if (imageBytesUsed(db, userId) + data.length > quotaBytes) throw new ApiError(413, 'quota_exceeded', 'Image storage is full');
+    db.prepare('INSERT INTO ob_images (vault_id, id, size, mime, data, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+      vaultId,
+      imageId,
+      data.length,
+      mime,
+      data,
+      nowIso(),
+    );
+    return { id: imageId, size: data.length };
+  });
+}
+
+/** Note bodies in the vault that contain the image id as a substring (candidates for an exact reference). */
+function bodiesReferencing(db: Db, vaultId: string, imageId: string): string[] {
+  const rows = db
+    .prepare('SELECT body FROM ob_notes WHERE vault_id = ? AND instr(body, ?) > 0')
+    .all(vaultId, `inked://${imageId}`) as { body: string }[];
+  return rows.map((r) => r.body);
 }
 
 /** Unpublishes a vault with all its content, images and link grants. 404 unless it is the user's. */

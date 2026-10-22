@@ -14,7 +14,7 @@ import { authRoutes, countUsers } from './routes/auth.js';
 import { folderRoutes } from './routes/folders.js';
 import { inviteRoutes } from './routes/invites.js';
 import { noteRoutes } from './routes/notes.js';
-import { openboardRoutes } from './routes/openboard.js';
+import { openboardImageRoutes, openboardRoutes } from './routes/openboard.js';
 import { vaultRoutes } from './routes/vaults.js';
 import { settingsRoutes } from './routes/settings.js';
 import { imageRoutes } from './routes/images.js';
@@ -213,12 +213,14 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   folderRoutes(app, ctx);
   noteRoutes(app, ctx);
   vectorRoutes(app, ctx);
-  // Encrypted images arrive as raw bytes; the parser lives in this scope so no other route accepts octet-stream.
+  // Images (encrypted private ones and plaintext published ones) arrive as raw bytes; the parser lives in
+  // this scope so no other route accepts octet-stream.
   await app.register(async (scope) => {
     scope.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: IMAGE_BLOB_MAX }, (_request, body, done) => {
       done(null, body);
     });
     imageRoutes(scope, ctx);
+    openboardImageRoutes(scope, ctx);
   });
   settingsRoutes(app, ctx);
   openboardRoutes(app, ctx);
