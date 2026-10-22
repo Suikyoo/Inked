@@ -73,7 +73,10 @@ export interface ConceptMapProps {
   onSelect: (s: MapSelection | null) => void;
   /** Called when a note is opened (Enter on its dot). The map has no router; the owner decides where that goes. */
   onOpenNote: (vaultId: string, noteId: string) => void;
-  /** When `n` changes, the map fits that folder or hub with the animated fit (the preview's "Zoom to folder"). */
+  /**
+   * When `n` changes, the map fits that folder or hub with the animated fit (the preview's "Zoom to folder"),
+   * or, for a note, glides it to the centre at the current zoom (the openboard reader).
+   */
   fitRequest?: { sel: MapSelection; n: number } | null;
   /** Opened from a vault: until the user moves the map, it frames this vault instead of every vault, easing in. */
   focusVault?: string | null;
@@ -435,6 +438,16 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
     const { sel } = fitRequest;
     if (sel.kind === 'folder') fitTo(scene.folderBounds[sel.id]);
     else if (sel.kind === 'hub') fitTo(scene.vaultBounds[sel.vaultId]);
+    else {
+      // A note keeps the zoom and glides to the centre.
+      const dot = dotById.get(sel.id);
+      if (!dot) return;
+      touched.current = true;
+      animateTo((v) => {
+        const s = toScreen(v, dot);
+        return panBy(v, size.w / 2 - s.x, size.h / 2 - s.y);
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRequest?.n]);
 

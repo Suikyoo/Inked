@@ -594,6 +594,15 @@ describe('ConceptMap', () => {
       expect(at()).not.toEqual(fitted);
     });
 
+    it('a fitRequest for a note glides that note to the centre of the frame', () => {
+      const e = entry(base());
+      const { rerender } = render({ entries: [e], fitRequest: null });
+      rerender({ entries: [e], fitRequest: { sel: { kind: 'note', vaultId: 'v1', id: 'n1' }, n: 1 } });
+      const p = translate(node('n1'))!;
+      expect(p.x).toBeCloseTo(400, 0);
+      expect(p.y).toBeCloseTo(240, 0);
+    });
+
     it('arrow keys rove between folders and notes', () => {
       const e = entry(folders());
       render({ entries: [e] });
