@@ -231,6 +231,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // The SPA is optional: without a built web/dist the server is API-only.
   const hasWeb = existsSync(path.join(opts.webDist, 'index.html'));
+  const hasVisitorPage = existsSync(path.join(opts.webDist, 'openboard.html'));
+  const hasEditorPage = existsSync(path.join(opts.webDist, 'openboard-editor.html'));
   if (hasWeb) {
     await app.register(fastifyStatic, {
       root: opts.webDist,
@@ -248,6 +250,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     // A missing model or frame file is a plain 404, never the SPA shell.
     if (isModelsPath(request.url) || isFramePath(request.url)) return reply.code(404).send({ error: 'not_found' });
     if (hasWeb && SAFE_METHODS.has(request.method) && !isApiPath(request.url)) {
+      const p = routedPathname(request.url);
+      if (hasVisitorPage && (p === '/ob' || p.startsWith('/ob/'))) return reply.sendFile('openboard.html');
+      if (hasEditorPage && (p === '/openboard' || p.startsWith('/openboard/'))) return reply.sendFile('openboard-editor.html');
       return reply.sendFile('index.html');
     }
     return reply.code(404).send({ error: 'not_found' });
