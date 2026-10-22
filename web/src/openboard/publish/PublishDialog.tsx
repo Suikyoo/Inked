@@ -4,7 +4,7 @@ import { ConfirmDialog, Dialog } from '../../components/Dialog';
 import { FolderIcon } from '../../components/Icons';
 import { prefs } from '../../lib/prefs';
 import { ObApiError, errorText, listContent } from '../api';
-import { collectUnit, targetName, type CollectStore, type PublishTarget, type PublishUnit } from './collect';
+import { collectUnit, targetName, unreadableCount, type CollectStore, type PublishTarget, type PublishUnit } from './collect';
 import { AccountChangedError, publishUnit, uploadImages } from './publishApi';
 
 /** Where the unit lands: an openboard vault (by name) and the folder names below its root. */
@@ -16,10 +16,13 @@ interface Dest {
 type Step =
   | { kind: 'notice' }
   | { kind: 'pick' }
-  | { kind: 'conflict'; conflict: PublishConflict; dest: Dest }
+  | { kind: 'conflict'; conflict: PublishConflict; skipped: number; dest: Dest }
   | { kind: 'done'; failedImages: number; skipped: number };
 
-type Outcome = { kind: 'conflict'; conflict: PublishConflict } | { kind: 'done'; failedImages: number; skipped: number };
+type Outcome = { kind: 'conflict'; conflict: PublishConflict; skipped: number } | { kind: 'done'; failedImages: number; skipped: number };
+
+/** "N unreadable note(s) won’t be included" (the caller ends the sentence). */
+const unreadableText = (n: number) => `${n} unreadable ${n === 1 ? 'note' : 'notes'} won’t be included`;
 
 const NEW = 'new';
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
@@ -130,7 +133,7 @@ export function PublishDialog({
   const attempt = async (dest: Dest, overwrite: boolean): Promise<Outcome> => {
     const u = await unit();
     const out = await publishUnit(u, dest.destPath, dest.vaultName, overwrite);
-    if (out.status === 'conflict') return { kind: 'conflict', conflict: out.conflict };
+    if (out.status === 'conflict') return { kind: 'conflict', conflict: out.conflict, skipped: u.skipped };
     const failedImages = await uploadImages(out.result, u.images);
     return { kind: 'done', failedImages, skipped: u.skipped };
   };
@@ -141,7 +144,7 @@ export function PublishDialog({
     try {
       const out = await attempt(dest, false);
       if (!live.current) return;
-      setStep(out.kind === 'conflict' ? { kind: 'conflict', conflict: out.conflict, dest } : out);
+      setStep(out.kind === 'conflict' ? { ...out, dest } : out);
     } catch (e) {
       if (live.current) setError(failureText(e));
     } finally {
@@ -199,7 +202,17 @@ export function PublishDialog({
       <ConfirmDialog
         open
         title={`Replace “${conflict.target.name}” on openboard?`}
-        message={<p>This replaces {parts.join(' and ')} there. Your notes in Inked don’t change.</p>}
+        message={
+          <>
+            <p>This replaces {parts.join(' and ')} there. Your notes in Inked don’t change.</p>
+            {step.skipped > 0 && (
+              <p>
+                {unreadableText(step.skipped)}, and {step.skipped === 1 ? 'its published copy' : 'their published copies'} will be
+                removed.
+              </p>
+            )}
+          </>
+        }
         confirmLabel="Overwrite"
         onClose={() => {
           if (!finished.current) onClose();
@@ -219,7 +232,8 @@ export function PublishDialog({
     );
   }
 
-  const title = name ? `Publish “${name}” to openboard` : 'Publish to openboard';
+  const knownUnreadable = unreadableCount(store, vaultId, target);
+  const title = name ?`Publish “${name}” to openboard` : 'Publish to openboard';
 
   return (
     <Dialog open title={title} onClose={() => !busy && onClose()}>
@@ -227,6 +241,7 @@ export function PublishDialog({
         <>
           <div className="dialog-text">
             <p>Published content is stored readable by the server and anyone with a link.</p>
+            {knownUnreadable > 0 && <p>{unreadableText(knownUnreadable)}.</p>}
           </div>
           {error && (
             <p className="form-error" role="alert">

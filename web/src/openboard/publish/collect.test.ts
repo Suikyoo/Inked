@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { folder, note, tree, vault } from '../../map/fixtures';
 import type { AppState } from '../../state/store';
-import { collectUnit, type CollectStore } from './collect';
+import { CryptoError } from 'inked-core/errors';
+import { collectUnit, unreadableCount, type CollectStore } from './collect';
 
 const IMG = '3f2b8c1e-5d4a-4b6c-9e7f-1a2b3c4d5e6f';
 
@@ -101,6 +102,37 @@ describe('collectUnit', () => {
     const unit = await collectUnit(fakeStore(), 'v1', { kind: 'note', id: 'n3' });
     expect(unit.request.rootName).toBe('Untitled');
     expect(unit.request.notes).toEqual([{ folderKey: null, title: 'Untitled', body: 'loose body' }]);
+  });
+
+  it('rejects (no partial unit) when a missing body fails to load for a non-crypto reason', async () => {
+    const store = fakeStore();
+    delete (store.getState().bodies as Record<string, string>).n2;
+    store.loadNote = vi.fn(async () => {
+      throw new Error('Can’t reach the server.');
+    });
+    await expect(collectUnit(store, 'v1', { kind: 'vault' })).rejects.toThrow('Can’t reach the server.');
+  });
+
+  it('skips and counts only genuinely unreadable notes: failed decryption, broken heads or a CryptoError on load', async () => {
+    const store = fakeStore();
+    const s = store.getState();
+    (s.bodiesFailed as Record<string, true>).n1 = true;
+    delete (s.bodies as Record<string, string>).n1;
+    delete (s.bodies as Record<string, string>).n2;
+    store.loadNote = vi.fn(async () => {
+      throw new CryptoError('decrypt', 'Could not decrypt');
+    });
+    expect(unreadableCount(store, 'v1', { kind: 'vault' })).toBe(1);
+    const unit = await collectUnit(store, 'v1', { kind: 'vault' });
+    expect(unit.skipped).toBe(2);
+    expect(unit.request.notes.map((n) => n.title)).toEqual(['Untitled']);
+  });
+
+  it('a note publish of an unreadable note rejects instead of sending no notes', async () => {
+    const store = fakeStore();
+    (store.getState().bodiesFailed as Record<string, true>).n3 = true;
+    delete (store.getState().bodies as Record<string, string>).n3;
+    await expect(collectUnit(store, 'v1', { kind: 'note', id: 'n3' })).rejects.toThrow(/This note couldn.t be read\./);
   });
 
   it('keys are request-local: every folderKey and parentKey refers to a folder in the request', async () => {

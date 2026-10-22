@@ -208,7 +208,7 @@ describe('Publish to openboard', () => {
 
   it('the folder menu offers it and opens the publish notice', () => {
     const t = base();
-    mount(t, { store: { getState: () => ({ vaults: { v1: vault }, trees: { v1: t } }) } as unknown as Partial<AppStore> });
+    mount(t, { store: { getState: () => ({ vaults: { v1: vault }, trees: { v1: t }, bodiesFailed: {} }) } as unknown as Partial<AppStore> });
     openMenu('Actions for folder Notes');
     const item = menuItem('Publish to openboard');
     expect(item).toBeTruthy();

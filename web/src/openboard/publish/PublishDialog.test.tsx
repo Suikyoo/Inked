@@ -18,19 +18,23 @@ const OB_VAULT = '11111111-1111-4111-8111-111111111111';
 function fakeStore(): CollectStore {
   const state = {
     vaults: { v1: { ...vault('v1', 'Notes'), color: '#7452e0' } },
-    trees: { v1: tree([folder('f2', null, 'Deep')], [note('n2', 'f2', 'Graphs')]) },
+    trees: { v1: tree([folder('f2', null, 'Deep')], [note('n2', 'f2', 'Graphs'), ...extraNotes]) },
     bodies: { n2: `![a](inked://${IMG}) ![b](inked://${IMG2})` },
     bodiesReady: { v1: true },
-    bodiesFailed: {},
+    bodiesFailed: { ...failedBodies },
   } as unknown as AppState;
   return {
     getState: () => state,
     loadTree: async () => undefined,
     loadBodies: async () => undefined,
-    loadNote: async () => ({ body: '' }),
+    loadNote: (v, id) => loadNote(v, id),
     readImage: async () => new Uint8Array([137, 80, 78, 71]),
   };
 }
+/** Notes added to folder Deep for a test; their bodies are not loaded. */
+let extraNotes: ReturnType<typeof note>[];
+let failedBodies: Record<string, true>;
+let loadNote: CollectStore['loadNote'];
 
 /** What openboard already holds: vault Research with folder Papers. */
 const content: ObPayload = {
@@ -64,6 +68,9 @@ beforeEach(() => {
     this.removeAttribute('open');
   };
   calls = [];
+  extraNotes = [];
+  failedBodies = {};
+  loadNote = async () => ({ body: '' });
   listed = content;
   publishAnswers = [{ status: 201, body: { vaultId: OB_VAULT, imageRefs: [IMG, IMG2] } }];
   imageStatus = () => ({ status: 201, body: { id: 'x' } });
@@ -247,6 +254,31 @@ describe('PublishDialog', () => {
     expect(calls.map((c) => c.url)).not.toContain('/api/openboard/content');
     expect(publishCalls()[0]!.body).toMatchObject({ kind: 'vault', vaultName: 'Notes', rootName: 'Notes', destPath: [], overwrite: false });
     expect(text()).toContain('Published.');
+  });
+
+  it('a body that fails to load (not a decryption failure) stops the publish: error inline, no publish request', async () => {
+    extraNotes = [note('n9', 'f2', 'Late')];
+    loadNote = async () => {
+      throw new Error('Can’t reach the server. Check your connection and try again.');
+    };
+    await publishIntoPapers();
+    expect(document.querySelector('[role=alert]')?.textContent).toMatch(/Can’t reach the server/);
+    expect(publishCalls()).toHaveLength(0);
+    expect(button('Publish')).toBeTruthy();
+  });
+
+  it('unreadable notes are announced on the notice and on the overwrite confirm, before anything is replaced', async () => {
+    extraNotes = [note('n9', 'f2', 'Broken body')];
+    failedBodies = { n9: true };
+    publishAnswers = [{ status: 409, body: conflict }];
+    mount({ kind: 'folder', id: 'f2' });
+    expect(text()).toMatch(/1 unreadable note won.t be included\./);
+    await press('Continue');
+    await act(async () => void radio('Papers')!.click());
+    await press('Publish');
+    expect(text()).toMatch(/Replace .Deep. on openboard\?/);
+    expect(text()).toMatch(/1 unreadable note won.t be included, and its published copy will be removed\./);
+    expect(publishCalls()[0]!.body).toMatchObject({ notes: [{ title: 'Graphs' }] });
   });
 
   it('a failed publish shows the error inline and keeps the dialog open', async () => {

@@ -1,4 +1,5 @@
 import type { PublishRequest } from 'inked-core';
+import { isCryptoError } from 'inked-core/errors';
 import type { AppState } from '../../state/store';
 
 // Publishing runs in the notes app, which holds the vault keys: it gathers a vault, folder or note subtree
@@ -32,6 +33,36 @@ const colorOr = (c: string) => (/^#[0-9A-Fa-f]{6}$/.test(c) ? c : '#9d7cf2');
 
 /** Same id shape the server extracts from published bodies. */
 const IMAGE_REF_RE = /inked:\/\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?![0-9A-Za-z-])/g;
+
+type StoreState = ReturnType<CollectStore['getState']>;
+
+/** The store already knows this note can't be decrypted (its head, or its body in a bulk load). */
+const isUnreadable = (s: StoreState, n: { id: string; broken?: boolean }) => !!n.broken || !!s.bodiesFailed[n.id];
+
+/**
+ * How many notes in the target's subtree the store already knows are unreadable (left out of a publish).
+ * Shown before publishing; `collectUnit`'s `skipped` is the final count.
+ */
+export function unreadableCount(store: Pick<CollectStore, 'getState'>, vaultId: string, target: PublishTarget): number {
+  const s = store.getState();
+  const tree = s.trees[vaultId];
+  if (!tree) return 0;
+  let inScope: (folderId: string | null, noteId: string) => boolean;
+  if (target.kind === 'vault') inScope = () => true;
+  else if (target.kind === 'note') inScope = (_f, id) => id === target.id;
+  else {
+    const below = (folderId: string | null): boolean => {
+      const seen = new Set<string>();
+      for (let id = folderId; id && !seen.has(id); id = tree.folders[id]?.parentId ?? null) {
+        if (id === target.id) return true;
+        seen.add(id);
+      }
+      return false;
+    };
+    inScope = (f) => below(f);
+  }
+  return Object.values(tree.notes).filter((n) => inScope(n.folderId, n.id) && isUnreadable(s, n)).length;
+}
 
 /** The display name of what is being published (for the dialog), or null when it is gone. */
 export function targetName(store: Pick<CollectStore, 'getState'>, vaultId: string, target: PublishTarget): string | null {
@@ -105,17 +136,21 @@ export async function collectUnit(store: CollectStore, vaultId: string, target: 
     return n.folderId === root || (n.folderId !== null && inSubtree.has(n.folderId));
   });
 
+  // Only a note that cannot be decrypted is left out. Any other load failure (network, lock, gone) rejects
+  // the whole unit: a partial publish would drop notes, and an overwrite would delete their published copies.
   let skipped = 0;
   const notes: PublishRequest['notes'] = [];
   for (const n of noteHeads) {
     let body: string | undefined = store.getState().bodies[n.id];
-    if (body === undefined && !n.broken && !store.getState().bodiesFailed[n.id]) {
-      body = await store.loadNote(vaultId, n.id).then(
-        (r) => r.body,
-        () => undefined,
-      );
+    if (body === undefined && !isUnreadable(store.getState(), n)) {
+      try {
+        body = (await store.loadNote(vaultId, n.id)).body;
+      } catch (e) {
+        if (!isCryptoError(e, 'decrypt') && !isCryptoError(e, 'format')) throw e;
+      }
     }
     if (body === undefined) {
+      if (target.kind === 'note') throw new Error('This note couldn’t be read.');
       skipped++;
       continue;
     }
