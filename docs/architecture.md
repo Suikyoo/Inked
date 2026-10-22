@@ -234,11 +234,11 @@ Access is only by holding a link; there is no directory, discovery or visitor ac
 
 A request with an unknown token, a deleted link or a malformed token (checked against a pattern before it touches the database) gets the same 404, so a visitor cannot tell a deleted link from one that never existed; so does an image from a vault the link does not grant. Failed lookups, on the page API and the image route alike, are counted per client IP by their own limiter (`obLimiter`, separate from the login limiters): 20 failures lock that IP for 60 s. While locked, the IP gets 429 `locked` with `retryAfter` and a `Retry-After` header even for a valid link. The client IP depends on `TRUST_PROXY`; see `docs/deploy.md`.
 
-A view is counted once per successful `GET /api/ob/:token`, that is, once per open of the visitor page. Image requests and the editor's preview do not count.
+A view is counted once per successful `GET /api/ob/:token` (the public lookup), that is, once per open of the visitor page. `HEAD` requests, image requests and the editor's preview do not count.
 
 ### Images
 
-Publishing rewrites a note's `inked://<id>` image references to published image ids, and the browser uploads the decrypted bytes into the published vault. Only png, jpeg, gif and webp are accepted, at most 10 MiB each; the type is decided by the bytes' magic numbers, never by the upload's `Content-Type`, so SVG and anything else is rejected. Because these are plaintext bytes from the owner, every image response carries `X-Content-Type-Options: nosniff`, `Content-Disposition: inline` and `Content-Security-Policy: default-src 'none'; sandbox`, so an image can never be rendered as a page.
+Publishing sends note bodies as stored, so image references stay `inked://<id>`. The browser uploads each referenced image's decrypted bytes into the published vault under the same private image id; published images are scoped by their published vault (the `ob_images` key is `(vault_id, id)`), and a visitor's browser fetches them from `/api/ob/<token>/images/<vaultId>/<imageId>`. Only png, jpeg, gif and webp are accepted, at most 10 MiB each; the type is decided by the bytes' magic numbers, never by the upload's `Content-Type`, so SVG and anything else is rejected. Because these are plaintext bytes from the owner, every image response carries `X-Content-Type-Options: nosniff`, `Content-Disposition: inline` and `Content-Security-Policy: default-src 'none'; sandbox`, so an image can never be rendered as a page.
 
 ### Overwrite
 

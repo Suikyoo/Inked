@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { ObFolder, ObPayload, PublishConflict } from 'inked-core';
+import type { ObFolder, ObLink, ObPayload, PublishConflict } from 'inked-core';
 import { ConfirmDialog, Dialog } from '../../components/Dialog';
 import { FolderIcon } from '../../components/Icons';
 import { prefs } from '../../lib/prefs';
-import { ObApiError, errorText, listContent } from '../api';
+import { ObApiError, errorText, listContent, listLinks } from '../api';
 import { collectUnit, targetName, unreadableCount, type CollectStore, type PublishTarget, type PublishUnit } from './collect';
 import { AccountChangedError, publishUnit, uploadImages } from './publishApi';
 
@@ -40,6 +40,8 @@ function failureText(e: unknown): string {
 /** One destination row: a published vault's root or one of its folders. */
 interface Row {
   value: string;
+  /** The published vault this row belongs to. */
+  vaultId: string;
   label: string;
   depth: number;
   color?: string;
@@ -52,6 +54,7 @@ function destinationRows(content: ObPayload): Row[] {
   for (const v of [...content.vaults].sort(byName)) {
     rows.push({
       value: `${v.id}/`,
+      vaultId: v.id,
       label: v.name,
       depth: 0,
       color: v.color,
@@ -67,6 +70,7 @@ function destinationRows(content: ObPayload): Row[] {
         const p = [...path, f.name];
         rows.push({
           value: `${v.id}/${f.id}`,
+          vaultId: v.id,
           label: f.name,
           depth,
           dest: { vaultName: v.name, destPath: p },
@@ -102,11 +106,19 @@ export function PublishDialog({
   const [contentError, setContentError] = useState<string | null>(null);
   const [choice, setChoice] = useState(NEW);
   const [newName, setNewName] = useState('');
+  // Links that grant each published vault; null when they could not be loaded (the line is then omitted).
+  const [links, setLinks] = useState<ObLink[] | null>(null);
+  // Set when a "new" vault name matched a published vault and the picker switched to that vault.
+  const [mergedInto, setMergedInto] = useState<string | null>(null);
   // Named from the first frame so the title does not change after Continue.
   const [name, setName] = useState<string | null>(() => targetName(store, vaultId, target));
   const live = useRef(true);
   const unitRef = useRef<Promise<PublishUnit> | null>(null);
   const finished = useRef(false);
+  // Read by the async content load, which must see the latest values rather than a stale closure.
+  const newNameRef = useRef('');
+  const choiceRef = useRef(choice);
+  choiceRef.current = choice;
   const groupId = useId();
   const newNameId = useId();
 
@@ -118,6 +130,18 @@ export function PublishDialog({
   }, []);
 
   const rows = useMemo(() => (content ? destinationRows(content) : []), [content]);
+
+  /** The server publishes by exact vault name, so a "new" vault with a published vault's name lands in it. */
+  const existingRoot = (vaults: ObPayload['vaults'], name: string) => {
+    const n = name.trim();
+    const v = n ? vaults.find((x) => x.name === n) : undefined;
+    return v ? { value: `${v.id}/`, name: v.name } : null;
+  };
+
+  const pick = (value: string) => {
+    setChoice(value);
+    setMergedInto(null);
+  };
 
   /** Decrypts the subtree once; a failure is retried on the next attempt. */
   const unit = () => {
@@ -159,8 +183,19 @@ export function PublishDialog({
         if (!live.current) return;
         setContent(c);
         if (c.vaults.length === 0) setChoice(NEW);
+        else if (choiceRef.current === NEW) {
+          const hit = existingRoot(c.vaults, newNameRef.current);
+          if (hit) {
+            setChoice(hit.value);
+            setMergedInto(hit.name);
+          }
+        }
       },
       (e: unknown) => live.current && setContentError(errorText(e)),
+    );
+    listLinks().then(
+      (l) => live.current && setLinks(l),
+      () => live.current && setLinks(null),
     );
   };
 
@@ -173,7 +208,9 @@ export function PublishDialog({
       });
       return;
     }
-    setNewName(targetName(store, vaultId, { kind: 'vault' }) ?? '');
+    const defaultName = targetName(store, vaultId, { kind: 'vault' }) ?? '';
+    newNameRef.current = defaultName;
+    setNewName(defaultName);
     setStep({ kind: 'pick' });
     // Decrypt while the owner picks.
     unit().catch(() => undefined);
@@ -185,6 +222,13 @@ export function PublishDialog({
       const n = newName.trim();
       if (!n) {
         setError('Enter a name for the new vault.');
+        return;
+      }
+      const hit = content ? existingRoot(content.vaults, n) : null;
+      if (hit) {
+        // Show where it will go and let the owner press Publish again.
+        setChoice(hit.value);
+        setMergedInto(hit.name);
         return;
       }
       void publish({ vaultName: n, destPath: [] });
@@ -233,6 +277,8 @@ export function PublishDialog({
   }
 
   const knownUnreadable = unreadableCount(store, vaultId, target);
+  const chosenRow = choice === NEW ? undefined : rows.find((r) => r.value === choice);
+  const seenBy = chosenRow && links ? links.filter((l) => l.vaultIds.includes(chosenRow.vaultId)).map((l) => l.label) : [];
   const title = name ?`Publish “${name}” to openboard` : 'Publish to openboard';
 
   return (
@@ -274,7 +320,7 @@ export function PublishDialog({
                     name={groupId}
                     value={r.value}
                     checked={choice === r.value}
-                    onChange={() => setChoice(r.value)}
+                    onChange={() => pick(r.value)}
                     disabled={busy}
                   />
                   {r.color ? (
@@ -286,7 +332,7 @@ export function PublishDialog({
                 </label>
               ))}
               <label className="pub-opt pub-new">
-                <input type="radio" name={groupId} value={NEW} checked={choice === NEW} onChange={() => setChoice(NEW)} disabled={busy} />
+                <input type="radio" name={groupId} value={NEW} checked={choice === NEW} onChange={() => pick(NEW)} disabled={busy} />
                 <span className="pub-name">+ New vault on openboard</span>
               </label>
               {choice === NEW && (
@@ -299,7 +345,10 @@ export function PublishDialog({
                     type="text"
                     className="input input-sm"
                     value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
+                    onChange={(e) => {
+                      newNameRef.current = e.target.value;
+                      setNewName(e.target.value);
+                    }}
                     maxLength={200}
                     autoComplete="off"
                     spellCheck={prefs.spellcheck()}
@@ -308,6 +357,12 @@ export function PublishDialog({
                 </div>
               )}
             </div>
+            {mergedInto !== null && choice !== NEW && (
+              <p className="pub-note" role="status">
+                A vault named ‘{mergedInto}’ already exists on openboard — this will be added to it.
+              </p>
+            )}
+            {seenBy.length > 0 && <p className="pub-note">Visible on links: {seenBy.join(', ')}</p>}
           </div>
           {contentError && (
             <p className="form-error" role="alert">

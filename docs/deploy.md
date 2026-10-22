@@ -76,7 +76,7 @@ Openboard (see `docs/architecture.md`) serves published pages at `/ob/<token>` a
 
 Inked limits failed token lookups per client IP: 20 failures lock that IP for 60 seconds, and a locked IP is refused even when it holds a valid link. The IP comes from `TRUST_PROXY`, which `compose.yaml` already sets to the `inked-internal` subnet (`172.31.250.0/28`), together with nginx's `CF-Connecting-IP` handling above. If `TRUST_PROXY` is unset or does not cover nginx, every visitor appears to come from the proxy's address, so 20 bad tokens from anyone would lock all visitors out of every link, valid ones included, for a minute.
 
-Request size: nginx allows 5 MiB per request (11 MiB only on the encrypted image route), while Inked accepts up to 64 MiB for an openboard publish and 10 MiB for a published image. A larger request is refused by nginx with 413 before it reaches Inked. Raise `client_max_body_size` for `/api/openboard/` in the nginx template if you publish large vaults or images.
+Request size: Inked accepts up to 64 MiB for an openboard publish and 10 MiB for a published image, and the shipped nginx template already raises its limit for exactly those two routes: `client_max_body_size 65m` on `location = /api/openboard/publish` and `11m` on `/api/openboard/vaults/<id>/images/<id>`. Each nginx cap sits just above the app's, so an oversized request reaches Inked and gets its own 413 JSON. Everything else under `/api/openboard/` keeps the 5 MiB default (`client_max_body_size 5m`). No change is needed unless you edit the template.
 
 ## 5. First run
 

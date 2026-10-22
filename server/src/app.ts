@@ -96,6 +96,12 @@ const isModelsPath = (url: string) => {
   return p === '/models' || p.startsWith('/models/');
 };
 
+/** Openboard visitor pages and the public token API: kept out of search engines. */
+const isOpenboardPublicPath = (url: string) => {
+  const p = routedPathname(url);
+  return p === '/ob' || p.startsWith('/ob/') || p === '/api/ob' || p.startsWith('/api/ob/');
+};
+
 const isFramePath = (url: string) => {
   const p = routedPathname(url);
   return p === '/frame' || p.startsWith('/frame/');
@@ -186,6 +192,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.addHook('onSend', async (request, reply, payload) => {
     reply.headers(isFramePath(request.url) ? frameHdrs : headers);
     if (isApiPath(request.url) && !reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
+    if (isOpenboardPublicPath(request.url)) reply.header('x-robots-tag', 'noindex, nofollow');
     return payload;
   });
 

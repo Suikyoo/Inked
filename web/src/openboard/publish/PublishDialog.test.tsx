@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { ObPayload, PublishConflict } from 'inked-core';
+import type { ObLink, ObPayload, PublishConflict } from 'inked-core';
 import { folder, note, tree, vault } from '../../map/fixtures';
 import type { AppState } from '../../state/store';
 import type { CollectStore, PublishTarget } from './collect';
@@ -13,6 +13,7 @@ import { PublishDialog } from './PublishDialog';
 const IMG = '3f2b8c1e-5d4a-4b6c-9e7f-1a2b3c4d5e6f';
 const IMG2 = '4a2b8c1e-5d4a-4b6c-9e7f-1a2b3c4d5e6f';
 const OB_VAULT = '11111111-1111-4111-8111-111111111111';
+const OB_VAULT2 = '33333333-3333-4333-8333-333333333333';
 
 /** Private vault "Notes" with folder Deep (f2) holding a note that shows two images. */
 function fakeStore(): CollectStore {
@@ -58,6 +59,16 @@ let calls: Call[];
 let publishAnswers: { status: number; body: unknown }[];
 let imageStatus: (id: string) => { status: number; body?: unknown };
 let listed: ObPayload;
+/** What GET /api/openboard/links answers; null makes it fail. */
+let links: ObLink[] | null;
+const obLink = (label: string, vaultIds: string[]): ObLink => ({
+  id: `link-${label}`,
+  label,
+  token: 'x'.repeat(43),
+  vaultIds,
+  views: 0,
+  createdAt: '2026-10-01T00:00:00.000Z',
+});
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -72,6 +83,7 @@ beforeEach(() => {
   failedBodies = {};
   loadNote = async () => ({ body: '' });
   listed = content;
+  links = [];
   publishAnswers = [{ status: 201, body: { vaultId: OB_VAULT, imageRefs: [IMG, IMG2] } }];
   imageStatus = () => ({ status: 201, body: { id: 'x' } });
   vi.stubGlobal(
@@ -81,6 +93,7 @@ beforeEach(() => {
       const body = typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
       calls.push({ method, url, body });
       if (url === '/api/openboard/content') return json(200, listed);
+      if (url === '/api/openboard/links') return links ? json(200, links) : json(500, { error: 'internal' });
       if (url === '/api/openboard/publish') {
         const a = publishAnswers.shift() ?? { status: 500, body: { error: 'internal' } };
         return json(a.status, a.body);
@@ -155,7 +168,7 @@ describe('PublishDialog', () => {
 
   it('a folder publish shows the openboard tree as destinations', async () => {
     await toPicker();
-    expect(calls.map((c) => c.url)).toEqual(['/api/openboard/content']);
+    expect(calls.map((c) => c.url).sort()).toEqual(['/api/openboard/content', '/api/openboard/links']);
     expect(radio('Research')).toBeTruthy();
     expect(radio('Papers')).toBeTruthy();
     expect(text()).toContain('New vault on openboard');
@@ -170,6 +183,59 @@ describe('PublishDialog', () => {
     expect(name?.value).toBe('Notes');
     await press('Publish');
     expect(publishCalls()[0]!.body).toMatchObject({ kind: 'folder', vaultName: 'Notes', destPath: [], color: '#7452e0', overwrite: false });
+  });
+
+  it('a default new-vault name equal to a published vault selects that vault and says it will be added to it', async () => {
+    listed = { ...content, vaults: [...content.vaults, { id: OB_VAULT2, name: 'Notes', color: '#45A89E', updatedAt: '2026-10-01T00:00:00.000Z' }] };
+    await toPicker();
+    expect(radio('Notes')?.checked).toBe(true);
+    expect(radio('+ New vault on openboard')?.checked).toBe(false);
+    expect(text()).toContain('A vault named ‘Notes’ already exists on openboard — this will be added to it.');
+    await press('Publish');
+    expect(publishCalls()).toHaveLength(1);
+    expect(publishCalls()[0]!.body).toMatchObject({ vaultName: 'Notes', destPath: [] });
+  });
+
+  it('a typed new-vault name equal to a published vault selects that vault instead of publishing', async () => {
+    await toPicker();
+    const input = document.querySelector<HTMLInputElement>('input[type=text]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, ' Research ');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await press('Publish');
+    expect(publishCalls()).toHaveLength(0);
+    expect(radio('Research')?.checked).toBe(true);
+    expect(text()).toContain('A vault named ‘Research’ already exists on openboard — this will be added to it.');
+    await press('Publish');
+    expect(publishCalls()[0]!.body).toMatchObject({ vaultName: 'Research', destPath: [] });
+  });
+
+  it('a new-vault name that differs from every published vault stays a separate new vault', async () => {
+    await toPicker();
+    expect(radio('+ New vault on openboard')?.checked).toBe(true);
+    expect(text()).not.toContain('already exists on openboard');
+    await press('Publish');
+    expect(publishCalls()[0]!.body).toMatchObject({ vaultName: 'Notes', destPath: [] });
+  });
+
+  it('shows which links see the chosen existing vault', async () => {
+    links = [obLink('Friends', [OB_VAULT]), obLink('Team', [OB_VAULT]), obLink('Other', [OB_VAULT2])];
+    await toPicker();
+    expect(text()).not.toContain('Visible on links');
+    await act(async () => void radio('Papers')!.click());
+    expect(text()).toContain('Visible on links: Friends, Team');
+    expect(text()).not.toContain('Other');
+  });
+
+  it('omits the link line when the links cannot be loaded, and the picker still publishes', async () => {
+    links = null;
+    await toPicker();
+    await act(async () => void radio('Research')!.click());
+    expect(text()).not.toContain('Visible on links');
+    expect(document.querySelector('[role=alert]')).toBeNull();
+    await press('Publish');
+    expect(publishCalls()[0]!.body).toMatchObject({ vaultName: 'Research', destPath: [] });
   });
 
   it('picking "Papers" under "Research" publishes there: destPath is the folder names below the vault', async () => {

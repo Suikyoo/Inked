@@ -37,7 +37,8 @@ export function openboardPublicRoutes(app: FastifyInstance, ctx: AppContext): vo
 
   app.get<TokenParams>('/api/ob/:token', async (request): Promise<ObPublicResponse> => {
     const link = linkFor(request, request.params.token);
-    bumpViews(db, link.id);
+    // Fastify answers HEAD through this GET handler; only a real GET counts as a view.
+    if (request.method === 'GET') bumpViews(db, link.id);
     return { label: link.label, ...grantedPayload(db, link.id) };
   });
 

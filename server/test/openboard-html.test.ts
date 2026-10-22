@@ -29,6 +29,12 @@ describe('openboard entry pages', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('visitor');
     expect(res.headers['content-security-policy']).toBeTruthy();
+    expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
+  });
+
+  it('does not send X-Robots-Tag on the main app or lookalike prefixes', async () => {
+    expect((await t.app.inject({ method: 'GET', url: '/v/x' })).headers['x-robots-tag']).toBeUndefined();
+    expect((await t.app.inject({ method: 'GET', url: '/obx/y' })).headers['x-robots-tag']).toBeUndefined();
   });
 
   it('serves the editor page under /openboard', async () => {

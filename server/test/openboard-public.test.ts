@@ -80,6 +80,27 @@ describe('public token API', () => {
     expect((await listLinks())[0].views).toBe(3);
   });
 
+  it('a HEAD request does not count a view; a GET does', async () => {
+    const a = await publishVault('Alpha', [{ title: 'n', body: 'b' }]);
+    const link = await createLink('L', [a]);
+    const head = await t.app.inject({ method: 'HEAD', url: `/api/ob/${link.token}`, remoteAddress: '10.0.0.1' });
+    expect(head.statusCode).toBe(200);
+    expect((await listLinks())[0].views).toBe(0);
+    expect((await visit(`/api/ob/${link.token}`)).statusCode).toBe(200);
+    expect((await listLinks())[0].views).toBe(1);
+  });
+
+  it('sends X-Robots-Tag noindex on public lookups and their 404s', async () => {
+    const a = await publishVault('Alpha', [{ title: 'n', body: 'b' }]);
+    const link = await createLink('L', [a]);
+    const ok = await visit(`/api/ob/${link.token}`);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.headers['x-robots-tag']).toBe('noindex, nofollow');
+    const miss = await visit('/api/ob/not-a-real-token');
+    expect(miss.statusCode).toBe(404);
+    expect(miss.headers['x-robots-tag']).toBe('noindex, nofollow');
+  });
+
   it('edited grants take effect immediately', async () => {
     const a = await publishVault('Alpha', [{ title: 'Apple note', body: 'x' }]);
     const b = await publishVault('Beta', [{ title: 'Banana note', body: 'y' }]);

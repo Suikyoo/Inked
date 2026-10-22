@@ -607,6 +607,11 @@
 .pub-new-name .input {
   width: 100%;
 }
+.pub-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-2);
+}
 .pub-empty {
   margin: 0;
   padding: 4px 8px;
