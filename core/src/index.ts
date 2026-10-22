@@ -8,3 +8,4 @@ export * from './rag';
 export * from './llm';
 export * from './types';
 export * from './vaultColors';
+export * from './openboard';

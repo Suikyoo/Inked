@@ -14,6 +14,7 @@ import { authRoutes, countUsers } from './routes/auth.js';
 import { folderRoutes } from './routes/folders.js';
 import { inviteRoutes } from './routes/invites.js';
 import { noteRoutes } from './routes/notes.js';
+import { openboardRoutes } from './routes/openboard.js';
 import { vaultRoutes } from './routes/vaults.js';
 import { settingsRoutes } from './routes/settings.js';
 import { imageRoutes } from './routes/images.js';
@@ -192,7 +193,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
         .code(err.statusCode)
         .send({ error: err.code, ...(err.message ? { message: err.message } : {}), ...err.extra });
     }
-    if (err.validation?.some((v) => v.keyword === 'maxLength' && /encBody/.test(v.instancePath))) {
+    if (err.validation?.some((v) => v.keyword === 'maxLength' && /encBody|^\/notes\/\d+\/body$/.test(v.instancePath))) {
       return reply.code(413).send({ error: 'too_large', message: 'Note is too large' });
     }
     if (err.validation) {
@@ -220,6 +221,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     imageRoutes(scope, ctx);
   });
   settingsRoutes(app, ctx);
+  openboardRoutes(app, ctx);
 
   // The SPA is optional: without a built web/dist the server is API-only.
   const hasWeb = existsSync(path.join(opts.webDist, 'index.html'));

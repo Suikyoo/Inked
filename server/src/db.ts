@@ -93,6 +93,66 @@ CREATE TABLE IF NOT EXISTS images (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS images_vault ON images(vault_id);
+
+-- Openboard: plaintext content the owner deliberately published, shared through secret links.
+-- Separate from (and never referencing) the private encrypted tables above.
+CREATE TABLE IF NOT EXISTS ob_vaults (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  color      TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ob_vaults_user ON ob_vaults(user_id, name);
+
+CREATE TABLE IF NOT EXISTS ob_folders (
+  id        TEXT PRIMARY KEY,
+  vault_id  TEXT NOT NULL REFERENCES ob_vaults(id) ON DELETE CASCADE,
+  parent_id TEXT REFERENCES ob_folders(id) ON DELETE CASCADE,
+  name      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ob_folders_vault ON ob_folders(vault_id);
+CREATE INDEX IF NOT EXISTS ob_folders_parent ON ob_folders(parent_id);
+
+CREATE TABLE IF NOT EXISTS ob_notes (
+  id         TEXT PRIMARY KEY,
+  vault_id   TEXT NOT NULL REFERENCES ob_vaults(id) ON DELETE CASCADE,
+  folder_id  TEXT REFERENCES ob_folders(id) ON DELETE CASCADE,
+  title      TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ob_notes_vault ON ob_notes(vault_id);
+CREATE INDEX IF NOT EXISTS ob_notes_folder ON ob_notes(folder_id);
+
+CREATE TABLE IF NOT EXISTS ob_images (
+  vault_id   TEXT NOT NULL REFERENCES ob_vaults(id) ON DELETE CASCADE,
+  id         TEXT NOT NULL,
+  size       INTEGER NOT NULL,
+  mime       TEXT NOT NULL,
+  data       BLOB NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (vault_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS ob_links (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label      TEXT NOT NULL,
+  token      TEXT NOT NULL UNIQUE,
+  views      INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ob_links_user ON ob_links(user_id);
+
+CREATE TABLE IF NOT EXISTS ob_link_vaults (
+  link_id     TEXT NOT NULL REFERENCES ob_links(id) ON DELETE CASCADE,
+  ob_vault_id TEXT NOT NULL REFERENCES ob_vaults(id) ON DELETE CASCADE,
+  PRIMARY KEY (link_id, ob_vault_id)
+);
+CREATE INDEX IF NOT EXISTS ob_link_vaults_vault ON ob_link_vaults(ob_vault_id);
 `;
 
 export function openDb(file: string): Db {
@@ -179,6 +239,32 @@ export interface NoteVectorRow {
   model: string;
   enc_vec: string;
   source_updated_at: string;
+  updated_at: string;
+}
+
+export interface ObVaultRow {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ObFolderRow {
+  id: string;
+  vault_id: string;
+  parent_id: string | null;
+  name: string;
+}
+
+export interface ObNoteRow {
+  id: string;
+  vault_id: string;
+  folder_id: string | null;
+  title: string;
+  body: string;
+  created_at: string;
   updated_at: string;
 }
 
