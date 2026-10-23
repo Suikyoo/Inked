@@ -30,7 +30,7 @@ describe('buildVaultGraph', () => {
     const t = tree([folder('f1', null, 'Bad', { broken: true })], [note('n1', 'f1'), note('n2', null, 'x', { broken: true })]);
     const g = buildVaultGraph('v1', t, {}, true);
     expect(g.folders).toEqual([]);
-    expect(g.notes).toEqual([{ id: 'n1', folderId: null, title: 'n1', updatedAt: expect.any(String), index: false }]);
+    expect(g.notes).toEqual([{ id: 'n1', folderId: null, title: 'n1', updatedAt: expect.any(String), progress: 0, index: false }]);
   });
 
   it('marks each folder’s Index note (the oldest exact "Index"), and the vault root’s', () => {
@@ -91,5 +91,13 @@ describe('structureKey', () => {
     expect(structureKey(buildVaultGraph('v1', tree([folder('f1', null, 'A')], [note('n1', 'f1', 'Two')]), {}, true))).not.toBe(k);
     expect(structureKey(buildVaultGraph('v1', tree([folder('f1', null, 'B')], [note('n1', 'f1', 'One')]), {}, true))).not.toBe(k);
     expect(structureKey(buildVaultGraph('v1', tree([folder('f1', null, 'A')], [note('n1', null, 'One')]), {}, true))).not.toBe(k);
+  });
+});
+
+describe('buildVaultGraph progress', () => {
+  it('progress comes from read and current size', () => {
+    const t = tree([], [note('n1', null, 'one', { size: 200, read: { pct: 100, size: 100 } }), note('n2', null, 'two', { size: 200 })]);
+    const by = Object.fromEntries(buildVaultGraph('v1', t, {}, true).notes.map((n) => [n.id, n.progress]));
+    expect(by).toEqual({ n1: 50, n2: 0 });
   });
 });

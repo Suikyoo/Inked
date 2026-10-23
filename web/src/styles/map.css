@@ -192,6 +192,15 @@
   stroke-width: 1.5;
 }
 
+/* Read progress: a gold arc on the ring, from 12 o'clock clockwise. pathLength 1 makes the dasharray a fraction. */
+.cmap-progress {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 1.5;
+  pointer-events: none;
+  transition: stroke-dasharray var(--dur-2) var(--ease-out);
+}
+
 .cmap-label,
 .cmap-folder-label,
 .cmap-hub-name {
@@ -541,6 +550,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .cmap-ghost { animation: none; }
+  .cmap-progress { transition: none; }
   .cmap-sel.is-inking { animation: none; stroke-dasharray: none; }
   .cmap-sel-wave { display: none; }
 }

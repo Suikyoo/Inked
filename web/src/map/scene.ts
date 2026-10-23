@@ -1,3 +1,4 @@
+import type { Checkpoint } from 'inked-core';
 import type { VaultGraph } from './graph';
 import { layoutWorld, type Pt, type VaultLayout } from './layout';
 import type { Bounds } from './useViewport';
@@ -17,6 +18,8 @@ export interface SceneDot {
   /** Ids of the folders above this note, top-down. */
   folderIds: string[];
   updatedAt: string;
+  /** Read share of the note, drawn as a gold arc on its ring. 0 draws nothing. */
+  progress: Checkpoint;
   /** [[Links]] in plus out, each pair of notes counted once. 0 while links are still decrypting. */
   degree: number;
   /** This vault's links are decrypted, so degree is real. While false, draw no density cue. */
@@ -249,6 +252,7 @@ export function buildScene(inputs: SceneInput[], gap = 48): Scene {
         folderIds: chainIds,
         folderPath: chainIds.map((id) => folderById.get(id)!.name).join(' / '),
         updatedAt: n.updatedAt,
+        progress: n.progress,
         degree: 0,
         linksReady: graph.linksReady,
       });

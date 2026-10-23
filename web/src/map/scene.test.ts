@@ -202,3 +202,12 @@ describe('link density', () => {
     expect([0, 1, 2, 3, 9].map(densityClass)).toEqual(['hollow', '', 'r1', 'r2', 'r2']);
   });
 });
+
+describe('buildScene progress', () => {
+  it('a dot carries the progress of its note', () => {
+    const t = tree([], [note('a', null, 'A', { size: 100, read: { pct: 75, size: 100 } }), note('b', null, 'B')]);
+    const graph = buildVaultGraph('v1', t, {}, true);
+    const s = buildScene([{ vaultId: 'v1', graph, layout: layoutVault(graph) }]);
+    expect(s.dots.map((d) => [d.id, d.progress])).toEqual([['a', 75], ['b', 0]]);
+  });
+});

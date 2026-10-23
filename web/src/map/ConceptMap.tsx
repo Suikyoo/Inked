@@ -502,12 +502,12 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
    * The white ring around a node: solid when selected (inked in, with a pump, when the selection is new), a faint
    * turning dashed ghost when merely pointed at. `pathLength` 1 lets the CSS draw and dash it at any radius.
    */
-  const selRing = (id: string, r: number, isSel: boolean) => {
+  const selRing = (id: string, r: number, isSel: boolean, ghostOutset = GHOST_OUTSET) => {
     const fresh = selWave?.id === id;
     return (
       <>
         {isSel && <circle key={fresh ? `sel${selWave.seq}` : 'sel'} className={`cmap-sel${fresh ? ' is-inking' : ''}`} r={r} pathLength={1} />}
-        {hover === id && <circle key={isSel ? 'ghost-out' : 'ghost'} className={isSel ? 'cmap-ghost is-outer' : 'cmap-ghost'} r={isSel ? r + GHOST_OUTSET : r} pathLength={1} />}
+        {hover === id && <circle key={isSel ? 'ghost-out' : 'ghost'} className={isSel ? 'cmap-ghost is-outer' : 'cmap-ghost'} r={isSel ? r + ghostOutset : r} pathLength={1} />}
         {fresh && <circle key={`wave${selWave.seq}`} className="cmap-sel-wave" r={r} onAnimationEnd={() => setSelWave(null)} />}
       </>
     );
@@ -857,7 +857,7 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
                 transform={`translate(${f1(x)} ${f1(y)})`}
                 style={writing ? { animationDelay: ms(dot.folderIds.length * WRITE_STEP_MS + NODE_LAG_MS) } : undefined}
                 role="button"
-                aria-label={`${dot.title}, ${dot.folderPath || 'vault root'}, edited ${when}${dot.linksReady && dot.degree > 0 ? `, ${plural(dot.degree, 'link')}` : ''}`}
+                aria-label={`${dot.title}, ${dot.folderPath || 'vault root'}, edited ${when}${dot.linksReady && dot.degree > 0 ? `, ${plural(dot.degree, 'link')}` : ''}${dot.progress > 0 ? `, read ${dot.progress} %` : ''}`}
                 {...nodeFocusProps(dot.id)}
                 onClick={(e) => onDotClick(e, dot.vaultId, dot.id)}
                 onKeyDown={(e) => {
@@ -881,7 +881,16 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
                     r={r}
                     style={nearIndex.has(dot.id) ? { animationDelay: ms(threadBase + PULSE_LAG_MS + nearIndex.get(dot.id)! * THREAD_STEP_MS) } : undefined}
                   />
-                  {selRing(dot.id, selRingRadius(dot.degree), dot.id === selNote)}
+                  {dot.progress > 0 && (
+                    <circle
+                      className="cmap-progress"
+                      r={selRingRadius(dot.degree) + (dot.id === selNote ? GHOST_OUTSET : 0)}
+                      pathLength={1}
+                      transform="rotate(-90)"
+                      style={{ strokeDasharray: `${dot.progress / 100} 1` }}
+                    />
+                  )}
+                  {selRing(dot.id, selRingRadius(dot.degree), dot.id === selNote, dot.progress > 0 ? 2 * GHOST_OUTSET : GHOST_OUTSET)}
                   {rings.has(dot.id) &&
                     [0, 1].map((k) => (
                       <circle

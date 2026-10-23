@@ -1,3 +1,4 @@
+import { shownProgress, type Checkpoint } from 'inked-core';
 import { indexNoteOf, INDEX_TITLE } from 'inked-core/indexNote';
 import { titleIndex } from '../lib/titles';
 import { wikiLinkTargets } from '../markdown/plugins';
@@ -14,6 +15,8 @@ export interface GraphNote {
   folderId: string | null;
   title: string;
   updatedAt: string;
+  /** How much of the note this account has read, as a checkpoint (0 when unread). */
+  progress: Checkpoint;
   /** The Index note of its folder (or of the vault root): it has no dot, its folder stands for it. */
   index: boolean;
 }
@@ -92,7 +95,7 @@ export function buildVaultGraph(
     .map((n) => {
       const folderId = n.folderId && live.has(n.folderId) ? n.folderId : null;
       // An Index left in a broken folder sits at the root, where it is not the root's Index.
-      return { id: n.id, folderId, title: n.title, updatedAt: n.updatedAt, index: indexIds.has(n.id) && folderId === n.folderId };
+      return { id: n.id, folderId, title: n.title, updatedAt: n.updatedAt, progress: shownProgress(n.read, n.size), index: indexIds.has(n.id) && folderId === n.folderId };
     })
     .sort(byId);
 

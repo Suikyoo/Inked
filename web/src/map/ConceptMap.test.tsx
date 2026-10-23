@@ -1378,3 +1378,40 @@ describe('touch', () => {
     expect(apart()).toBeGreaterThan(before);
   });
 });
+
+describe('ConceptMap read progress arc', () => {
+  const arcs = (el: Element) => el.querySelectorAll<SVGCircleElement>('.cmap-progress');
+  const withProgress = (pct: 0 | 75) =>
+    tree([], [note('a', null, 'A', { size: 100, ...(pct ? { read: { pct, size: 100 } } : {}) }), note('b', null, 'B', { size: 100 })]);
+
+  it('draws no progress arc at 0, nor on notes without read', () => {
+    render({ entries: [entry(withProgress(0))] });
+    expect(host!.querySelectorAll('.cmap-progress')).toHaveLength(0);
+  });
+
+  it('draws an arc with dasharray "0.75 1" at 75, only on that note', () => {
+    render({ entries: [entry(withProgress(75))] });
+    expect(host!.querySelectorAll('.cmap-progress')).toHaveLength(1);
+    const arc = arcs(node('a'))[0]!;
+    expect(arc.style.strokeDasharray).toBe('0.75 1');
+    expect(arc.getAttribute('pathLength')).toBe('1');
+    expect(arc.getAttribute('transform')).toBe('rotate(-90)');
+    expect(arcs(node('b'))).toHaveLength(0);
+  });
+
+  it('selected note keeps the arc outside the selection ring, and the ghost outside the arc', () => {
+    render({ entries: [entry(withProgress(75))], selected: { kind: 'note', vaultId: 'v1', id: 'a' } });
+    const r = (el: Element | null) => Number(el!.getAttribute('r'));
+    const arc = arcs(node('a'))[0]!;
+    expect(r(arc)).toBeGreaterThan(r(node('a').querySelector('.cmap-sel')));
+    fire(node('a'), new MouseEvent('pointerover', { bubbles: true }));
+    act(() => void vi.advanceTimersByTime(40));
+    expect(r(node('a').querySelector('.cmap-ghost.is-outer'))).toBeGreaterThan(r(arc));
+  });
+
+  it('the aria-label mentions the read share', () => {
+    render({ entries: [entry(withProgress(75))] });
+    expect(node('a').getAttribute('aria-label')).toMatch(/, read 75 %/);
+    expect(node('b').getAttribute('aria-label')).not.toMatch(/read/);
+  });
+});
