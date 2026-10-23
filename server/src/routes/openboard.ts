@@ -20,7 +20,7 @@ import {
   putImage,
   updateLink,
 } from '../openboard/store.js';
-import type { PublishRequest } from '../openboard/types.js';
+import type { ObPermission, PublishRequest } from '../openboard/types.js';
 import { idParams, imageParams, uuid } from '../schemas.js';
 
 /** Largest published note body, in characters. */
@@ -75,13 +75,14 @@ type IdParams = { Params: { id: string } };
 /** Link label: 1-80 characters, not only whitespace. */
 const label = { type: 'string', minLength: 1, maxLength: 80, pattern: '\\S' } as const;
 const vaultIds = { type: 'array', maxItems: 1000, items: uuid } as const;
+const permission = { type: 'string', enum: ['read', 'write'] } as const;
 
 const createLinkSchema = {
   body: {
     type: 'object',
     additionalProperties: false,
     required: ['label', 'vaultIds'],
-    properties: { label, vaultIds },
+    properties: { label, vaultIds, permission },
   },
 } as const;
 
@@ -90,7 +91,7 @@ const updateLinkSchema = {
   body: {
     type: 'object',
     additionalProperties: false,
-    properties: { label, vaultIds },
+    properties: { label, vaultIds, permission },
   },
 } as const;
 
@@ -135,13 +136,13 @@ export function openboardRoutes(app: FastifyInstance, ctx: AppContext): void {
 
   app.get('/api/openboard/links', auth, async (request) => listLinks(db, currentUser(request).id));
 
-  app.post<{ Body: { label: string; vaultIds: string[] } }>(
+  app.post<{ Body: { label: string; vaultIds: string[]; permission?: ObPermission } }>(
     '/api/openboard/links',
     { ...auth, schema: createLinkSchema },
     async (request, reply) => reply.code(201).send(createLink(db, currentUser(request).id, request.body)),
   );
 
-  app.patch<IdParams & { Body: { label?: string; vaultIds?: string[] } }>(
+  app.patch<IdParams & { Body: { label?: string; vaultIds?: string[]; permission?: ObPermission } }>(
     '/api/openboard/links/:id',
     { ...auth, schema: updateLinkSchema },
     async (request) => updateLink(db, currentUser(request).id, request.params.id, request.body ?? {}),

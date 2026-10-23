@@ -22,6 +22,7 @@ interface Link {
   token: string;
   vaultIds: string[];
   views: number;
+  permission: string;
   createdAt: string;
 }
 
@@ -84,6 +85,38 @@ describe('openboard links', () => {
     const unknown = await create(alice, { label: 'L', vaultIds: [randomUUID()] });
     expect(unknown.statusCode).toBe(400);
     expect(await list(alice)).toEqual([]);
+  });
+
+  it('defaults a new link to read, and accepts write', async () => {
+    const a = await publishVault(alice, 'A');
+    const plain = await create(alice, { label: 'Plain', vaultIds: [a] });
+    expect(plain.statusCode).toBe(201);
+    expect(plain.json().permission).toBe('read');
+    const writable = await create(alice, { label: 'Open', vaultIds: [a], permission: 'write' });
+    expect(writable.statusCode).toBe(201);
+    expect(writable.json().permission).toBe('write');
+    expect((await list(alice)).map((l) => [l.label, l.permission])).toEqual([
+      ['Plain', 'read'],
+      ['Open', 'write'],
+    ]);
+  });
+
+  it('rejects an unknown permission on create and PATCH', async () => {
+    const a = await publishVault(alice, 'A');
+    expect((await create(alice, { label: 'X', vaultIds: [a], permission: 'admin' })).statusCode).toBe(400);
+    const link = (await create(alice, { label: 'X', vaultIds: [a] })).json();
+    expect((await patch(alice, link.id, { permission: 'admin' })).statusCode).toBe(400);
+    expect((await list(alice))[0].permission).toBe('read');
+  });
+
+  it('PATCH changes the permission and keeps the vaults', async () => {
+    const a = await publishVault(alice, 'A');
+    const link = (await create(alice, { label: 'X', vaultIds: [a] })).json();
+    const up = await patch(alice, link.id, { permission: 'write' });
+    expect(up.statusCode).toBe(200);
+    expect(up.json()).toMatchObject({ permission: 'write', vaultIds: [a] });
+    const down = await patch(alice, link.id, { permission: 'read' });
+    expect(down.json().permission).toBe('read');
   });
 
   it('lists only my links', async () => {
