@@ -207,13 +207,15 @@ All of these are plaintext and live in the same SQLite file as the private table
 ```
 ob_vaults(id PK, user_id, name, color, created_at, updated_at)
 ob_folders(id PK, vault_id, parent_id, name)
-ob_notes(id PK, vault_id, folder_id, title, body, created_at, updated_at)
+ob_notes(id PK, vault_id, folder_id, title, body, created_at, updated_at, visitor_edited_at)
 ob_images(vault_id, id, size, mime, data BLOB, created_at)   PK (vault_id, id)
-ob_links(id PK, user_id, label, token UNIQUE, views, created_at)
+ob_links(id PK, user_id, label, token UNIQUE, views, created_at, permission 'read'|'write')
 ob_link_vaults(link_id, ob_vault_id)                          PK (link_id, ob_vault_id)
 ```
 
 Deleting a published vault cascades to its folders, notes, images and link grants; deleting a link cascades to its grants. The link token is stored as is (not hashed) so the editor can show and copy a link again later.
+
+`ob_links.permission` and `ob_notes.visitor_edited_at` came after the first release. `openDb` adds them with `ALTER TABLE` when `PRAGMA table_info` shows them missing, so an existing database upgrades in place and its links stay `read`.
 
 ### Routes
 
@@ -221,21 +223,23 @@ Owner routes need a session, and every non-GET needs `X-Inked: 1` like the rest 
 
 | method | path | purpose |
 |---|---|---|
-| POST | /api/openboard/publish | publish a vault, folder or note; 201 with the result; 409 `conflict` (with `target` and `removes`) when it would replace something and `overwrite` is false |
+| POST | /api/openboard/publish | publish a vault, folder or note; 201 with the result; 409 `conflict` (with `target`, `removes` and `visitorEdits`) when it would replace something and `overwrite` is false |
 | GET | /api/openboard/content | the owner's published tree |
 | DELETE | /api/openboard/vaults/:id, /folders/:id, /notes/:id | unpublish |
 | POST | /api/openboard/vaults/:vaultId/images/:imageId | upload a published image (raw bytes) |
 | GET | /api/openboard/vaults/:vaultId/images/:imageId | the owner reads their own published image |
-| GET, POST | /api/openboard/links | list links; create one with `{ label, vaultIds }` |
-| PATCH, DELETE | /api/openboard/links/:id | rename or change granted vaults; delete |
+| GET, POST | /api/openboard/links | list links; create one with `{ label, vaultIds, permission? }` (`read` unless given) |
+| PATCH, DELETE | /api/openboard/links/:id | rename, change granted vaults or permission; delete |
 | GET | /api/openboard/preview?linkId= | the content a given link (or every vault, without `linkId`) would show; does not count a view |
 
-The public routes need no session and are GET only:
+The public routes need no session. The two writes need `X-Inked: 1` like every non-GET, and a Write link:
 
 | method | path | purpose |
 |---|---|---|
-| GET | /api/ob/:token | the link's label and its granted vaults with their trees and bodies; counts one view |
+| GET | /api/ob/:token | the link's label, permission and granted vaults with their trees and bodies; counts one view |
 | GET | /api/ob/:token/images/:vaultId/:imageId | an image, only if its vault is granted to the token |
+| PATCH | /api/ob/:token/notes/:noteId | a visitor's edit of title and/or body with `baseUpdatedAt`; 409 `stale` if the note changed |
+| POST | /api/ob/:token/notes | a visitor's new note `{ vaultId, folderId, title, body }` in a granted vault |
 
 ### Who can read what
 
@@ -244,6 +248,12 @@ Access is only by holding a link; there is no directory, discovery or visitor ac
 A request with an unknown token, a deleted link or a malformed token (checked against a pattern before it touches the database) gets the same 404, so a visitor cannot tell a deleted link from one that never existed; so does an image from a vault the link does not grant. Failed lookups, on the page API and the image route alike, are counted per client IP by their own limiter (`obLimiter`, separate from the login limiters): 20 failures lock that IP for 60 s. While locked, the IP gets 429 `locked` with `retryAfter` and a `Retry-After` header even for a valid link. The client IP depends on `TRUST_PROXY`; see `docs/deploy.md`.
 
 A view is counted once per successful `GET /api/ob/:token` (the public lookup), that is, once per open of the visitor page. `HEAD` requests, image requests and the editor's preview do not count.
+
+### Write links
+
+Design: `docs/superpowers/specs/2026-10-24-openboard-write-links-design.md`. A link is Read (the default) or Write. A Write link lets anyone holding it edit the title and body of published notes in the vaults it grants, and add notes there; it cannot delete, move, create folders or upload images. The server checks, per write: the token (as above), the permission (403 `read_only`), a per-IP write limiter (`obWriteLimiter`: 30 writes a minute, then 429 `locked` for a minute), and the vault grant (404). A title is 1 to 200 characters on one line; a body is at most 100,000 characters; a vault takes no visitor write past 5,000 notes or 32 MiB of note text (413 `vault_full`). `Index` is reserved: visitors cannot create, rename to or rename away from it. Edits are optimistic: a PATCH carries the `updatedAt` it started from.
+
+Visitor writes change only `ob_notes` (and the vault's `updated_at`). They never reach the private tables, and nothing copies them back into a private vault. Each write sets `visitor_edited_at`; the API exposes it as `visitorEdited`. The editor's tree tags those notes, the publish conflict counts them (`visitorEdits`) so the overwrite confirm can warn that republishing discards them, and the reader treats their bodies as untrusted: besides the usual sanitising, every link that is not a resolved `[[wiki link]]` renders as plain text. Removing an image reference in a visitor edit never deletes the image; orphans go at the owner's next publish or unpublish in that vault.
 
 ### Images
 
@@ -256,8 +266,8 @@ Identity is the name path: vault name, then folder names, then the note title. P
 ### Surfaces
 
 - The notes app: the three-dots menu on a vault, folder or note has "Publish to openboard" (after a notice that the content will be readable), and the sidebar links to the editor. Only the notes app publishes, because only it holds the vault keys.
-- `/openboard`, the editor: its own page, authenticated by the session cookie. It creates and deletes links, picks the vaults each link grants, shows view counts, browses and unpublishes published content, and previews the map as a given link's visitors would see it. It needs no keys.
-- `/ob/<token>`, the visitor page: no login. A map of the granted vaults, a tree rail, a reading drawer and title search. A `[[link]]` to a note that is not published or not granted is plain text.
+- `/openboard`, the editor: its own page, authenticated by the session cookie. It creates and deletes links, picks the vaults and the permission (Read or Write) of each link, shows view counts, browses and unpublishes published content, and previews the map as a given link's visitors would see it. It needs no keys.
+- `/ob/<token>`, the visitor page: no login. A map of the granted vaults, a tree rail, a reading drawer and title search. A `[[link]]` to a note that is not published or not granted is plain text. On a Write link the drawer has Edit (a title field and a Markdown textarea) and the top bar has New note.
 
 The server serves `openboard.html` for `/ob` and `/ob/*` and `openboard-editor.html` for `/openboard` and `/openboard/*`, before the SPA fallback. The visitor and editor are separate Vite entries that share the map and Markdown rendering with the notes app but ship no crypto, store or session code; `npm run check:openboard -w web` fails if either bundle pulls any in, and must run after `npm run build -w web`. Published pages use the app's normal CSP.
 
