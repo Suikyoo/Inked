@@ -19,7 +19,7 @@ Runtime: Node 22 (uses the built-in `node:sqlite`; no native modules). The serve
 
 ## Threat model in one paragraph
 
-A stolen database, disk or backup must reveal no note content, titles, folder names or vault names. The server never receives the password or any key that can decrypt. What the server can see: usernames, the number and size of vaults, folders and notes, the number and size of images per vault (never their type, dimensions or which note uses them), the folder tree shape (parent ids), whether a user has account settings, the size of that ciphertext (which roughly shows whether a provider key is saved) and its timestamp, and timestamps. The residual risk is malicious JavaScript, served by a compromised live server or injected by whatever terminates TLS in front of it (Cloudflare in the documented deployment, see below); we reduce it with a strict CSP (`style-src 'self'`, no `'unsafe-inline'`), self-hosted assets and no third-party scripts.
+A stolen database, disk or backup must reveal no note content, titles, folder names or vault names. The server never receives the password or any key that can decrypt. What the server can see: usernames, the number and size of vaults, folders and notes, the number and size of images per vault (never their type, dimensions or which note uses them), the folder tree shape (parent ids), whether a user has account settings, the size of that ciphertext (which roughly shows whether a provider key is saved) and its timestamp, which notes each user has read and to which checkpoint (25, 50, 75 or 100 %), the ciphertext size of the note version each checkpoint was reached on and when it was recorded, and timestamps. The residual risk is malicious JavaScript, served by a compromised live server or injected by whatever terminates TLS in front of it (Cloudflare in the documented deployment, see below); we reduce it with a strict CSP (`style-src 'self'`, no `'unsafe-inline'`), self-hosted assets and no third-party scripts.
 
 Residual risks we accept and state plainly:
 
@@ -142,8 +142,16 @@ JSON in/out. Errors: `{ "error": "<code>", "message"?: string }` with 4xx. All `
 
 `Vault = { id, encMeta, wrappedKey, createdAt, updatedAt, noteCount, activeNoteCount7d }` (`activeNoteCount7d` = notes updated in the last 7 days; drives the vault ink-level icon).
 `Folder = { id, parentId, encMeta, createdAt, updatedAt }`.
-`NoteHead = { id, folderId, encMeta, size, createdAt, updatedAt }` (`size` = encBody length).
+`NoteHead = { id, folderId, encMeta, size, createdAt, updatedAt, read? }` (`size` = encBody length; `read?: { pct, size } | null` comes only from the tree route: the signed-in user's read mark, `pct` the checkpoint and `size` the note's size when it was reached, `null` when unread).
 Timestamps are ISO-8601 strings. Limits: encBody ≤ 2 MB, encMeta ≤ 8 KB, request body ≤ 4 MiB (nginx allows 5 MiB, so the app's limit is the effective one; the image upload route is the exception: the app allows 10 MiB + 28 bytes and nginx 11 MiB for that route only). An `encBody` over the limit gets 413 `too_large`.
+
+### Read progress
+
+| method | path | body | response |
+|---|---|---|---|
+| POST | /api/read-progress | `{ items: [{ noteId, pct, size }] }` (1 to 200 items; `pct` one of 25, 50, 75, 100; `size` a non-negative integer) | `{ ok: true }`; items for notes the user does not own, or that no longer exist, are skipped |
+
+Upsert rule (coverage wins): with the note's current size, `coverage = min(pct / 100 * size, currentSize)`; an item replaces the stored mark when its coverage is greater than or equal to the stored one, so a stale write from another device never lowers progress. The browser batches checkpoints (every 10 s, on hide and on `pagehide` with `keepalive`); design: `docs/superpowers/specs/2026-10-23-read-progress-design.md`.
 
 ## Images
 
@@ -171,9 +179,10 @@ invites(id PK, token_hash UNIQUE, created_by, created_at, expires_at, used_by, u
 vaults(id PK, user_id, enc_meta, wrapped_key, created_at, updated_at)
 folders(id PK, vault_id, parent_id, enc_meta, created_at, updated_at)
 notes(id PK, vault_id, folder_id, enc_meta, enc_body, size, created_at, updated_at)
+read_progress(user_id, note_id, pct, read_size, updated_at, PK (user_id, note_id))
 ```
 
-Foreign keys on, `ON DELETE CASCADE` from vaults. WAL mode.
+Foreign keys on, `ON DELETE CASCADE` from vaults (`read_progress` also cascades from users and notes). WAL mode.
 
 ## Security headers (all responses)
 
