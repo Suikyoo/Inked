@@ -62,7 +62,7 @@ function SaveAsNote({ turn }: { turn: AskTurnView }) {
     setBusy(true);
     setError(null);
     try {
-      await store.createNote(vaultId, folder || null, title, body);
+      await store.createNote(vaultId, folder || null, title, body, { read: false });
       setSaved(true);
       setOpen(false);
     } catch (e) {

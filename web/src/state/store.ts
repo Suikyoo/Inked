@@ -1,4 +1,4 @@
-import { api, ApiError, setRequestUser, setUnauthorizedHandler, setUserMismatchHandler } from '../api/client';
+import { api, ApiError, isUserMismatch, setRequestUser, setUnauthorizedHandler, setUserMismatchHandler } from '../api/client';
 import type { FolderDTO, NoteHeadDTO, User, VaultDTO } from 'inked-core';
 import {
   aad,
@@ -29,8 +29,12 @@ import {
   unwrapUserKey,
   unwrapVaultKey,
   wipe,
+  preferRead,
+  shownProgress,
   type AccountSettings,
+  type Checkpoint,
   type KdfParams,
+  type ReadMark,
 } from 'inked-core';
 import { argon2InWorker } from '../lib/argon2Worker';
 import { clearDiagrams } from '../diagrams/diagramRender';
@@ -43,7 +47,8 @@ export interface PreparedImage {
 }
 import { NOTE_TOO_LARGE_MESSAGE, uuid } from '../lib/util';
 import { sendPending, type DropReason, type PendingSave } from './pending';
-import { TabLink } from './tabs';
+import { LOCK_WAIT_MS, TabLink } from './tabs';
+import { ReadProgressQueue, type ReadProgressItem } from './readProgress';
 
 /** If the unlock hook never calls back, subscribers are notified after this long. */
 export const UNLOCK_TRANSITION_MAX_MS = 1000;
@@ -81,6 +86,8 @@ export interface NoteView {
   createdAt: string;
   updatedAt: string;
   broken?: boolean;
+  /** This account's reading mark (null: unread). Note reads and saves carry none: storing such a head keeps the old mark. */
+  read?: ReadMark | null;
 }
 
 export interface TreeView {
@@ -178,6 +185,45 @@ const QUEUE_IO = {
     bounded(api.createNote(vaultId, b, { timeoutMs: QUEUE_REQUEST_TIMEOUT_MS, asUser: owner })),
   getNote: (owner: string, id: string) => bounded(api.getNote(id, { timeoutMs: QUEUE_REQUEST_TIMEOUT_MS, asUser: owner })),
 };
+
+/**
+ * A read-progress batch the server refused for good (bad item, note gone, too large) counts as delivered,
+ * so one poison item cannot hold the queue. Kept for a retry: network errors, 5xx, 401, 408, 429 and
+ * another account's session (user_mismatch).
+ */
+function readProgressRefused(e: unknown): boolean {
+  if (!(e instanceof ApiError) || e.status < 400 || e.status >= 500) return false;
+  return ![401, 408, 429].includes(e.status) && !isUserMismatch(e);
+}
+
+/** Settles when `p` does (never rejects), or after `ms`, whichever comes first. */
+function capped(p: Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  return Promise.race([p.catch(() => undefined), timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * The read mark a stored head keeps when `next` replaces it: a head without `read` (a note read or
+ * save) keeps the old mark, and otherwise the mark covering more of the note wins, so a reload that
+ * has not seen a local checkpoint yet never lowers it.
+ */
+function keptRead(prev: ReadMark | null | undefined, next: ReadMark | null | undefined, size: number): ReadMark | null | undefined {
+  if (next === undefined) return prev;
+  if (!next) return prev ?? null;
+  return preferRead(prev, next, size);
+}
+
+/**
+ * After the owner's own save made the note `size` bytes: the progress shown before the save, against
+ * the new size, so their edits never count as unread text. Null when nothing was shown as read.
+ */
+function reanchored(prev: NoteView | undefined, size: number): ReadMark | null {
+  const pct = prev ? shownProgress(prev.read, prev.size) : 0;
+  return pct > 0 ? { pct, size } : null;
+}
 
 const SESSION_ENDED_NOTICE = 'Your session ended. Sign in again.';
 const USER_MISMATCH_NOTICE = 'You signed in as someone else in another tab. Sign in again here.';
@@ -333,11 +379,15 @@ export class AppStore {
   private unseenSaves = new Set<string>();
   /** Vaults whose tree has loaded this session: later loads are reloads, and new notes in them count as saved. */
   private readyTrees = new Set<string>();
+  /** Reading checkpoints not sent yet (ids, checkpoints and sizes only); dropped with the keys. */
+  private readProgress = new ReadProgressQueue((items, { keepalive }) => this.sendReadProgress(items, keepalive));
 
   constructor() {
     setUnauthorizedHandler(() => this.sessionEnded());
     // Another tab signed in as someone else, so the shared cookie is theirs now: end this tab's session too.
     setUserMismatchHandler(() => this.sessionEnded(USER_MISMATCH_NOTICE));
+    // A lock or sign-out sends queued reading progress while the account is still here, capped like an editor's flush.
+    this.registerFlusher(() => capped(this.flushReadProgress(), LOCK_WAIT_MS));
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
         if (this.state.phase === 'unlocked') void this.retryPending();
@@ -347,6 +397,12 @@ export class AppStore {
         e.preventDefault();
         // Older browsers only ask when returnValue is set.
         e.returnValue = true;
+      });
+      // The tab may be going away: send reading progress with requests that outlive the page.
+      const flushOnLeave = () => void this.flushReadProgress({ keepalive: true });
+      window.addEventListener('pagehide', flushOnLeave);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushOnLeave();
       });
     }
   }
@@ -601,6 +657,8 @@ export class AppStore {
     this.unseenSaves.clear();
     this.readyTrees.clear();
     for (const e of this.pending) e.copyTitle = null;
+    // Already flushed (registerFlusher); whatever is left belongs to this account and is not sent for the next.
+    this.readProgress.clear();
     // Every signed-out transition passes here: data requests name nobody until the next sign-in.
     setRequestUser(null);
   }
@@ -1023,8 +1081,12 @@ export class AppStore {
         const cur = s.trees[vaultId]?.notes ?? {};
         const tree: TreeView = { status: 'ready', folders: {}, notes: {} };
         for (const f of fViews) tree.folders[f.id] = f;
-        // A head this tab stored meanwhile (its own save) is newer than the response: keep it.
-        for (const n of nViews) tree.notes[n.id] = cur[n.id] && cur[n.id].updatedAt > n.updatedAt ? cur[n.id] : n;
+        for (const n of nViews) {
+          // A head this tab stored meanwhile (its own save) is newer than the response: keep it.
+          const head = cur[n.id] && cur[n.id].updatedAt > n.updatedAt ? cur[n.id] : n;
+          // A local checkpoint the server has not seen yet is not lowered by the response.
+          tree.notes[n.id] = { ...head, read: keptRead(cur[n.id]?.read, n.read, head.size) };
+        }
         if (!reload) return { trees: { ...s.trees, [vaultId]: tree } };
         moved = nViews.filter((n) => !cur[n.id] || cur[n.id].updatedAt < n.updatedAt).map((n) => n.id);
         // Their cached text is the old version: drop it so nothing reads it as the new one.
@@ -1064,6 +1126,7 @@ export class AppStore {
       size: n.size,
       createdAt: n.createdAt,
       updatedAt: n.updatedAt,
+      read: n.read ?? null,
     };
     try {
       const meta = await decryptNoteMeta(key, vaultId, n.id, n.encMeta);
@@ -1257,7 +1320,9 @@ export class AppStore {
   private putHead(vaultId: string, head: NoteView): boolean {
     const prev = this.state.trees[vaultId]?.notes[head.id];
     if (prev && prev.updatedAt > head.updatedAt) return false;
-    this.patchTree(vaultId, (t) => ({ notes: { ...t.notes, [head.id]: head } }));
+    const read = keptRead(prev?.read, head.read, head.size);
+    const stored = read === head.read ? head : { ...head, read };
+    this.patchTree(vaultId, (t) => ({ notes: { ...t.notes, [head.id]: stored } }));
     // A newer version counts as saved, and so does a new note once the tree has loaded (not a note
     // opened while the first load is still running: the tree brings it in as already there).
     if (prev ? prev.updatedAt < head.updatedAt : this.readyTrees.has(vaultId)) this.emitSaved([head.id]);
@@ -1275,7 +1340,14 @@ export class AppStore {
     return this.ownStamps.get(noteId)?.has(updatedAt) ?? false;
   }
 
-  async createNote(vaultId: string, folderId: string | null, title: string, body = ''): Promise<NoteView> {
+  /** `read: false` for text the owner did not write (an Ask answer): it starts unread, like an MCP note. */
+  async createNote(
+    vaultId: string,
+    folderId: string | null,
+    title: string,
+    body = '',
+    opts: { read?: boolean } = {},
+  ): Promise<NoteView> {
     const ep = this.epoch;
     const key = this.vaultKey(vaultId);
     const id = uuid();
@@ -1284,6 +1356,7 @@ export class AppStore {
     const { note } = await api.createNote(vaultId, { id, folderId, encMeta, encBody });
     if (ep !== this.epoch) throw new LockedError();
     this.markOwn(id, note.updatedAt);
+    const read: ReadMark | null = opts.read === false ? null : { pct: 100, size: note.size };
     const head: NoteView = {
       id,
       vaultId,
@@ -1292,8 +1365,10 @@ export class AppStore {
       size: note.size,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
+      read,
     };
     this.putHead(vaultId, head);
+    if (read) this.readProgress.enqueue({ noteId: id, ...read });
     this.set((s) => ({ bodies: { ...s.bodies, [id]: body } }));
     return head;
   }
@@ -1351,6 +1426,7 @@ export class AppStore {
     if (encBody.length > NOTE_BODY_LIMIT) throw new NoteTooLargeError();
     const { note } = await api.updateNote(noteId, { encBody, baseUpdatedAt });
     const prev = this.state.trees[vaultId]?.notes[noteId];
+    const read = reanchored(prev, note.size);
     const head: NoteView = {
       id: noteId,
       vaultId,
@@ -1360,13 +1436,56 @@ export class AppStore {
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
       broken: prev?.broken,
+      ...(read ? { read } : {}),
     };
     // Locked while saving: the save landed, but this session's state is gone.
     if (ep !== this.epoch) return head;
     this.markOwn(noteId, note.updatedAt);
     // A later save already landed: its body is the current one.
-    if (this.putHead(vaultId, head)) this.set((s) => ({ bodies: { ...s.bodies, [noteId]: body } }));
+    if (this.putHead(vaultId, head)) {
+      this.set((s) => ({ bodies: { ...s.bodies, [noteId]: body } }));
+      if (read) this.readProgress.enqueue({ noteId, ...read });
+    }
     return head;
+  }
+
+  /**
+   * Records a reading checkpoint reached on the note version of `size` (the one on screen). The head's
+   * `read` changes at once (not `updatedAt`, and no saved event); the mark is queued for the server.
+   */
+  markRead(vaultId: string, noteId: string, pct: Checkpoint, size: number): void {
+    if (pct === 0) return;
+    const head = this.state.trees[vaultId]?.notes[noteId];
+    if (!head) return;
+    const read = preferRead(head.read, { pct, size }, head.size);
+    // The same mark shows the same progress: a checkpoint at or below what is shown changes nothing.
+    if (head.read && read.pct === head.read.pct && read.size === head.read.size) return;
+    this.patchTree(vaultId, (t) => ({ notes: { ...t.notes, [noteId]: { ...t.notes[noteId], read } } }));
+    this.readProgress.enqueue({ noteId, ...read });
+  }
+
+  /**
+   * Sends queued reading progress now. With `keepalive` (the tab is being hidden or closed) a flush
+   * already running is joined, then whatever was queued meanwhile is sent as well.
+   */
+  flushReadProgress(opts: { keepalive?: boolean } = {}): Promise<void> {
+    const run = this.readProgress.flush(opts);
+    return opts.keepalive ? run.then(() => this.readProgress.flush({ keepalive: true })) : run;
+  }
+
+  /**
+   * One batch, naming the account signed in when it is sent: if another tab switched the shared
+   * session meanwhile, the server refuses it (kept) instead of writing it to that account. Never
+   * sent while signed out.
+   */
+  private async sendReadProgress(items: ReadProgressItem[], keepalive: boolean): Promise<void> {
+    const owner = this.state.user?.id;
+    if (!owner) throw new ApiError(0, 'network');
+    try {
+      await bounded(api.saveReadProgress(items, { keepalive, asUser: owner, timeoutMs: QUEUE_REQUEST_TIMEOUT_MS }));
+    } catch (e) {
+      if (!readProgressRefused(e)) throw e;
+    }
   }
 
   async renameNote(vaultId: string, noteId: string, title: string): Promise<NoteView> {
@@ -1520,7 +1639,7 @@ export class AppStore {
       this.pending = this.pending.filter((e) => e !== entry);
       if (outcome === 'saved') {
         if (this.state.phase === 'unlocked' && this.state.user?.id === userId) {
-          void this.refreshNoteHead(entry.item.vaultId, entry.item.noteId);
+          void this.refreshNoteHead(entry.item.vaultId, entry.item.noteId, { reanchor: true });
         }
       } else if (outcome === 'copied') copied.push(entry);
       else if (outcome === 'copiedToRoot') atRoot++;
@@ -1575,8 +1694,9 @@ export class AppStore {
   /**
    * After a queued save landed: re-reads the note so the tree, search and the conflict base are
    * current. Its body is decrypted only if it was loaded already. Best effort: failures are ignored.
+   * `reanchor`: the save was the owner's own, so the progress shown before it is kept (see reanchored).
    */
-  private async refreshNoteHead(vaultId: string, noteId: string): Promise<void> {
+  private async refreshNoteHead(vaultId: string, noteId: string, opts: { reanchor?: boolean } = {}): Promise<void> {
     const ep = this.epoch;
     try {
       const key = this.vaultKey(vaultId);
@@ -1587,6 +1707,7 @@ export class AppStore {
       if (ep !== this.epoch) return;
       // Not marked as own: an editor opened before this save never saw the queued text, so adopting
       // this stamp would let its next autosave replace that text silently. It must hit the conflict path.
+      const read = opts.reanchor ? reanchored(this.state.trees[vaultId]?.notes[noteId], note.size) : null;
       const stored = this.putHead(vaultId, {
         id: noteId,
         vaultId,
@@ -1595,9 +1716,11 @@ export class AppStore {
         size: note.size,
         createdAt: note.createdAt,
         updatedAt: note.updatedAt,
+        ...(read ? { read } : {}),
       });
       // Not stored: something newer already arrived here, so this read is stale.
       if (stored && body !== undefined) this.set((s) => ({ bodies: { ...s.bodies, [noteId]: body } }));
+      if (stored && read) this.readProgress.enqueue({ noteId, ...read });
     } catch {
       // The tree catches up on the next load.
     }

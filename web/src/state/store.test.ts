@@ -6,7 +6,7 @@ const api = vi.hoisted(() => ({
   listVaults: vi.fn(), createVault: vi.fn(), createNote: vi.fn(), getNote: vi.fn(), updateNote: vi.fn(),
   rotateRecoveryKey: vi.fn(), tree: vi.fn(), bodies: vi.fn(), createFolder: vi.fn(), updateVault: vi.fn(),
   recoverStart: vi.fn(), recoverFinish: vi.fn(),
-  putImage: vi.fn(), getImage: vi.fn(),
+  putImage: vi.fn(), getImage: vi.fn(), saveReadProgress: vi.fn(),
 }));
 /** The store's 401 handler, as the real client would call it. */
 const unauthorized = vi.hoisted(() => ({ handler: null as null | (() => unknown) }));
@@ -1731,6 +1731,242 @@ describe('AppStore', () => {
     await vi.waitFor(() => expect(s.getState().vaults[vaultId]?.name).toBe('Personal'));
     api.getNote.mockResolvedValue({ note: { ...headFor(noteSent, 't2').note, encBody: sent.encBody } });
     expect((await s.loadNote(vaultId, created.id)).body).toBe('typed while bob signed in elsewhere');
+  });
+
+  describe('read progress', () => {
+    const T1 = '2026-01-01T00:00:00.000Z';
+    const T2 = '2026-01-02T00:00:00.000Z';
+    type Mark = { pct: number; size: number } | null;
+    type Item = { noteId: string; pct: number; size: number };
+
+    /** A signed-in store whose vault tree holds one note of `size` with the server's `read`. */
+    async function withNote(size: number, read: Mark) {
+      const s = await registeredStore();
+      const vaultId = Object.keys(s.getState().vaults)[0];
+      const noteId = crypto.randomUUID();
+      const dto = { id: noteId, folderId: null, encMeta: 'v1.unreadable', size, createdAt: 'a', updatedAt: T1, read };
+      api.tree.mockResolvedValue({ folders: [], notes: [dto] });
+      api.bodies.mockResolvedValue({ notes: [] });
+      await s.loadTree(vaultId);
+      const head = () => s.getState().trees[vaultId].notes[noteId];
+      return { s, vaultId, noteId, dto, head };
+    }
+
+    /** A note created through the store (real ciphertext), stored by the server as `size` bytes. */
+    async function withCreated(size: number, opts: { read?: boolean } = {}) {
+      const s = await registeredStore();
+      const vaultId = Object.keys(s.getState().vaults)[0];
+      api.createNote.mockImplementation(async (_v: string, b: NoteBody) => ({ note: { ...headFor(b, T1).note, size } }));
+      const created = await s.createNote(vaultId, null, 'Plan', 'old text', opts);
+      const sent: NoteBody = api.createNote.mock.calls.at(-1)![1];
+      const head = () => s.getState().trees[vaultId].notes[created.id];
+      return { s, vaultId, noteId: created.id, sent, head };
+    }
+
+    /** Every batch sent with `noteId` in it, as [items, opts] (other stores' timers may send their own notes meanwhile). */
+    const callsFor = (noteId: string) =>
+      (api.saveReadProgress.mock.calls as [Item[], { keepalive?: boolean; asUser?: string }][]).filter(([items]) =>
+        items.some((i) => i.noteId === noteId),
+      );
+    /** Every item sent for `noteId`, across batches. */
+    const sentFor = (noteId: string): Item[] => callsFor(noteId).flatMap(([items]) => items.filter((i) => i.noteId === noteId));
+    const queued = (s: AppStore) => (s as unknown as { readProgress: { size: number } }).readProgress.size;
+
+    it('loadTree copies read from the DTO', async () => {
+      const { head } = await withNote(1000, { pct: 50, size: 1000 });
+      expect(head().read).toEqual({ pct: 50, size: 1000 });
+      const other = await withNote(1000, null);
+      expect(other.head().read).toBeNull();
+    });
+
+    it('markRead updates the head and sends one batch after 10 s', async () => {
+      const { s, vaultId, noteId, head } = await withNote(1000, null);
+      const ann = s.getState().user!.id;
+      const saved = vi.fn();
+      s.onNotesSaved(saved);
+      vi.useFakeTimers();
+      try {
+        s.markRead(vaultId, noteId, 50, 1000);
+        expect(head().read).toEqual({ pct: 50, size: 1000 });
+        expect(head().updatedAt).toBe(T1);
+        expect(saved).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(sentFor(noteId)).toEqual([]);
+        await vi.advanceTimersByTimeAsync(1);
+        const calls = callsFor(noteId);
+        expect(calls).toHaveLength(1);
+        expect(calls[0][0]).toEqual([{ noteId, pct: 50, size: 1000 }]);
+        expect(calls[0][1]).toMatchObject({ keepalive: false, asUser: ann });
+        await vi.advanceTimersByTimeAsync(20_000);
+        expect(sentFor(noteId)).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('markRead ignores a checkpoint at or below the shown progress', async () => {
+      const { s, vaultId, noteId, head } = await withNote(1000, { pct: 50, size: 1000 });
+      s.markRead(vaultId, noteId, 25, 1000);
+      s.markRead(vaultId, noteId, 50, 1000);
+      s.markRead(vaultId, noteId, 0, 1000);
+      expect(head().read).toEqual({ pct: 50, size: 1000 });
+      expect(queued(s)).toBe(0);
+      await s.flushReadProgress();
+      expect(sentFor(noteId)).toEqual([]);
+      s.markRead(vaultId, noteId, 75, 1000);
+      expect(head().read).toEqual({ pct: 75, size: 1000 });
+      await s.flushReadProgress();
+      expect(sentFor(noteId)).toEqual([{ noteId, pct: 75, size: 1000 }]);
+    });
+
+    it('loadNote keeps the head’s read', async () => {
+      const { s, vaultId, noteId, sent, head } = await withCreated(1000, { read: false });
+      s.markRead(vaultId, noteId, 50, 1000);
+      // Note reads carry no `read`: the newer head keeps the local mark.
+      api.getNote.mockResolvedValue({ note: { ...headFor(sent, T2).note, size: 1000, encBody: sent.encBody } });
+      await s.loadNote(vaultId, noteId);
+      expect(head().updatedAt).toBe(T2);
+      expect(head().read).toEqual({ pct: 50, size: 1000 });
+    });
+
+    it('tree reload keeps local read when it covers more than the server’s', async () => {
+      const { s, vaultId, noteId, dto, head } = await withNote(1000, null);
+      s.markRead(vaultId, noteId, 100, 1000);
+      // The checkpoint has not reached the server yet: the reload still says unread, on a newer version.
+      api.tree.mockResolvedValue({ folders: [], notes: [{ ...dto, updatedAt: T2, read: null }] });
+      await s.loadTree(vaultId);
+      expect(head().updatedAt).toBe(T2);
+      expect(head().read).toEqual({ pct: 100, size: 1000 });
+      // A server mark that covers more (read on another device) wins.
+      const other = await withNote(1000, null);
+      other.s.markRead(other.vaultId, other.noteId, 25, 1000);
+      api.tree.mockResolvedValue({ folders: [], notes: [{ ...other.dto, read: { pct: 75, size: 1000 } }] });
+      await other.s.loadTree(other.vaultId);
+      expect(other.head().read).toEqual({ pct: 75, size: 1000 });
+    });
+
+    /** The server's answer to a body save that leaves the note `size` bytes. */
+    const savedAs = (noteId: string, size: number) => ({ note: { id: noteId, folderId: null, size, createdAt: 'a', updatedAt: T2 } });
+
+    it('saveNoteBody re-anchors: a note shown at 100 stays 100 after the owner grows it', async () => {
+      const { s, vaultId, noteId, head } = await withNote(1000, { pct: 100, size: 1000 });
+      api.updateNote.mockResolvedValue(savedAs(noteId, 3000));
+      const saved = await s.saveNoteBody(vaultId, noteId, 'much longer text', T1);
+      expect(head().size).toBe(3000);
+      expect(head().read).toEqual({ pct: 100, size: 3000 });
+      expect(saved.read).toEqual({ pct: 100, size: 3000 });
+      await s.flushReadProgress();
+      expect(sentFor(noteId)).toEqual([{ noteId, pct: 100, size: 3000 }]);
+    });
+
+    it('saveNoteBody re-anchor keeps 50 when the note was half read', async () => {
+      const { s, vaultId, noteId, head } = await withNote(1000, { pct: 50, size: 1000 });
+      api.updateNote.mockResolvedValue(savedAs(noteId, 3000));
+      await s.saveNoteBody(vaultId, noteId, 'much longer text', T1);
+      expect(head().read).toEqual({ pct: 50, size: 3000 });
+      await s.flushReadProgress();
+      expect(sentFor(noteId)).toEqual([{ noteId, pct: 50, size: 3000 }]);
+      // An unread note stays unread, and nothing is sent for it.
+      const unread = await withNote(1000, null);
+      api.updateNote.mockResolvedValue(savedAs(unread.noteId, 3000));
+      await unread.s.saveNoteBody(unread.vaultId, unread.noteId, 'text', T1);
+      expect(unread.head().read).toBeNull();
+      await unread.s.flushReadProgress();
+      expect(sentFor(unread.noteId)).toEqual([]);
+    });
+
+    it('createNote marks the new note read; createNote with {read:false} does not', async () => {
+      const mine = await withCreated(700);
+      expect(mine.head().read).toEqual({ pct: 100, size: 700 });
+      await mine.s.flushReadProgress();
+      expect(sentFor(mine.noteId)).toEqual([{ noteId: mine.noteId, pct: 100, size: 700 }]);
+      const ai = await withCreated(700, { read: false });
+      expect(ai.head().read).toBeNull();
+      await ai.s.flushReadProgress();
+      expect(sentFor(ai.noteId)).toEqual([]);
+    });
+
+    it('a queued save replayed later re-anchors', async () => {
+      const { s, vaultId, noteId, sent, head } = await withCreated(1000);
+      await s.flushReadProgress();
+      api.saveReadProgress.mockClear();
+      api.updateNote.mockResolvedValue({ note: { updatedAt: T2 } });
+      api.getNote.mockResolvedValue({ note: { ...headFor(sent, T2).note, size: 3000, encBody: sent.encBody } });
+      await s.stashUnsaved(vaultId, noteId, 'queued, longer text', T1);
+      await vi.waitFor(() => expect(head().updatedAt).toBe(T2));
+      expect(head().read).toEqual({ pct: 100, size: 3000 });
+      await s.flushReadProgress();
+      expect(sentFor(noteId)).toEqual([{ noteId, pct: 100, size: 3000 }]);
+    });
+
+    it('signOut flushes pending progress before dropping keys, then clears the queue', async () => {
+      const { s, vaultId, noteId } = await withNote(1000, null);
+      const ann = s.getState().user!.id;
+      const sentAs: (string | null)[] = [];
+      api.saveReadProgress.mockImplementation(async () => {
+        sentAs.push(mismatch.requestUser);
+      });
+      api.logout.mockResolvedValue({ ok: true });
+      s.markRead(vaultId, noteId, 50, 1000);
+      await s.signOut();
+      expect(sentFor(noteId)).toEqual([{ noteId, pct: 50, size: 1000 }]);
+      expect(sentAs).toEqual([ann]); // the keys (and the account the requests name) were still here
+      expect(api.saveReadProgress.mock.invocationCallOrder[0]).toBeLessThan(api.logout.mock.invocationCallOrder[0]);
+
+      // Offline at sign-out: the flush fails, and the items are dropped with the keys.
+      const t = await withNote(1000, null);
+      api.saveReadProgress.mockReset();
+      api.saveReadProgress.mockRejectedValue(new ApiError(0, 'network'));
+      t.s.markRead(t.vaultId, t.noteId, 50, 1000);
+      await t.s.signOut();
+      expect(sentFor(t.noteId)).toHaveLength(1);
+      expect(queued(t.s)).toBe(0);
+    });
+
+    it('a refused batch counts as delivered; a network error, 5xx, 429 or another account’s session keeps it', async () => {
+      const { s, vaultId, noteId } = await withNote(1000, null);
+      s.markRead(vaultId, noteId, 25, 1000);
+      for (const e of [new ApiError(0, 'network'), new ApiError(503, 'unavailable'), new ApiError(429, 'rate_limited'), new ApiError(409, 'user_mismatch')]) {
+        api.saveReadProgress.mockRejectedValueOnce(e);
+        await s.flushReadProgress();
+        expect(queued(s)).toBe(1);
+      }
+      api.saveReadProgress.mockRejectedValueOnce(new ApiError(400, 'invalid'));
+      await s.flushReadProgress();
+      expect(queued(s)).toBe(0);
+      expect(sentFor(noteId)).toHaveLength(5);
+    });
+
+    it('pagehide and a hidden tab flush with keepalive; items queued during a running flush go out too', async () => {
+      const { s, vaultId, noteId } = await withNote(1000, null);
+      s.markRead(vaultId, noteId, 25, 1000);
+      window.dispatchEvent(new Event('pagehide'));
+      await vi.waitFor(() => expect(sentFor(noteId)).toHaveLength(1));
+      await s.flushReadProgress(); // joins that flush until it is done
+      expect(callsFor(noteId)[0][1]).toMatchObject({ keepalive: true });
+
+      // A flush is on the wire when the tab is hidden: a mark made meanwhile follows it out.
+      let release!: () => void;
+      // Only this note's 50 is held (the earlier tests' stores flush on pagehide too).
+      api.saveReadProgress.mockImplementation(async (items: Item[]) => {
+        if (items[0].noteId === noteId && items[0].pct === 50) await new Promise<void>((r) => (release = r));
+      });
+      s.markRead(vaultId, noteId, 50, 1000);
+      const running = s.flushReadProgress();
+      s.markRead(vaultId, noteId, 75, 1000);
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      try {
+        document.dispatchEvent(new Event('visibilitychange'));
+      } finally {
+        Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      }
+      release();
+      await running;
+      await vi.waitFor(() => expect(sentFor(noteId)).toHaveLength(3));
+      const last = callsFor(noteId).at(-1)!;
+      expect(last[0]).toEqual([{ noteId, pct: 75, size: 1000 }]);
+      expect(last[1]).toMatchObject({ keepalive: true });
+    });
   });
 });
 

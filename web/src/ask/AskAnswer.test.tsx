@@ -155,6 +155,6 @@ describe('AskAnswer', () => {
     const select = host!.querySelector<HTMLSelectElement>('select')!;
     expect(select.value).toBe('v:f');
     await act(async () => button('Save').click());
-    expect(createNote).toHaveBeenCalledWith('v', 'f', 'How do I roll back?', 'Use the drill [[Rollback drill]].\n\n## Sources\n\n- [[Rollback drill]]\n');
+    expect(createNote).toHaveBeenCalledWith('v', 'f', 'How do I roll back?', 'Use the drill [[Rollback drill]].\n\n## Sources\n\n- [[Rollback drill]]\n', { read: false });
   });
 });
