@@ -153,6 +153,17 @@ CREATE TABLE IF NOT EXISTS ob_link_vaults (
   PRIMARY KEY (link_id, ob_vault_id)
 );
 CREATE INDEX IF NOT EXISTS ob_link_vaults_vault ON ob_link_vaults(ob_vault_id);
+
+-- Read progress: per user and note, the furthest checkpoint reached. Only ids, sizes and timestamps.
+CREATE TABLE IF NOT EXISTS read_progress (
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  note_id    TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  pct        INTEGER NOT NULL,   -- 25, 50, 75 or 100
+  read_size  INTEGER NOT NULL,   -- notes.size of the version the checkpoint was reached on
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, note_id)
+);
+CREATE INDEX IF NOT EXISTS read_progress_note ON read_progress(note_id);
 `;
 
 export function openDb(file: string): Db {
@@ -230,6 +241,14 @@ export interface NoteRow {
   enc_body: string;
   size: number;
   created_at: string;
+  updated_at: string;
+}
+
+export interface ReadProgressRow {
+  user_id: string;
+  note_id: string;
+  pct: number;
+  read_size: number;
   updated_at: string;
 }
 

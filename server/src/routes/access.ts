@@ -80,11 +80,16 @@ export const folderJson = (f: FolderRow) => ({
   updatedAt: f.updated_at,
 });
 
-export const noteHeadJson = (n: Omit<NoteRow, 'enc_body'>) => ({
+/** A note row without its body; the tree query also carries the caller's read progress (null when unread). */
+export type NoteHeadRow = Omit<NoteRow, 'enc_body'> & { read_pct?: number | null; read_size?: number | null };
+
+export const noteHeadJson = (n: NoteHeadRow) => ({
   id: n.id,
   folderId: n.folder_id,
   encMeta: n.enc_meta,
   size: n.size,
   createdAt: n.created_at,
   updatedAt: n.updated_at,
+  // Only emitted by callers that select the progress columns (the vault tree).
+  ...(n.read_pct === undefined ? {} : { read: n.read_pct == null ? null : { pct: n.read_pct, size: n.read_size ?? 0 } }),
 });

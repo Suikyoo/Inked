@@ -14,6 +14,7 @@ import { authRoutes, countUsers } from './routes/auth.js';
 import { folderRoutes } from './routes/folders.js';
 import { inviteRoutes } from './routes/invites.js';
 import { noteRoutes } from './routes/notes.js';
+import { readProgressRoutes } from './routes/readProgress.js';
 import { openboardImageRoutes, openboardRoutes } from './routes/openboard.js';
 import { openboardPublicRoutes } from './routes/openboardPublic.js';
 import { vaultRoutes } from './routes/vaults.js';
@@ -222,6 +223,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   vaultRoutes(app, ctx);
   folderRoutes(app, ctx);
   noteRoutes(app, ctx);
+  readProgressRoutes(app, ctx);
   vectorRoutes(app, ctx);
   // Images (encrypted private ones and plaintext published ones) arrive as raw bytes; the parser lives in
   // this scope so no other route accepts octet-stream.

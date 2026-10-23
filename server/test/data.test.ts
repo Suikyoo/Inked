@@ -116,7 +116,7 @@ describe('folders', () => {
 
     const tree = (await as(alice).get(`/api/vaults/${vault.id}/tree`)).json();
     expect(tree.folders.map((f: { id: string }) => f.id)).toEqual([root.id, child.id]);
-    expect(tree.notes).toEqual([note]);
+    expect(tree.notes).toEqual([{ ...note, read: null }]);
     expect(tree.notes[0]).not.toHaveProperty('encBody');
   });
 

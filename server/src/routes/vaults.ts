@@ -3,7 +3,7 @@ import { type AppContext, currentUser, requireUser } from '../context.js';
 import { bumpTimestamp, type FolderRow, type NoteRow, nowIso } from '../db.js';
 import { ApiError } from '../errors.js';
 import { encMeta, idParams, uuid, wrappedKey } from '../schemas.js';
-import { folderJson, listVaults, noteHeadJson, ownedVault, ownedVaultWithCounts, vaultJson } from './access.js';
+import { folderJson, listVaults, type NoteHeadRow, noteHeadJson, ownedVault, ownedVaultWithCounts, vaultJson } from './access.js';
 
 const createSchema = {
   body: {
@@ -73,10 +73,12 @@ export function vaultRoutes(app: FastifyInstance, ctx: AppContext): void {
       .all(vault.id) as unknown as FolderRow[];
     const notes = db
       .prepare(
-        `SELECT id, vault_id, folder_id, enc_meta, size, created_at, updated_at
-         FROM notes WHERE vault_id = ? ORDER BY created_at, id`,
+        `SELECT n.id, n.vault_id, n.folder_id, n.enc_meta, n.size, n.created_at, n.updated_at,
+                rp.pct AS read_pct, rp.read_size AS read_size
+         FROM notes n LEFT JOIN read_progress rp ON rp.note_id = n.id AND rp.user_id = ?
+         WHERE n.vault_id = ? ORDER BY n.created_at, n.id`,
       )
-      .all(vault.id) as unknown as Omit<NoteRow, 'enc_body'>[];
+      .all(currentUser(request).id, vault.id) as unknown as NoteHeadRow[];
     return { folders: folders.map(folderJson), notes: notes.map(noteHeadJson) };
   });
 
