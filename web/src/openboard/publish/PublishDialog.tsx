@@ -249,6 +249,12 @@ export function PublishDialog({
         message={
           <>
             <p>This replaces {parts.join(' and ')} there. Your notes in Inked don’t change.</p>
+            {conflict.visitorEdits > 0 && (
+              <p>
+                {plural(conflict.visitorEdits, 'note')} there {conflict.visitorEdits === 1 ? 'was' : 'were'} changed by visitors through Write links.
+                Overwriting discards those changes.
+              </p>
+            )}
             {step.skipped > 0 && (
               <p>
                 {unreadableText(step.skipped)}, and {step.skipped === 1 ? 'its published copy' : 'their published copies'} will be
