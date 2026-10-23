@@ -1,13 +1,19 @@
-import type { ObLink, ObPayload, ObPermission, ObPublicResponse } from 'inked-core';
+import type { ObLink, ObNote, ObPayload, ObPermission, ObPublicResponse } from 'inked-core';
 
 /**
  * Openboard API client. Deliberately standalone (bare `fetch`, no app client, store or crypto) so the visitor
  * bundles stay small and clean. The visitor calls are anonymous; the editor's owner calls use the session cookie.
  */
 
-/** A non-2xx answer from the openboard API. `status` 0 means the request never got an answer. */
+/**
+ * A non-2xx answer from the openboard API. `status` 0 means the request never got an answer; `code` is the
+ * server's `error` field when it sent one.
+ */
 export class ObApiError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    readonly code?: string,
+  ) {
     super(`openboard request failed (${status})`);
     this.name = 'ObApiError';
   }
@@ -33,6 +39,53 @@ export async function fetchPublic(token: string): Promise<ObPublicResponse> {
   const body: unknown = await res.json().catch(() => null);
   if (!isPayload(body)) throw new ObApiError(res.status);
   return body;
+}
+
+/**
+ * A visitor's write through a Write link. Anonymous like `fetchPublic` (no cookies), with the `X-Inked` header
+ * every non-GET needs. Throws ObApiError (with the server's error code) on any failure.
+ */
+async function visitorWrite(method: 'PATCH' | 'POST', path: string, body: unknown): Promise<ObNote> {
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method,
+      credentials: 'omit',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Inked': '1' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ObApiError(0);
+  }
+  const data: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    const code = (data as { error?: unknown } | null)?.error;
+    throw new ObApiError(res.status, typeof code === 'string' ? code : undefined);
+  }
+  const note = data as ObNote | null;
+  if (!note || typeof note.id !== 'string' || typeof note.body !== 'string') throw new ObApiError(res.status);
+  return note;
+}
+
+/** PATCH /api/ob/:token/notes/:id: a visitor's edit; `title` is left out to keep it. */
+export const saveVisitorNote = (token: string, noteId: string, change: { baseUpdatedAt: string; title?: string; body: string }): Promise<ObNote> =>
+  visitorWrite('PATCH', `/api/ob/${seg(token)}/notes/${seg(noteId)}`, change);
+
+/** POST /api/ob/:token/notes: a visitor's new note in a vault the link grants. */
+export const createVisitorNote = (token: string, note: { vaultId: string; folderId: string | null; title: string; body: string }): Promise<ObNote> =>
+  visitorWrite('POST', `/api/ob/${seg(token)}/notes`, note);
+
+/** A short, human message for a failed visitor write. */
+export function visitorWriteErrorText(e: unknown): string {
+  if (e instanceof ObApiError) {
+    if (e.code === 'stale') return 'Someone else changed this note while you were editing. Copy your text, then reload the page.';
+    if (e.status === 403) return 'Editing is turned off for this link. Reload the page.';
+    if (e.code === 'vault_full') return 'This board is full and can’t take more notes or text.';
+    if (e.status === 413) return 'That’s too long to save here.';
+    if (e.status === 400) return 'That can’t be saved. Check the title and try again.';
+    if (e.status === 404) return 'This note or link no longer exists. Reload the page.';
+  }
+  return errorText(e);
 }
 
 /** Where a published image is served for visitors of this link. */

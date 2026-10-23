@@ -44,7 +44,10 @@ function titlesOf(payload: ObPayload, vaultId: string): Map<string, string> {
   return map;
 }
 
-/** Sanitized HTML for a body, with wiki links as open buttons, missing links as text and images resolved. */
+/**
+ * Sanitized HTML for a body, with wiki links as open buttons, missing links as text and images resolved.
+ * A note a visitor edited is untrusted: like `renderUntrustedMarkdown`, every other link becomes plain text.
+ */
 export function renderPublished(note: ObNote, payload: ObPayload, resolveImage: ReaderProps['resolveImage']): string {
   const titles = titlesOf(payload, note.vaultId);
   const ids = new Set(titles.values());
@@ -70,6 +73,13 @@ export function renderPublished(note: ObNote, payload: ObPayload, resolveImage: 
     a.replaceWith(btn);
   }
   for (const span of Array.from(doc.body.querySelectorAll('span.wl-missing'))) span.replaceWith(doc.createTextNode(span.textContent ?? ''));
+  if (note.visitorEdited) {
+    for (const a of Array.from(doc.body.querySelectorAll('a'))) {
+      const span = doc.createElement('span');
+      span.append(...Array.from(a.childNodes));
+      a.replaceWith(span);
+    }
+  }
   for (const img of Array.from(doc.body.querySelectorAll<HTMLImageElement>('img[data-inked-image]'))) {
     img.setAttribute('src', resolveImage(note.vaultId, img.dataset.inkedImage!));
     img.setAttribute('loading', 'lazy');
@@ -137,6 +147,7 @@ export function Reader({ note, payload, resolveImage, onOpenNote }: ReaderProps)
           </p>
         )}
         <h1 className="ob-reader-title">{title}</h1>
+        {note.visitorEdited && <p className="ob-visitor-tag">Edited by a visitor</p>}
       </header>
       {note.body.trim() === '' ? (
         <p className="ob-reader-empty">This note is empty.</p>

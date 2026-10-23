@@ -10,9 +10,10 @@ import { VisitorPage } from './VisitorPage';
 const at = '2026-10-20T10:00:00.000Z';
 const later = '2026-10-21T10:00:00.000Z';
 
-function payload(): ObPublicResponse {
+function payload(permission: ObPublicResponse['permission'] = 'read'): ObPublicResponse {
   return {
     label: 'Reading group',
+    permission,
     vaults: [{ id: 'v1', name: 'Research', color: '#7452e0', updatedAt: later }],
     folders: [{ id: 'f1', vaultId: 'v1', parentId: null, name: 'Ops' }],
     notes: [
@@ -48,15 +49,54 @@ const railRows = () => qa('.ob-rail .ob-row-note').map(label);
 const railNote = (title: string) => qa('.ob-rail .ob-row-note').find((r) => label(r) === title)!;
 const drawer = () => q('.ob-drawer');
 
-function type(input: HTMLInputElement, value: string) {
-  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+function type(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const set = Object.getOwnPropertyDescriptor(proto, 'value')!.set!;
   act(() => {
     set.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
 
+const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+/** Answers the page load with a payload and each write with the next queued answer (default: echo the change). */
+function writeServer(p: ObPublicResponse, answers: Response[] = []) {
+  fetchMock.mockImplementation(async (url: string, init: RequestInit = {}) => {
+    const method = (init.method ?? 'GET').toUpperCase();
+    if (method === 'GET') return json(200, p);
+    const queued = answers.shift();
+    if (queued) return queued;
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const edit = url.match(/^\/api\/ob\/tok123\/notes\/([^/]+)$/);
+    if (edit && method === 'PATCH') {
+      const note = p.notes.find((n) => n.id === edit[1])!;
+      return json(200, { ...note, ...body, baseUpdatedAt: undefined, updatedAt: '2026-10-24T10:00:00.000Z', visitorEdited: true });
+    }
+    if (url === '/api/ob/tok123/notes' && method === 'POST') {
+      return json(201, { id: 'new1', ...body, createdAt: later, updatedAt: later, visitorEdited: true });
+    }
+    return json(404, { error: 'not_found' });
+  });
+}
+const writes = () => fetchMock.mock.calls.filter(([, init]) => ((init as RequestInit | undefined)?.method ?? 'GET') !== 'GET');
+const buttonIn = (scope: ParentNode, text: string) =>
+  Array.from(scope.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.trim() === text);
+async function settle() {
+  for (let i = 0; i < 6; i++) await act(async () => {});
+}
+async function press(el: HTMLElement | undefined) {
+  await act(async () => el!.click());
+  await settle();
+}
+
 beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute('open');
+  };
   window.history.replaceState(null, '', '/ob/tok123');
   // Wide enough that the rail starts open.
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
@@ -168,7 +208,7 @@ describe('VisitorPage', () => {
   });
 
   it('zero vaults renders an empty state, not an error', async () => {
-    respond(200, { label: 'Empty', vaults: [], folders: [], notes: [] });
+    respond(200, { label: 'Empty', permission: 'read', vaults: [], folders: [], notes: [] });
     await render();
     expect(q('.ob-empty')).not.toBeNull();
     expect(host!.textContent).not.toContain('doesn’t exist');
@@ -183,5 +223,135 @@ describe('VisitorPage', () => {
     expect(qa('.ob-rail .ob-row-note')).toHaveLength(0);
     act(() => q<HTMLButtonElement>('.ob-rail-toggle')!.click());
     expect(q('.ob-rail')!.getAttribute('data-collapsed')).toBe('false');
+  });
+});
+
+describe('VisitorPage on a write link', () => {
+  const editor = () => drawer()!.querySelector<HTMLFormElement>('form.ob-editor');
+  const titleInput = () => editor()!.querySelector<HTMLInputElement>('input.ob-editor-title')!;
+  const bodyInput = () => editor()!.querySelector<HTMLTextAreaElement>('textarea.ob-editor-body')!;
+
+  it('a read link offers no Edit and no New note', async () => {
+    writeServer(payload('read'));
+    await render();
+    act(() => railNote('Alpha').click());
+    expect(buttonIn(drawer()!, 'Edit')).toBeUndefined();
+    expect(buttonIn(host!, 'New note')).toBeUndefined();
+  });
+
+  it('Edit opens the title and Markdown; Save PATCHes anonymously and shows the result', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    expect(titleInput().value).toBe('Alpha');
+    expect(bodyInput().value).toBe('## Alpha heading\n\nSee [[Beta]].');
+    type(titleInput(), 'Alpha prime');
+    type(bodyInput(), 'Rewritten **text**');
+    await press(buttonIn(editor()!, 'Save'));
+
+    const [[url, init]] = writes();
+    expect(url).toBe('/api/ob/tok123/notes/n1');
+    const req = init as RequestInit;
+    expect(req.method).toBe('PATCH');
+    expect(req.credentials).toBe('omit');
+    expect((req.headers as Record<string, string>)['X-Inked']).toBe('1');
+    expect(JSON.parse(String(req.body))).toEqual({ baseUpdatedAt: later, title: 'Alpha prime', body: 'Rewritten **text**' });
+
+    expect(editor()).toBeNull();
+    expect(drawer()!.querySelector('h1')!.textContent).toBe('Alpha prime');
+    expect(drawer()!.querySelector('article strong')!.textContent).toBe('text');
+    expect(drawer()!.querySelector('.ob-visitor-tag')).not.toBeNull();
+    expect(railRows()).toContain('Alpha prime');
+  });
+
+  it('Cancel leaves the note unchanged and sends nothing', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    type(bodyInput(), 'draft');
+    await press(buttonIn(editor()!, 'Cancel'));
+    expect(editor()).toBeNull();
+    expect(drawer()!.querySelector('article h2')!.textContent).toBe('Alpha heading');
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('Escape in the editor does not close the drawer or drop the draft', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    type(bodyInput(), 'draft');
+    act(() => void bodyInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    expect(drawer()).not.toBeNull();
+    expect(bodyInput().value).toBe('draft');
+  });
+
+  it('a stale save keeps the draft and says someone else changed the note', async () => {
+    writeServer(payload('write'), [json(409, { error: 'stale' })]);
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    type(bodyInput(), 'my draft');
+    await press(buttonIn(editor()!, 'Save'));
+    expect(editor()!.querySelector('[role="alert"]')!.textContent).toContain('Someone else changed this note');
+    expect(bodyInput().value).toBe('my draft');
+  });
+
+  it('a link turned read-only says editing is off', async () => {
+    writeServer(payload('write'), [json(403, { error: 'read_only' })]);
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    await press(buttonIn(editor()!, 'Save'));
+    expect(editor()!.querySelector('[role="alert"]')!.textContent).toContain('Editing is turned off for this link');
+  });
+
+  it('an Index note keeps its title: the title field is read-only and not sent', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => q('g.cmap-folder[data-folder="f1"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await press(buttonIn(drawer()!, 'Edit'));
+    expect(titleInput().readOnly).toBe(true);
+    type(bodyInput(), 'New hub text');
+    await press(buttonIn(editor()!, 'Save'));
+    expect(JSON.parse(String((writes()[0]![1] as RequestInit).body))).toEqual({ baseUpdatedAt: at, body: 'New hub text' });
+  });
+
+  it('New note defaults to the folder of the note being read, creates it and opens it for editing', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Beta').click());
+    await press(buttonIn(host!, 'New note'));
+    const dlg = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog')).find((d) => d.hasAttribute('open'))!;
+    const where = dlg.querySelector<HTMLSelectElement>('select')!;
+    expect(where.value).toBe('v1:f1');
+    expect(Array.from(where.options).map((o) => o.textContent)).toEqual(['Research', 'Research › Ops']);
+    const create = buttonIn(dlg, 'Create')!;
+    expect(create.disabled).toBe(true);
+    type(dlg.querySelector<HTMLInputElement>('input[type="text"]')!, 'Gamma');
+    await press(create);
+
+    const [[url, init]] = writes();
+    expect(url).toBe('/api/ob/tok123/notes');
+    expect((init as RequestInit).credentials).toBe('omit');
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ vaultId: 'v1', folderId: 'f1', title: 'Gamma', body: '' });
+    expect(railRows()).toContain('Gamma');
+    expect(titleInput().value).toBe('Gamma');
+  });
+
+  it('New note refuses the reserved Index title before sending', async () => {
+    writeServer(payload('write'));
+    await render();
+    await press(buttonIn(host!, 'New note'));
+    const dlg = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog')).find((d) => d.hasAttribute('open'))!;
+    expect(dlg.querySelector<HTMLSelectElement>('select')!.value).toBe('v1:');
+    type(dlg.querySelector<HTMLInputElement>('input[type="text"]')!, 'Index');
+    expect(buttonIn(dlg, 'Create')!.disabled).toBe(true);
+    expect(dlg.textContent).toContain('folder pages');
   });
 });

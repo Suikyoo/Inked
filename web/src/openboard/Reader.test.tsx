@@ -82,6 +82,25 @@ describe('Reader', () => {
     expect(Array.from(article.querySelectorAll('a, button')).some((el) => el.textContent === 'Nowhere')).toBe(false);
   });
 
+  it('a visitor-edited note shows external links as plain text but keeps [[links]] and published images', () => {
+    const beta = mk('n2', 'Beta', 'beta');
+    const note = { ...mk('n1', 'Alpha', `[click me](https://evil.example) and [home](/v/x/n/y) and [[Beta]] ![pic](inked://${IMG})`), visitorEdited: true };
+    render(note, { vaults: [], folders: [], notes: [note, beta] });
+    const article = host!.querySelector('article')!;
+    expect(article.querySelector('a')).toBeNull();
+    expect(article.textContent).toContain('click me');
+    expect(article.querySelector('button.wl')!.textContent).toBe('Beta');
+    expect(article.querySelector('img')!.getAttribute('src')).toBe(publicImageUrl('tok', 'v1', IMG));
+    expect(host!.querySelector('.ob-visitor-tag')!.textContent).toBe('Edited by a visitor');
+  });
+
+  it("the owner's own note keeps its external links and has no visitor tag", () => {
+    const note = mk('n1', 'Alpha', '[docs](https://example.com)');
+    render(note, { vaults: [], folders: [], notes: [note] });
+    expect(host!.querySelector('article a')!.getAttribute('href')).toBe('https://example.com');
+    expect(host!.querySelector('.ob-visitor-tag')).toBeNull();
+  });
+
   it('shows the note title above the body', () => {
     const n = mk('n1', 'Alpha', 'Body text');
     render(n, { vaults: [{ id: 'v1', name: 'V', color: '#7452e0', updatedAt: at }], folders: [], notes: [n] });

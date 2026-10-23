@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { ObPublicResponse } from 'inked-core';
+import type { ObNote, ObPublicResponse } from 'inked-core';
 import { SearchIcon } from '../../components/Icons';
 import { ConceptMap } from '../../map/ConceptMap';
 import { ObApiError, fetchPublic, publicImageUrl } from '../api';
 import { ReaderDrawer, useReading } from '../board';
 import { openboardEntries } from '../entries';
 import { matchTitles, TreeRail } from '../TreeRail';
+import { NewNoteDialog } from './NewNoteDialog';
+import { NoteEditor } from './NoteEditor';
 
 /** Below this width the rail starts collapsed. */
 const RAIL_OPEN_MIN = 900;
@@ -32,7 +34,10 @@ function Gone({ children }: { children: string }) {
   );
 }
 
-/** The public board at `/ob/:token`: a read-only map, a tree rail and a reading drawer. No account, no editing. */
+/**
+ * The public board at `/ob/:token`: a map, a tree rail and a reading drawer. No account. A Write link adds
+ * Edit in the drawer and New note in the top bar; changes go to the server and into the board in place.
+ */
 export function VisitorPage() {
   const token = useMemo(() => tokenFromPath(window.location.pathname), []);
   const [load, setLoad] = useState<Load>(() => (token ? { kind: 'loading' } : { kind: 'missing' }));
@@ -64,9 +69,38 @@ export function VisitorPage() {
   return <Board token={token!} data={load.data} />;
 }
 
-function Board({ token, data }: { token: string; data: ObPublicResponse }) {
+/** The payload with `note` added, or replacing the note with its id. */
+function withNote(data: ObPublicResponse, note: ObNote): ObPublicResponse {
+  const has = data.notes.some((n) => n.id === note.id);
+  return { ...data, notes: has ? data.notes.map((n) => (n.id === note.id ? note : n)) : [...data.notes, note] };
+}
+
+function Board({ token, data: initial }: { token: string; data: ObPublicResponse }) {
+  const [data, setData] = useState(initial);
   const entries = useMemo(() => openboardEntries(data), [data]);
   const { selected, reading, fitRequest, openNote, onMapSelect, closeReader } = useReading(data);
+  const canWrite = data.permission === 'write';
+  const [editing, setEditing] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  // A note just created opens once the board's payload holds it.
+  const [opening, setOpening] = useState<ObNote | null>(null);
+
+  // Reading another note (or closing the drawer) leaves edit mode.
+  useEffect(() => {
+    setEditing((id) => (id === reading ? id : null));
+  }, [reading]);
+
+  useEffect(() => {
+    if (!opening || !data.notes.some((n) => n.id === opening.id)) return;
+    openNote(opening.vaultId, opening.id);
+    setEditing(opening.id);
+    setOpening(null);
+  }, [opening, data, openNote]);
+
+  const onCreated = (note: ObNote) => {
+    setData((d) => withNote(d, note));
+    setOpening(note);
+  };
 
   const [query, setQuery] = useState('');
   const [railCollapsed, setRailCollapsed] = useState(() => window.innerWidth < RAIL_OPEN_MIN);
@@ -125,6 +159,11 @@ function Board({ token, data }: { token: string; data: ObPublicResponse }) {
           </form>
         )}
         <div className="ob-top-side is-end">
+          {canWrite && !empty && (
+            <button type="button" className="btn btn-sm ob-new-note" onClick={() => setCreating(true)}>
+              New note
+            </button>
+          )}
           <span className="ob-mark wordmark">
             Inked
           </span>
@@ -141,8 +180,45 @@ function Board({ token, data }: { token: string; data: ObPublicResponse }) {
           <section className="map ob-map" aria-label="Concept map">
             <ConceptMap entries={entries} hits={hits} hot={null} searching={q.length > 0} loading={false} selected={selected} onSelect={onMapSelect} onOpenNote={openNote} fitRequest={fitRequest} />
           </section>
-          <ReaderDrawer payload={data} reading={reading} resolveImage={resolveImage} onOpenNote={openNote} onClose={closeReader} />
+          <ReaderDrawer
+            payload={data}
+            reading={reading}
+            resolveImage={resolveImage}
+            onOpenNote={openNote}
+            onClose={closeReader}
+            actions={(note) =>
+              canWrite && editing !== note.id ? (
+                <button type="button" className="btn btn-sm ob-edit" onClick={() => setEditing(note.id)}>
+                  Edit
+                </button>
+              ) : null
+            }
+            body={(note) =>
+              canWrite && editing === note.id ? (
+                <NoteEditor
+                  key={note.id}
+                  token={token}
+                  note={note}
+                  onSaved={(saved) => {
+                    setData((d) => withNote(d, saved));
+                    setEditing(null);
+                  }}
+                  onCancel={() => setEditing(null)}
+                />
+              ) : null
+            }
+          />
         </div>
+      )}
+      {canWrite && (
+        <NewNoteDialog
+          open={creating}
+          token={token}
+          payload={data}
+          near={reading ? (data.notes.find((n) => n.id === reading) ?? null) : null}
+          onClose={() => setCreating(false)}
+          onCreated={onCreated}
+        />
       )}
     </div>
   );

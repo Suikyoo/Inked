@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { indexNoteOf } from 'inked-core/indexNote';
 import type { ObNote, ObPayload } from 'inked-core';
 import { CloseIcon } from '../components/Icons';
@@ -103,25 +103,33 @@ export function useReading(payload: ObPayload): Reading {
   return { selected, reading, fitRequest, openNote, onMapSelect, closeReader };
 }
 
-/** The reading drawer: slides in beside the map (over the page on phones); Escape or its button closes it. */
+/**
+ * The reading drawer: slides in beside the map (over the page on phones); Escape or its button closes it.
+ * `actions` adds buttons to its bar for the shown note; `body` replaces the reader when it returns something
+ * (the visitor's editor). An Escape whose default was prevented (inside the editor) does not close it.
+ */
 export function ReaderDrawer({
   payload,
   reading,
   resolveImage,
   onOpenNote,
   onClose,
+  actions,
+  body,
 }: {
   payload: ObPayload;
   reading: string | null;
   resolveImage: (vaultId: string, imageId: string) => string;
   onOpenNote: (vaultId: string, noteId: string) => void;
   onClose: () => void;
+  actions?: (note: ObNote) => ReactNode;
+  body?: (note: ObNote) => ReactNode;
 }) {
   const noteById = useMemo(() => new Map(payload.notes.map((n) => [n.id, n])), [payload]);
   useEffect(() => {
     if (!reading) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !e.defaultPrevented) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -138,12 +146,13 @@ export function ReaderDrawer({
   return (
     <aside className="ob-drawer" ref={drawer.ref} data-state={drawer.state} aria-label="Reader">
       <div className="ob-drawer-bar">
+        {actions?.(shownNote)}
         <button type="button" className="ibtn" aria-label="Close reader" onClick={onClose}>
           <CloseIcon size={13} />
         </button>
       </div>
       <div className="ob-drawer-scroll">
-        <Reader note={shownNote} payload={payload} resolveImage={resolveImage} onOpenNote={onOpenNote} />
+        {body?.(shownNote) ?? <Reader note={shownNote} payload={payload} resolveImage={resolveImage} onOpenNote={onOpenNote} />}
       </div>
     </aside>
   );

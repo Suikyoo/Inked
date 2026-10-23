@@ -68,6 +68,7 @@ const obLink = (label: string, vaultIds: string[]): ObLink => ({
   token: 'x'.repeat(43),
   vaultIds,
   views: 0,
+  permission: 'read',
   createdAt: '2026-10-01T00:00:00.000Z',
 });
 
