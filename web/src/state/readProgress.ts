@@ -14,6 +14,8 @@ export class ReadProgressQueue {
   private items = new Map<string, ReadProgressItem>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private running: Promise<void> | null = null;
+  /** Bumped by clear(): a flush that started earlier must neither re-queue nor keep sending. */
+  private generation = 0;
 
   constructor(
     private readonly send: Send,
@@ -42,20 +44,27 @@ export class ReadProgressQueue {
   }
 
   clear(): void {
+    this.generation++;
     this.items.clear();
     this.stopTimer();
   }
 
   private async drain(keepalive: boolean): Promise<void> {
+    const gen = this.generation;
     const all = [...this.items.values()];
     this.items.clear();
     for (let i = 0; i < all.length; i += MAX_BATCH) {
+      if (gen !== this.generation) return;
       const batch = all.slice(i, i + MAX_BATCH);
       try {
         await this.send(batch, { keepalive });
       } catch {
-        // Keep this and every unsent batch, unless a newer entry for the note arrived meanwhile.
-        for (const it of all.slice(i)) if (!this.items.has(it.noteId)) this.items.set(it.noteId, it);
+        if (gen !== this.generation) return;
+        // Keep this and every unsent batch; a newer entry for the note arrived meanwhile merges like enqueue does.
+        for (const it of all.slice(i)) {
+          const cur = this.items.get(it.noteId);
+          if (!cur || (cur.size === it.size && it.pct > cur.pct)) this.items.set(it.noteId, it);
+        }
         return;
       }
     }

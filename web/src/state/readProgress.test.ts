@@ -68,6 +68,41 @@ describe('ReadProgressQueue', () => {
     expect(send.mock.calls[1][0]).toEqual([item('a', 50), item('b', 25)]);
   });
 
+  it('a failed higher pct survives a newer lower pct of the same size', async () => {
+    let fail!: (e: Error) => void;
+    const send = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<void>((_, rej) => (fail = rej)))
+      .mockResolvedValue(undefined);
+    const q = new ReadProgressQueue(send);
+    q.enqueue(item('a', 100));
+    const done = q.flush();
+    q.enqueue(item('a', 50));
+    fail(new Error('offline'));
+    await done;
+    await q.flush();
+    expect(send.mock.calls[1][0]).toEqual([item('a', 100)]);
+  });
+
+  it('clear during a failing flush does not resurrect the old items', async () => {
+    let fail!: (e: Error) => void;
+    const send = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<void>((_, rej) => (fail = rej)))
+      .mockResolvedValue(undefined);
+    const q = new ReadProgressQueue(send);
+    q.enqueue(item('old', 25));
+    const done = q.flush();
+    q.clear();
+    fail(new Error('offline'));
+    await done;
+    expect(q.size).toBe(0);
+    q.enqueue(item('new', 50));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1][0]).toEqual([item('new', 50)]);
+  });
+
   it('splits more than 200 entries into several requests', async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     const q = new ReadProgressQueue(send);
