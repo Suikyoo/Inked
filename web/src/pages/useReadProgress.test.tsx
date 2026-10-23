@@ -17,23 +17,31 @@ describe('readFraction', () => {
 });
 
 type Target = { vaultId: string; noteId: string; size: number | null } | null;
-function Host({ target }: { target: Target }) {
+function Host({ target, scroller = false }: { target: Target; scroller?: boolean }) {
   const ref = useRef<HTMLElement>(null);
   useReadProgress(ref, target);
-  return <article ref={ref}>text</article>;
+  const article = <article ref={ref}>text</article>;
+  return scroller ? (
+    <div data-scroller style={{ overflowY: 'auto' }}>
+      {article}
+    </div>
+  ) : (
+    article
+  );
 }
 
 let root: Root | null = null;
 let host: HTMLElement | null = null;
 let markRead: ReturnType<typeof vi.fn>;
 let rect: { top: number; height: number };
+let scrollerRect: { top: number; height: number };
 let visibility: DocumentVisibilityState;
 
-function render(target: Target) {
+function render(target: Target, scroller = false) {
   act(() =>
     root!.render(
       <StoreProvider store={{ markRead } as unknown as AppStore}>
-        <Host target={target} />
+        <Host target={target} scroller={scroller} />
       </StoreProvider>,
     ),
   );
@@ -45,10 +53,14 @@ beforeEach(() => {
   vi.useFakeTimers();
   markRead = vi.fn();
   rect = { top: 100, height: 400 };
+  scrollerRect = { top: 50, height: 500 };
   visibility = 'visible';
   window.innerHeight = 800;
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(
-    () => ({ top: rect.top, height: rect.height, bottom: rect.top + rect.height, left: 0, right: 0, width: 0, x: 0, y: rect.top, toJSON: () => ({}) }) as DOMRect,
+    function (this: Element) {
+      const r = this.hasAttribute('data-scroller') ? scrollerRect : rect;
+      return { top: r.top, height: r.height, bottom: r.top + r.height, left: 0, right: 0, width: 0, x: 0, y: r.top, toJSON: () => ({}) } as DOMRect;
+    },
   );
   vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
   host = document.createElement('div');
@@ -118,6 +130,21 @@ describe('useReadProgress', () => {
     act(() => void window.dispatchEvent(new Event('scroll')));
     tick(300);
     expect(markRead).not.toHaveBeenCalled();
+    tick(1500);
+    expect(markRead).toHaveBeenCalledTimes(1);
+    expect(markRead).toHaveBeenCalledWith('v1', 'n1', 50, 100);
+  });
+
+  it('measures against the nearest scrolling ancestor, listening on it rather than the window', () => {
+    // Window is 800 tall, the scroller's bottom is 550: a window-only hook would see the article as fitting.
+    rect = { top: 100, height: 2000 };
+    render(t(), true);
+    tick(2000);
+    expect(markRead).not.toHaveBeenCalled(); // (550 - 100) / 2000 = 0.225
+    rect = { top: -450, height: 2000 }; // (550 + 450) / 2000 = 0.5
+    const scroller = host!.querySelector('[data-scroller]')!;
+    act(() => void scroller.dispatchEvent(new Event('scroll')));
+    tick(300);
     tick(1500);
     expect(markRead).toHaveBeenCalledTimes(1);
     expect(markRead).toHaveBeenCalledWith('v1', 'n1', 50, 100);
