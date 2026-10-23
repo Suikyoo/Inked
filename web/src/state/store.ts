@@ -296,6 +296,8 @@ interface QueueEntry {
   held: boolean;
   /** Plaintext title of the copy, for the notice only; dropped with the keys. */
   copyTitle: string | null;
+  /** Progress shown for the note when its text was queued, for a replay that lands before the tree loads. */
+  readBefore: Checkpoint;
 }
 
 const LAST_USER_KEY = 'inked.lastUsername';
@@ -383,6 +385,11 @@ export class AppStore {
   private readyTrees = new Set<string>();
   /** Reading checkpoints not sent yet (ids, checkpoints and sizes only); dropped with the keys. */
   private readProgress = new ReadProgressQueue((items, { keepalive }) => this.sendReadProgress(items, keepalive));
+  /**
+   * Own queued saves that landed before their vault's tree loaded, by note: the progress shown before
+   * the save and the size it left (when known). Re-anchored by loadTree; dropped with the keys.
+   */
+  private pendingReanchors = new Map<string, { vaultId: string; pct: Checkpoint; size?: number }>();
 
   constructor() {
     setUnauthorizedHandler(() => this.sessionEnded());
@@ -639,6 +646,7 @@ export class AppStore {
     this.ownStamps.clear();
     this.unseenSaves.clear();
     this.readyTrees.clear();
+    this.pendingReanchors.clear();
     this.lastUserId = user.id;
     setRequestUser(user.id);
     const deferred = this.deferredNotices.get(user.id) ?? null;
@@ -658,6 +666,7 @@ export class AppStore {
     this.ownStamps.clear();
     this.unseenSaves.clear();
     this.readyTrees.clear();
+    this.pendingReanchors.clear();
     for (const e of this.pending) e.copyTitle = null;
     // Already flushed (registerFlusher); whatever is left belongs to this account and is not sent for the next.
     this.readProgress.clear();
@@ -1097,6 +1106,7 @@ export class AppStore {
         return { trees: { ...s.trees, [vaultId]: tree }, bodies };
       });
       this.readyTrees.add(vaultId);
+      this.applyPendingReanchors(vaultId);
       this.emitSaved(moved);
       // Fetch their text; loadBodies fills only the bodies missing here.
       if (moved.length) void this.loadBodies(vaultId).catch(() => undefined);
@@ -1107,6 +1117,21 @@ export class AppStore {
         }));
       }
       throw e;
+    }
+  }
+
+  /** Re-anchors the own queued saves that landed in `vaultId` before its tree loaded (see pendingReanchors). */
+  private applyPendingReanchors(vaultId: string) {
+    for (const [noteId, r] of this.pendingReanchors) {
+      if (r.vaultId !== vaultId) continue;
+      this.pendingReanchors.delete(noteId);
+      const head = this.state.trees[vaultId]?.notes[noteId];
+      if (!head) continue; // deleted elsewhere meanwhile
+      const mark = { pct: r.pct, size: r.size ?? head.size };
+      // A mark from another device that covers more still wins.
+      if (preferRead(head.read, mark, head.size) !== mark) continue;
+      this.patchTree(vaultId, (t) => ({ notes: { ...t.notes, [noteId]: { ...t.notes[noteId], read: mark } } }));
+      this.readProgress.enqueue({ noteId, ...mark });
     }
   }
 
@@ -1571,7 +1596,13 @@ export class AppStore {
         encBody: await encryptNoteBody(key, vaultId, copyId, body),
       },
     };
-    const entry: QueueEntry = { item, owner, held: !!opts.racing, copyTitle: ep === this.epoch ? copyTitle : null };
+    const entry: QueueEntry = {
+      item,
+      owner,
+      held: !!opts.racing,
+      copyTitle: ep === this.epoch ? copyTitle : null,
+      readBefore: head ? shownProgress(head.read, head.size) : 0,
+    };
     this.pending.push(entry);
     this.syncPendingCount();
     if (opts.racing) {
@@ -1627,10 +1658,12 @@ export class AppStore {
       sameSession() ? send() : Promise.reject(new ApiError(0, 'network'));
     // Each request names the item's owner (always userId here), not whoever the client thinks is
     // signed in, so a cookie swapped by another tab is refused (user_mismatch: kept) even if state lags.
-    const ioFor = (owner: string) => ({
-      updateNote: (id: string, b: { encBody: string; baseUpdatedAt?: string }) => guard(() => QUEUE_IO.updateNote(owner, id, b)),
+    // `onSize` hears the note's size as the server reports it: the saved version's, when the outcome is `saved`.
+    const ioFor = (owner: string, onSize: (size: number) => void) => ({
+      updateNote: (id: string, b: { encBody: string; baseUpdatedAt?: string }) =>
+        guard(() => QUEUE_IO.updateNote(owner, id, b)).then((r) => (onSize(r.note.size), r)),
       createNote: (vaultId: string, b: PendingSave['copy']) => guard(() => QUEUE_IO.createNote(owner, vaultId, b)),
-      getNote: (id: string) => guard(() => QUEUE_IO.getNote(owner, id)),
+      getNote: (id: string) => guard(() => QUEUE_IO.getNote(owner, id)).then((r) => (onSize(r.note.size), r)),
       sameText: (item: PendingSave, storedEncBody: string) => this.sameQueuedText(item, storedEncBody, sameSession),
     });
     const copied: QueueEntry[] = [];
@@ -1641,7 +1674,8 @@ export class AppStore {
       if (entry.held || !this.pending.includes(entry)) continue;
       // Only ever send with the owning account's session (never another's, never none).
       if (entry.owner !== userId) continue;
-      const { outcome, reason } = await sendPending(entry.item, ioFor(entry.owner));
+      let savedSize: number | undefined;
+      const { outcome, reason } = await sendPending(entry.item, ioFor(entry.owner, (size) => (savedSize = size)));
       if (outcome === 'retry') {
         entry.item.attempts++;
         continue;
@@ -1650,7 +1684,17 @@ export class AppStore {
       this.pending = this.pending.filter((e) => e !== entry);
       if (outcome === 'saved') {
         if (this.state.phase === 'unlocked' && this.state.user?.id === userId) {
-          void this.refreshNoteHead(entry.item.vaultId, entry.item.noteId, { reanchor: true });
+          const { vaultId, noteId } = entry.item;
+          // No head to re-anchor from before the tree loads: loadTree does it with the progress shown at stash time.
+          const treeReady = this.readyTrees.has(vaultId);
+          if (!treeReady && entry.readBefore > 0) {
+            this.pendingReanchors.set(noteId, {
+              vaultId,
+              pct: entry.readBefore,
+              ...(typeof savedSize === 'number' ? { size: savedSize } : {}),
+            });
+          }
+          void this.refreshNoteHead(vaultId, noteId, { reanchor: treeReady });
         }
       } else if (outcome === 'copied') copied.push(entry);
       else if (outcome === 'copiedToRoot') atRoot++;

@@ -1910,6 +1910,88 @@ describe('AppStore', () => {
       expect(sentFor(noteId)).toEqual([{ noteId, pct: 100, size: 3000 }]);
     });
 
+    /**
+     * A note read to 100 at 1000 bytes, then a longer save of it queued offline and the vault locked.
+     * Returns with the next unlock mocked; `grown` is the tree's head once that save landed (3000 bytes,
+     * still carrying the server's old mark).
+     */
+    async function queuedThenLocked() {
+      const c = await withCreated(1000);
+      await c.s.flushReadProgress();
+      api.updateNote.mockRejectedValue(new ApiError(0, 'network'));
+      await c.s.stashUnsaved(c.vaultId, c.noteId, 'queued, longer text', T1);
+      expect(c.s.getState().pendingCount).toBe(1);
+      api.logout.mockResolvedValue({ ok: true });
+      await c.s.lock();
+      const vaultDto = { ...api.createVault.mock.calls[0][0], createdAt: 'x', updatedAt: 'x', noteCount: 1, activeNoteCount7d: 1 };
+      mockUnlock([vaultDto]);
+      api.saveReadProgress.mockClear();
+      api.updateNote.mockReset();
+      api.getNote.mockResolvedValue({ note: { ...headFor(c.sent, T2).note, size: 3000, encBody: c.sent.encBody } });
+      const grown = { id: c.noteId, folderId: null, encMeta: c.sent.encMeta, size: 3000, createdAt: 'a', updatedAt: T2, read: { pct: 100, size: 1000 } };
+      return { ...c, grown };
+    }
+
+    it('a queued save replayed after unlock, before the tree loads, still re-anchors', async () => {
+      const { s, noteId, head, grown } = await queuedThenLocked();
+      let releaseTree!: (v: unknown) => void;
+      api.tree.mockReturnValue(new Promise((r) => (releaseTree = r)));
+      api.updateNote.mockResolvedValue(savedAs(noteId, 3000));
+      await s.unlock('ann', 'pw-ann-123456');
+      await vi.waitFor(() => expect(s.getState().pendingCount).toBe(0));
+      await vi.waitFor(() => expect(api.tree).toHaveBeenCalled());
+      await realWait(20); // the refresh after the save settles while the tree is still loading
+      releaseTree({ folders: [], notes: [grown] });
+      await vi.waitFor(() => expect(head()?.updatedAt).toBe(T2));
+      expect(head().read).toEqual({ pct: 100, size: 3000 });
+      expect(queued(s)).toBe(1);
+      await s.flushReadProgress();
+      expect(sentFor(noteId)).toEqual([{ noteId, pct: 100, size: 3000 }]);
+    });
+
+    it('a queued save replayed after unlock, once the tree has loaded, re-anchors', async () => {
+      const { s, noteId, head, grown } = await queuedThenLocked();
+      let releaseSave!: (v: unknown) => void;
+      api.updateNote.mockReturnValue(new Promise((r) => (releaseSave = r)));
+      api.tree.mockResolvedValue({ folders: [], notes: [{ ...grown, size: 1000, updatedAt: T1 }] });
+      await s.unlock('ann', 'pw-ann-123456');
+      await vi.waitFor(() => expect(head()?.updatedAt).toBe(T1));
+      expect(head().read).toEqual({ pct: 100, size: 1000 });
+      releaseSave(savedAs(noteId, 3000));
+      await vi.waitFor(() => expect(head().updatedAt).toBe(T2));
+      expect(head().read).toEqual({ pct: 100, size: 3000 });
+      expect(queued(s)).toBe(1);
+      await s.flushReadProgress();
+      expect(sentFor(noteId)).toEqual([{ noteId, pct: 100, size: 3000 }]);
+    });
+
+    it('signing out and in as another account sends nothing for the first one', async () => {
+      const { s, noteId, grown } = await queuedThenLocked();
+      // Ann's queued save lands before her tree does, so its re-anchor is queued once the tree loads.
+      let releaseTree!: (v: unknown) => void;
+      api.tree.mockReturnValue(new Promise((r) => (releaseTree = r)));
+      api.updateNote.mockResolvedValue(savedAs(noteId, 3000));
+      await s.unlock('ann', 'pw-ann-123456');
+      await vi.waitFor(() => expect(s.getState().pendingCount).toBe(0));
+      await vi.waitFor(() => expect(api.tree).toHaveBeenCalled());
+      await realWait(20);
+      releaseTree({ folders: [], notes: [grown] });
+      await vi.waitFor(() => expect(queued(s)).toBe(1));
+      // Offline at sign-out: that item is dropped with her keys.
+      api.saveReadProgress.mockRejectedValue(new ApiError(0, 'network'));
+      await s.signOut();
+      api.saveReadProgress.mockReset();
+      api.updateNote.mockClear();
+
+      await s.register({ username: 'bob', password: 'pw-bob-123456', setupToken: 'tok-12345678' });
+      expect(s.getState().user?.username).toBe('bob');
+      expect(queued(s)).toBe(0);
+      await s.flushReadProgress();
+      await s.retryPending();
+      expect(api.saveReadProgress).not.toHaveBeenCalled();
+      expect(api.updateNote).not.toHaveBeenCalled();
+    });
+
     it('signOut flushes pending progress before dropping keys, then clears the queue', async () => {
       const { s, vaultId, noteId } = await withNote(1000, null);
       const ann = s.getState().user!.id;
