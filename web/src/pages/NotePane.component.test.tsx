@@ -32,19 +32,21 @@ afterEach(() => {
   root = null;
   host = null;
   vi.useRealTimers();
+  markRead.mockClear();
 });
 
-function mount(locState: unknown) {
+const markRead = vi.fn();
+function mount(locState: unknown, bodies: Record<string, string> = { n1: 'Some text' }) {
   vi.useFakeTimers();
   const state = {
     vaultsStatus: 'ready',
     vaults: { v1: vault('v1') },
     vaultOrder: ['v1'],
     trees: { v1: tree([folder('f1', null, 'Ops')], [note('n1', 'f1', 'Alpha')]) },
-    bodies: { n1: 'Some text' },
+    bodies,
     bodiesReady: { v1: true },
   } as unknown as AppState;
-  const store = { getState: () => state, subscribe: () => () => undefined } as unknown as AppStore;
+  const store = { getState: () => state, subscribe: () => () => undefined, markRead } as unknown as AppStore;
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -105,5 +107,25 @@ describe('NotePane context panel on a phone', () => {
     mount(null);
     expect(host!.querySelector('aside.ctx details')).toBeNull();
     expect(host!.querySelectorAll('aside.ctx section.ctx-section').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('NotePane reading progress', () => {
+  it('marks a note that fits on screen once the hold has passed', () => {
+    mount(null);
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(markRead).toHaveBeenCalledWith('v1', 'n1', 100, 0);
+  });
+
+  it('edit mode does not mark', () => {
+    mount({ mode: 'edit' });
+    act(() => void vi.advanceTimersByTime(5000));
+    expect(markRead).not.toHaveBeenCalled();
+  });
+
+  it('a stale body (store body differs from the one shown) does not mark', () => {
+    mount(null, { n1: 'A newer body' });
+    act(() => void vi.advanceTimersByTime(5000));
+    expect(markRead).not.toHaveBeenCalled();
   });
 });

@@ -15,6 +15,7 @@ import { useImageInsert } from './imagePaste';
 import { useInkedImages } from './useInkedImages';
 import { useDiagrams } from '../diagrams/useDiagrams';
 import { useNoteEditor, type SaveStatus } from './useNoteEditor';
+import { useReadProgress } from './useReadProgress';
 
 const SAVE_LABEL: Record<SaveStatus, string> = {
   idle: '',
@@ -178,6 +179,13 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
   }, [mode, editor.status, editor.body, titles, vault.id]);
   useInkedImages(articleRef, vault.id, html);
   useDiagrams(articleRef, html);
+  // Only the rendered view of a non-empty note counts, and only while the body on screen is the one
+  // the head's size belongs to (a newer head from elsewhere drops the stored body).
+  const tracked = mode === 'view' && editor.status === 'ready' && editor.body.trim() !== '' && head;
+  useReadProgress(
+    articleRef,
+    tracked ? { vaultId: vault.id, noteId, size: state.bodies[noteId] === editor.body ? head.size : null } : null,
+  );
 
   const graph = useVaultGraph(state, vault.id);
   const backlinks = useMemo(() => (graph ? incomingLinks(graph, noteId) : []), [graph, noteId]);

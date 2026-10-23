@@ -239,3 +239,31 @@ describe('NodePreview', () => {
     });
   });
 });
+
+describe('NodePreview reading progress', () => {
+  afterEach(() => void vi.useRealTimers());
+
+  it('note: marks the note read after the hold, with its head size', () => {
+    vi.useFakeTimers();
+    const markRead = vi.fn();
+    mount(makeState(), { kind: 'note', vaultId: 'v1', id: 'n1' }, { markRead });
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(markRead).toHaveBeenCalledWith('v1', 'n1', 100, 0);
+  });
+
+  it('note: no body yet does not mark', () => {
+    vi.useFakeTimers();
+    const markRead = vi.fn();
+    mount(makeState({ bodies: {} }), { kind: 'note', vaultId: 'v1', id: 'n1' }, { markRead });
+    act(() => void vi.advanceTimersByTime(5000));
+    expect(markRead).not.toHaveBeenCalled();
+  });
+
+  it('folder Index preview does not mark', () => {
+    vi.useFakeTimers();
+    const markRead = vi.fn();
+    mount(makeState(), { kind: 'folder', vaultId: 'v1', id: 'f1' }, { markRead });
+    act(() => void vi.advanceTimersByTime(5000));
+    expect(markRead).not.toHaveBeenCalled();
+  });
+});

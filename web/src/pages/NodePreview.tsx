@@ -11,6 +11,7 @@ import { renderMarkdown } from '../markdown/render';
 import { followNoteLink } from './NotePane';
 import { useInkedImages } from './useInkedImages';
 import { useDiagrams } from '../diagrams/useDiagrams';
+import { useReadProgress } from './useReadProgress';
 import { useSemantic, useSemanticStore } from '../semantic/SemanticContext';
 import { folderPath, useAppState, useStore } from '../state/StoreContext';
 import type { AppState } from '../state/store';
@@ -18,7 +19,17 @@ import type { AppState } from '../state/store';
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 const href = (vaultId: string, noteId: string) => `/v/${vaultId}/n/${noteId}`;
 
-function Markdown({ body, ready, vaultId }: { body: string | undefined; ready: boolean; vaultId: string }) {
+function Markdown({
+  body,
+  ready,
+  vaultId,
+  track,
+}: {
+  body: string | undefined;
+  ready: boolean;
+  vaultId: string;
+  track?: { noteId: string; size: number | null };
+}) {
   const state = useAppState();
   const navigate = useNavigate();
   const titles = useMemo(() => titleIndex(state.trees[vaultId]), [state.trees, vaultId]);
@@ -37,6 +48,7 @@ function Markdown({ body, ready, vaultId }: { body: string | undefined; ready: b
   const articleRef = useRef<HTMLElement>(null);
   useInkedImages(articleRef, vaultId, html);
   useDiagrams(articleRef, html);
+  useReadProgress(articleRef, track && body?.trim() ? { vaultId, noteId: track.noteId, size: track.size } : null);
   if (body === undefined) return <p className="preview-hint">{ready ? 'No text available.' : 'Decrypting…'}</p>;
   if (!body.trim()) return <p className="preview-hint">This note is empty.</p>;
   // Sanitised by DOMPurify in renderMarkdown, as in NotePane.
@@ -156,7 +168,12 @@ export function NodePreview({
           </p>
         </header>
         <div className="preview-scroll">
-          <Markdown body={state.bodies[n.id]} ready={ready} vaultId={vaultId} />
+          <Markdown
+            body={state.bodies[n.id]}
+            ready={ready}
+            vaultId={vaultId}
+            track={{ noteId: n.id, size: state.bodies[n.id] === undefined ? null : n.size }}
+          />
           <section className="preview-backlinks" aria-label="Backlinks">
             <h3 className="results-sub">Backlinks{ready ? ` · ${backlinks.length}` : ''}</h3>
             {!ready ? (
