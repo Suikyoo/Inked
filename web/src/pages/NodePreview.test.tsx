@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { folder, note, tree, vault } from '../map/fixtures';
 import type { MapSelection } from '../map/ConceptMap';
 import { SemanticProvider } from '../semantic/SemanticContext';
@@ -241,7 +241,17 @@ describe('NodePreview', () => {
 });
 
 describe('NodePreview reading progress', () => {
-  afterEach(() => void vi.useRealTimers());
+  // jsdom lays nothing out; give the article a visible box that fits in the 768 px window.
+  beforeEach(() => {
+    window.innerHeight = 768;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return (this.tagName === 'ARTICLE' ? { top: 100, height: 400, bottom: 500 } : { top: 0, height: 0, bottom: 0 }) as DOMRect;
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it('note: marks the note read after the hold, with its head size', () => {
     vi.useFakeTimers();

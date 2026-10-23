@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { folder, note, tree, vault } from '../map/fixtures';
 import { StoreProvider } from '../state/StoreContext';
 import type { AppState, AppStore } from '../state/store';
@@ -111,6 +111,15 @@ describe('NotePane context panel on a phone', () => {
 });
 
 describe('NotePane reading progress', () => {
+  // jsdom lays nothing out; give the article a visible box that fits in the 768 px window.
+  beforeEach(() => {
+    window.innerHeight = 768;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return (this.tagName === 'ARTICLE' ? { top: 100, height: 400, bottom: 500 } : { top: 0, height: 0, bottom: 0 }) as DOMRect;
+    });
+  });
+  afterEach(() => void vi.restoreAllMocks());
+
   it('marks a note that fits on screen once the hold has passed', () => {
     mount(null);
     act(() => void vi.advanceTimersByTime(2000));

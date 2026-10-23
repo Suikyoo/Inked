@@ -13,7 +13,9 @@ describe('readFraction', () => {
   it('is 1 when the article fits on screen', () => expect(readFraction({ top: 100, height: 400 }, vp)).toBe(1));
   it('is 0.5 when half has scrolled into view', () => expect(readFraction({ top: -400, height: 2400 }, vp)).toBe(0.5));
   it('is 0 when it has not been reached', () => expect(readFraction({ top: 900, height: 2000 }, vp)).toBe(0));
-  it('is 1 for zero height', () => expect(readFraction({ top: 900, height: 0 }, vp)).toBe(1));
+  it('is 1 once the article has been scrolled past', () => expect(readFraction({ top: -3000, height: 2000 }, vp)).toBe(1));
+  it('is 0 for zero height (a hidden article)', () => expect(readFraction({ top: 100, height: 0 }, vp)).toBe(0));
+  it('is 0 for an empty viewport', () => expect(readFraction({ top: 100, height: 400 }, { top: 500, bottom: 400 })).toBe(0));
 });
 
 type Target = { vaultId: string; noteId: string; size: number | null } | null;
@@ -148,5 +150,62 @@ describe('useReadProgress', () => {
     tick(1500);
     expect(markRead).toHaveBeenCalledTimes(1);
     expect(markRead).toHaveBeenCalledWith('v1', 'n1', 50, 100);
+  });
+
+  it('an article that grows before the hold ends reports the lower checkpoint it really reached', () => {
+    render(t()); // fits on screen: 100 is pending
+    tick(1000);
+    rect = { top: 100, height: 1400 }; // late images: (800 - 100) / 1400 = 0.5
+    tick(600);
+    expect(markRead).not.toHaveBeenCalled();
+    tick(1500);
+    expect(markRead).toHaveBeenCalledTimes(1);
+    expect(markRead).toHaveBeenCalledWith('v1', 'n1', 50, 100);
+  });
+
+  it('an article that grows past the first checkpoint before the hold ends marks nothing', () => {
+    render(t());
+    tick(1000);
+    rect = { top: 100, height: 3000 }; // 700 / 3000 < 0.25
+    tick(5000);
+    expect(markRead).not.toHaveBeenCalled();
+  });
+
+  it('a fling to the end and back to the top within the hold marks nothing', () => {
+    rect = { top: 100, height: 3000 };
+    render(t());
+    rect = { top: -2300, height: 3000 }; // the bottom is on screen
+    act(() => void window.dispatchEvent(new Event('scroll')));
+    tick(300);
+    rect = { top: 100, height: 3000 };
+    act(() => void window.dispatchEvent(new Event('scroll')));
+    tick(300);
+    tick(5000);
+    expect(markRead).not.toHaveBeenCalled();
+  });
+
+  it('clips a scroller taller than the window to the window', () => {
+    // The scroller reaches 2050, the window 800: unclipped the article would fit; clipped, (800 - 100) / 1500 = 0.47.
+    scrollerRect = { top: 50, height: 2000 };
+    rect = { top: 100, height: 1500 };
+    render(t(), true);
+    tick(2000);
+    expect(markRead).toHaveBeenCalledTimes(1);
+    expect(markRead).toHaveBeenCalledWith('v1', 'n1', 25, 100);
+  });
+
+  it('a scroller below the window marks nothing', () => {
+    scrollerRect = { top: 900, height: 500 };
+    rect = { top: 950, height: 100 };
+    render(t(), true);
+    tick(5000);
+    expect(markRead).not.toHaveBeenCalled();
+  });
+
+  it('a hidden (zero-height) article marks nothing', () => {
+    rect = { top: 0, height: 0 };
+    render(t());
+    tick(5000);
+    expect(markRead).not.toHaveBeenCalled();
   });
 });
