@@ -8,6 +8,7 @@
     "./indexNote": "./src/indexNote.ts",
     "./images": "./src/images.ts",
     "./errors": "./src/crypto/errors.ts",
+    "./readProgress": "./src/readProgress.ts",
     "./vaultColors": "./src/vaultColors.ts"
   },
   "scripts": {

@@ -1,4 +1,5 @@
 import type { KdfParams } from './crypto';
+import type { ReadMark } from './readProgress';
 
 export interface User {
   id: string;
@@ -31,6 +32,7 @@ export interface NoteHeadDTO {
   size: number;
   createdAt: string;
   updatedAt: string;
+  read?: ReadMark | null;
 }
 
 export interface NoteDTO extends NoteHeadDTO {
