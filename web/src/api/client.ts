@@ -1,3 +1,4 @@
+import type { ReadProgressItem } from '../state/readProgress';
 import type { KdfParams } from 'inked-core';
 import type { FolderDTO, InviteDTO, NoteDTO, NoteHeadDTO, RegisterBody, SetupBody, User, VaultDTO } from 'inked-core';
 
@@ -59,6 +60,8 @@ interface RequestOptions {
   bytesIn?: Uint8Array;
   /** Read a successful response as bytes instead of JSON. */
   bytesOut?: boolean;
+  /** Lets the request outlive the page (a flush on pagehide). */
+  keepalive?: boolean;
 }
 
 /** Per-call options for requests whose wait the caller bounds, or that act for a given account. */
@@ -66,6 +69,8 @@ export interface CallOptions {
   timeoutMs?: number;
   /** The account this request is for (X-Inked-User); see RequestOptions.asUser. */
   asUser?: string;
+  /** Lets the request outlive the page (a flush on pagehide). */
+  keepalive?: boolean;
 }
 
 const networkError = () => new ApiError(0, 'network', 'Can’t reach the server. Check your connection and try again.');
@@ -98,6 +103,7 @@ async function request<T>(method: Method, path: string, body?: unknown, opts: Re
       credentials: 'same-origin',
       cache: 'no-store',
       signal,
+      keepalive: opts.keepalive,
     });
     // An abort (or a dropped connection) can also land while the body is read.
     if (opts.bytesOut && res.ok) {
@@ -138,7 +144,7 @@ const enc = encodeURIComponent;
 
 /** A request to a data route (vaults, folders, notes, invites): bound to the account, see setRequestUser. */
 const data = <T>(method: Method, path: string, body?: unknown, opts: CallOptions = {}) =>
-  request<T>(method, path, body, { bound: true, timeoutMs: opts.timeoutMs, asUser: opts.asUser });
+  request<T>(method, path, body, { bound: true, timeoutMs: opts.timeoutMs, asUser: opts.asUser, keepalive: opts.keepalive });
 
 export const api = {
   status: () => request<{ needsSetup: boolean; llmOrigins?: string[] }>('GET', '/api/status', undefined, { authed: false }),
@@ -219,6 +225,8 @@ export const api = {
     opts: CallOptions = {},
   ) => data<{ note: NoteHeadDTO }>('PUT', `/api/notes/${enc(id)}`, body, opts),
   deleteNote: (id: string) => data<{ ok: true }>('DELETE', `/api/notes/${enc(id)}`),
+  saveReadProgress: (items: ReadProgressItem[], opts: CallOptions = {}) =>
+    data<{ ok: true }>('POST', '/api/read-progress', { items }, opts),
   putImage: (vaultId: string, imageId: string, blob: Uint8Array) =>
     request<{ id: string; size: number; createdAt: string }>('POST', `/api/vaults/${enc(vaultId)}/images/${enc(imageId)}`, undefined, {
       bound: true,
