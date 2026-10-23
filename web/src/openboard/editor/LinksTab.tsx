@@ -3,7 +3,7 @@ import type { ObLink, ObVault } from 'inked-core';
 import { ConfirmDialog } from '../../components/Dialog';
 import { CheckIcon, CopyIcon } from '../../components/Icons';
 import { ObApiError, deleteLink, errorText } from '../api';
-import { EditVaultsDialog, NewLinkDialog } from './NewLinkDialog';
+import { EditLinkDialog, NewLinkDialog } from './NewLinkDialog';
 
 /** The address a link's visitors open. */
 export const linkUrl = (token: string) => `${location.origin}/ob/${encodeURIComponent(token)}`;
@@ -17,7 +17,7 @@ export interface LinksTabProps {
   onAuthLost: () => void;
 }
 
-/** Every secret link: its address, label, vaults and views, with Copy / Edit vaults / Delete. */
+/** Every secret link: its address, label, vaults, permission and views, with Copy / Edit / Delete. */
 export function LinksTab({ links, vaults, onLinksChange, onAuthLost }: LinksTabProps) {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ObLink | null>(null);
@@ -32,7 +32,7 @@ export function LinksTab({ links, vaults, onLinksChange, onAuthLost }: LinksTabP
       <div className="obe-head">
         <div className="obe-head-text">
           <h1 className="obe-title">Links</h1>
-          <p className="obe-lead">Anyone with a link can read the vaults on it, nothing else. Delete a link to stop sharing it.</p>
+          <p className="obe-lead">Anyone with a link can read the vaults on it. A Write link also lets them edit and add notes there. Delete a link to stop sharing it.</p>
         </div>
         <button type="button" className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>
           + New link
@@ -52,7 +52,7 @@ export function LinksTab({ links, vaults, onLinksChange, onAuthLost }: LinksTabP
       )}
 
       <NewLinkDialog open={creating} vaults={vaults} onClose={() => setCreating(false)} onCreated={(link) => onLinksChange([...links, link])} onAuthLost={onAuthLost} />
-      <EditVaultsDialog
+      <EditLinkDialog
         link={editing}
         vaults={vaults}
         onClose={() => setEditing(null)}
@@ -134,6 +134,7 @@ function LinkRow({ link, vaults, onEdit, onDelete }: { link: ObLink; vaults: ObV
           ) : (
             <span className="obe-chips is-none">No vaults</span>
           )}
+          <span className={`obe-perm-badge${link.permission === 'write' ? ' is-write' : ''}`}>{link.permission === 'write' ? 'Can edit' : 'Read only'}</span>
           <span className="obe-views">{views(link.views)}</span>
         </div>
       </div>
@@ -143,7 +144,7 @@ function LinkRow({ link, vaults, onEdit, onDelete }: { link: ObLink; vaults: ObV
           {copy === 'copied' ? 'Copied' : 'Copy'}
         </button>
         <button type="button" className="btn btn-sm" onClick={onEdit}>
-          Edit vaults
+          Edit
         </button>
         <button type="button" className="btn btn-sm btn-danger-quiet" onClick={onDelete}>
           Delete

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import type { ObLink, ObVault } from 'inked-core';
+import type { ObLink, ObPermission, ObVault } from 'inked-core';
 import { Dialog } from '../../components/Dialog';
 import { prefs } from '../../lib/prefs';
 import { ObApiError, createLink, errorText, updateLink } from '../api';
@@ -31,6 +31,30 @@ export function VaultChecklist({ vaults, checked, onChange, disabled }: { vaults
   );
 }
 
+const PERMISSIONS: { value: ObPermission; label: string; hint: string }[] = [
+  { value: 'read', label: 'Read', hint: 'Visitors can read the notes.' },
+  { value: 'write', label: 'Write', hint: 'Visitors can also edit notes and add new ones. Republishing replaces their changes.' },
+];
+
+/** Read or Write: what the link's visitors may do. */
+export function PermissionChoice({ value, onChange, disabled }: { value: ObPermission; onChange: (next: ObPermission) => void; disabled?: boolean }) {
+  const name = useId();
+  return (
+    <fieldset className="obe-checklist obe-perm" disabled={disabled}>
+      <legend className="field-label">Visitors can</legend>
+      {PERMISSIONS.map((p) => (
+        <label key={p.value} className="check obe-check obe-perm-option">
+          <input type="radio" name={name} value={p.value} checked={value === p.value} onChange={() => onChange(p.value)} />
+          <span className="obe-perm-text">
+            <span className="obe-check-name">{p.label}</span>
+            <span className="field-hint">{p.hint}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 /** Ids in `checked`, in the vault list's order. */
 const orderedIds = (vaults: ObVault[], checked: ReadonlySet<string>) => vaults.filter((v) => checked.has(v.id)).map((v) => v.id);
 
@@ -40,7 +64,7 @@ function failure(e: unknown, onAuthLost: () => void): string {
   return errorText(e);
 }
 
-/** "+ New link": a label and the vaults it shows. Create stays disabled until both are given. */
+/** "+ New link": a label, the vaults it shows and its permission (Read unless changed). Create stays disabled until a label and a vault are given. */
 export function NewLinkDialog({
   open,
   vaults,
@@ -56,6 +80,7 @@ export function NewLinkDialog({
 }) {
   const [label, setLabel] = useState('');
   const [checked, setChecked] = useState<Set<string>>(() => new Set());
+  const [permission, setPermission] = useState<ObPermission>('read');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const labelId = useId();
@@ -66,6 +91,7 @@ export function NewLinkDialog({
     setLabel('');
     // With a single vault there is nothing to choose.
     setChecked(new Set(vaults.length === 1 ? [vaults[0]!.id] : []));
+    setPermission('read');
     setBusy(false);
     setError(null);
   }, [open, vaults]);
@@ -78,7 +104,7 @@ export function NewLinkDialog({
     setBusy(true);
     setError(null);
     try {
-      const link = await createLink(label.trim(), orderedIds(vaults, checked));
+      const link = await createLink(label.trim(), orderedIds(vaults, checked), permission);
       onCreated(link);
       onClose();
     } catch (err) {
@@ -122,6 +148,7 @@ export function NewLinkDialog({
             Shown to visitors at the top of the board. Up to {LABEL_MAX} characters.
           </p>
           <VaultChecklist vaults={vaults} checked={checked} onChange={setChecked} disabled={busy} />
+          <PermissionChoice value={permission} onChange={setPermission} disabled={busy} />
           {error && (
             <p className="form-error" role="alert">
               {error}
@@ -141,8 +168,8 @@ export function NewLinkDialog({
   );
 }
 
-/** Changes which published vaults a link shows. */
-export function EditVaultsDialog({
+/** Changes which published vaults a link shows and what its visitors may do. */
+export function EditLinkDialog({
   link,
   vaults,
   onClose,
@@ -156,12 +183,14 @@ export function EditVaultsDialog({
   onAuthLost: () => void;
 }) {
   const [checked, setChecked] = useState<Set<string>>(() => new Set());
+  const [permission, setPermission] = useState<ObPermission>('read');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!link) return;
     setChecked(new Set(link.vaultIds));
+    setPermission(link.permission);
     setBusy(false);
     setError(null);
   }, [link]);
@@ -173,7 +202,7 @@ export function EditVaultsDialog({
     setBusy(true);
     setError(null);
     try {
-      onSaved(await updateLink(link.id, { vaultIds: ids }));
+      onSaved(await updateLink(link.id, { vaultIds: ids, permission }));
       onClose();
     } catch (err) {
       setError(failure(err, onAuthLost));
@@ -187,10 +216,11 @@ export function EditVaultsDialog({
   const shown = link ?? last.current;
 
   return (
-    <Dialog open={link !== null} title={shown ? `Vaults on “${shown.label}”` : 'Vaults'} onClose={() => !busy && onClose()}>
+    <Dialog open={link !== null} title={shown ? `Edit “${shown.label}”` : 'Edit link'} onClose={() => !busy && onClose()}>
       <form className="stack-8 obe-form" onSubmit={submit}>
         <VaultChecklist vaults={vaults} checked={checked} onChange={setChecked} disabled={busy} />
         {ids.length === 0 && <p className="field-hint">Choose at least one vault. To stop sharing, delete the link instead.</p>}
+        <PermissionChoice value={permission} onChange={setPermission} disabled={busy} />
         {error && (
           <p className="form-error" role="alert">
             {error}

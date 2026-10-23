@@ -1,4 +1,4 @@
-import type { ObLink, ObPayload, ObPublicResponse } from 'inked-core';
+import type { ObLink, ObPayload, ObPermission, ObPublicResponse } from 'inked-core';
 
 /**
  * Openboard API client. Deliberately standalone (bare `fetch`, no app client, store or crypto) so the visitor
@@ -78,9 +78,10 @@ export async function checkSession(): Promise<boolean> {
 
 export const listLinks = (): Promise<ObLink[]> => owner('GET', '/api/openboard/links');
 
-export const createLink = (label: string, vaultIds: string[]): Promise<ObLink> => owner('POST', '/api/openboard/links', { label, vaultIds });
+export const createLink = (label: string, vaultIds: string[], permission: ObPermission): Promise<ObLink> =>
+  owner('POST', '/api/openboard/links', { label, vaultIds, permission });
 
-export const updateLink = (id: string, patch: { label?: string; vaultIds?: string[] }): Promise<ObLink> =>
+export const updateLink = (id: string, patch: { label?: string; vaultIds?: string[]; permission?: ObPermission }): Promise<ObLink> =>
   owner('PATCH', `/api/openboard/links/${seg(id)}`, patch);
 
 export const deleteLink = (id: string): Promise<void> => owner('DELETE', `/api/openboard/links/${seg(id)}`);
