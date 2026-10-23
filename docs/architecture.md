@@ -207,7 +207,7 @@ All of these are plaintext and live in the same SQLite file as the private table
 ```
 ob_vaults(id PK, user_id, name, color, created_at, updated_at)
 ob_folders(id PK, vault_id, parent_id, name)
-ob_notes(id PK, vault_id, folder_id, title, body, created_at, updated_at, visitor_edited_at)
+ob_notes(id PK, vault_id, folder_id, title, body, created_at, updated_at, visitor_edited_at, published_title)
 ob_images(vault_id, id, size, mime, data BLOB, created_at)   PK (vault_id, id)
 ob_links(id PK, user_id, label, token UNIQUE, views, created_at, permission 'read'|'write')
 ob_link_vaults(link_id, ob_vault_id)                          PK (link_id, ob_vault_id)
@@ -215,7 +215,7 @@ ob_link_vaults(link_id, ob_vault_id)                          PK (link_id, ob_va
 
 Deleting a published vault cascades to its folders, notes, images and link grants; deleting a link cascades to its grants. The link token is stored as is (not hashed) so the editor can show and copy a link again later.
 
-`ob_links.permission` and `ob_notes.visitor_edited_at` came after the first release. `openDb` adds them with `ALTER TABLE` when `PRAGMA table_info` shows them missing, so an existing database upgrades in place and its links stay `read`.
+`ob_links.permission`, `ob_notes.visitor_edited_at` and `ob_notes.published_title` came after the first release. `openDb` adds them with `ALTER TABLE` when `PRAGMA table_info` shows them missing (filling `published_title` from `title`), so an existing database upgrades in place and its links stay `read`.
 
 ### Routes
 
@@ -251,9 +251,9 @@ A view is counted once per successful `GET /api/ob/:token` (the public lookup), 
 
 ### Write links
 
-Design: `docs/superpowers/specs/2026-10-24-openboard-write-links-design.md`. A link is Read (the default) or Write. A Write link lets anyone holding it edit the title and body of published notes in the vaults it grants, and add notes there; it cannot delete, move, create folders or upload images. The server checks, per write: the token (as above), the permission (403 `read_only`), a per-IP write limiter (`obWriteLimiter`: 30 writes a minute, then 429 `locked` for a minute), and the vault grant (404). A title is 1 to 200 characters on one line; a body is at most 100,000 characters; a vault takes no visitor write past 5,000 notes or 32 MiB of note text (413 `vault_full`). `Index` is reserved: visitors cannot create, rename to or rename away from it. Edits are optimistic: a PATCH carries the `updatedAt` it started from.
+Design: `docs/superpowers/specs/2026-10-24-openboard-write-links-design.md`. A link is Read (the default) or Write. A Write link lets anyone holding it edit the title and body of published notes in the vaults it grants, and add notes there; it cannot delete, move, create folders or upload images. The server checks, per write: the token (as above), the permission (403 `read_only`), a per-IP write limiter (`obWriteLimiter`: 30 writes a minute, then 429 `locked` for a minute), and the vault grant (404). A title is 1 to 200 characters, stored trimmed, with no control or bidi characters; a changed body is at most 100,000 characters; a vault takes no visitor write past 5,000 notes or 32 MiB (UTF-8 bytes) of note text (413 `vault_full`). `Index` is reserved: visitors cannot create, rename to or rename away from it. Edits are optimistic: a PATCH carries the `updatedAt` it started from.
 
-Visitor writes change only `ob_notes` (and the vault's `updated_at`). They never reach the private tables, and nothing copies them back into a private vault. Each write sets `visitor_edited_at`; the API exposes it as `visitorEdited`. The editor's tree tags those notes, the publish conflict counts them (`visitorEdits`) so the overwrite confirm can warn that republishing discards them, and the reader treats their bodies as untrusted: besides the usual sanitising, every link that is not a resolved `[[wiki link]]` renders as plain text. Removing an image reference in a visitor edit never deletes the image; orphans go at the owner's next publish or unpublish in that vault.
+Visitor writes change only `ob_notes` (and the vault's `updated_at`). They never reach the private tables, and nothing copies them back into a private vault. Each write sets `visitor_edited_at`; the API exposes it as `visitorEdited`. The editor's tree tags those notes, the publish conflict counts them (`visitorEdits`) so the overwrite confirm can warn that republishing discards them (a note publish also matches `published_title`, so a note a visitor renamed is replaced, not duplicated), and the reader treats their bodies as untrusted: besides the usual sanitising, every link that is not a resolved `[[wiki link]]` renders as plain text. Removing an image reference in a visitor edit never deletes the image; orphans go at the owner's next publish or unpublish in that vault.
 
 ### Images
 
