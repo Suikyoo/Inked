@@ -6,8 +6,12 @@ export interface ReadMark {
   size: number;
 }
 
-/** Checkpoints a client may store (0 means no mark). */
-export const STORED_CHECKPOINTS: readonly number[] = [25, 50, 75, 100];
+/** One reading checkpoint for a note: only the id, the checkpoint and the ciphertext size ever leave the browser. */
+export interface ReadProgressItem {
+  noteId: string;
+  pct: number;
+  size: number;
+}
 
 /** Slack that absorbs ciphertext overhead and tiny edits. */
 const SLACK = 0.03;

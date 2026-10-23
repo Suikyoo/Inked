@@ -35,6 +35,7 @@ import {
   type Checkpoint,
   type KdfParams,
   type ReadMark,
+  type ReadProgressItem,
 } from 'inked-core';
 import { argon2InWorker } from '../lib/argon2Worker';
 import { clearDiagrams } from '../diagrams/diagramRender';
@@ -48,7 +49,7 @@ export interface PreparedImage {
 import { NOTE_TOO_LARGE_MESSAGE, uuid } from '../lib/util';
 import { sendPending, type DropReason, type PendingSave } from './pending';
 import { LOCK_WAIT_MS, TabLink } from './tabs';
-import { ReadProgressQueue, type ReadProgressItem } from './readProgress';
+import { ReadProgressQueue } from './readProgress';
 
 /** If the unlock hook never calls back, subscribers are notified after this long. */
 export const UNLOCK_TRANSITION_MAX_MS = 1000;

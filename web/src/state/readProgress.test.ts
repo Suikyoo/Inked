@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ReadProgressQueue, type ReadProgressItem } from './readProgress';
+import type { ReadProgressItem } from 'inked-core';
+import { ReadProgressQueue } from './readProgress';
 
 const item = (noteId: string, pct: number, size = 100): ReadProgressItem => ({ noteId, pct, size });
 

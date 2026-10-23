@@ -1,9 +1,4 @@
-/** One reading checkpoint for a note: only the id, the checkpoint and the ciphertext size ever leave the browser. */
-export interface ReadProgressItem {
-  noteId: string;
-  pct: number;
-  size: number;
-}
+import type { ReadProgressItem } from 'inked-core';
 
 const MAX_BATCH = 200;
 

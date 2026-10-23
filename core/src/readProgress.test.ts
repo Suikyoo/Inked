@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { checkpointOf, preferRead, readCoverage, shownProgress, STORED_CHECKPOINTS } from './readProgress';
+import { checkpointOf, preferRead, readCoverage, shownProgress } from './readProgress';
 
 describe('readProgress', () => {
-  it('exposes the stored checkpoints', () => {
-    expect(STORED_CHECKPOINTS).toEqual([25, 50, 75, 100]);
-  });
   it('shows 0 without a mark and 100 for a fully read note', () => {
     expect(shownProgress(null, 100)).toBe(0);
     expect(shownProgress(undefined, 100)).toBe(0);
