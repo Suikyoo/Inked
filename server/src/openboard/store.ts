@@ -11,7 +11,7 @@ import type { ObFolder, ObLink, ObNote, ObPayload, ObPermission, ObVault, Publis
 /** A publish that would replace existing content without `overwrite`; maps to 409 with the PublishConflict body. */
 export class PublishConflictError extends ApiError {
   constructor(readonly conflict: PublishConflict) {
-    super(409, 'conflict', undefined, { target: conflict.target, removes: conflict.removes });
+    super(409, 'conflict', undefined, { target: conflict.target, removes: conflict.removes, visitorEdits: conflict.visitorEdits });
   }
 }
 
@@ -114,12 +114,13 @@ export function publish(
         if (!req.overwrite) {
           const ids = vaults.map((v) => v.id);
           const marks = ids.map(() => '?').join(',');
-          const count = (table: string) =>
-            (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE vault_id IN (${marks})`).get(...ids) as { n: number }).n;
+          const count = (table: string, where = '') =>
+            (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE vault_id IN (${marks})${where}`).get(...ids) as { n: number }).n;
           throw new PublishConflictError({
             error: 'conflict',
             target: { kind: 'vault', name: req.rootName, path: [] },
             removes: { folders: count('ob_folders'), notes: count('ob_notes') },
+            visitorEdits: count('ob_notes', ' AND visitor_edited_at IS NOT NULL'),
           });
         }
         const [keep, ...dups] = vaults;
@@ -183,7 +184,14 @@ export function publish(
           ).n,
         };
         if (removes.folders > 0) {
-          if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes });
+          if (!req.overwrite) {
+            const visitorEdits = (
+              db
+                .prepare(`${subtreeCte} SELECT COUNT(*) AS n FROM ob_notes WHERE folder_id IN (SELECT id FROM sub) AND visitor_edited_at IS NOT NULL`)
+                .get(...args) as { n: number }
+            ).n;
+            throw new PublishConflictError({ error: 'conflict', target, removes, visitorEdits });
+          }
           // Subfolders and their notes go with it via ON DELETE CASCADE.
           db.prepare('DELETE FROM ob_folders WHERE vault_id = ? AND parent_id IS ? AND name = ?').run(...args);
         }
@@ -196,11 +204,13 @@ export function publish(
         );
       } else {
         const args = [vaultId, parentId, req.rootName];
-        const notes = (db.prepare('SELECT COUNT(*) AS n FROM ob_notes WHERE vault_id = ? AND folder_id IS ? AND title = ?').get(...args) as {
-          n: number;
-        }).n;
+        const { notes, visitorEdits } = db
+          .prepare(
+            'SELECT COUNT(*) AS notes, COUNT(visitor_edited_at) AS visitorEdits FROM ob_notes WHERE vault_id = ? AND folder_id IS ? AND title = ?',
+          )
+          .get(...args) as { notes: number; visitorEdits: number };
         if (notes > 0) {
-          if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes: { folders: 0, notes } });
+          if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes: { folders: 0, notes }, visitorEdits });
           db.prepare('DELETE FROM ob_notes WHERE vault_id = ? AND folder_id IS ? AND title = ?').run(...args);
         }
         rootFolderId = parentId;

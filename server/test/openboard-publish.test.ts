@@ -140,6 +140,7 @@ describe('openboard publish', () => {
       error: 'conflict',
       target: { kind: 'vault', name: 'Research', path: [] },
       removes: { folders: 1, notes: 2 },
+      visitorEdits: 0,
     });
     expect(await content(alice)).toEqual(before);
   });
@@ -175,6 +176,7 @@ describe('openboard publish', () => {
       error: 'conflict',
       target: { kind: 'folder', name: 'A', path: ['V'] },
       removes: { folders: 1, notes: 2 },
+      visitorEdits: 0,
     });
 
     const res = await publish(alice, folderReq('V', [], 'A', [{ folderKey: null, title: 'two', body: 'two v2' }], { overwrite: true }));
@@ -200,6 +202,7 @@ describe('openboard publish', () => {
       error: 'conflict',
       target: { kind: 'note', name: 'Solo', path: ['V', 'Topics'] },
       removes: { folders: 0, notes: 1 },
+      visitorEdits: 0,
     });
     expect(bodies(vaultId)).toContain('Solo:v1');
 
@@ -415,5 +418,42 @@ describe('openboard publish', () => {
     expect(twin.json().removes).toEqual({ folders: 0, notes: 2 });
     expect((await publish(alice, noteReq('Récherche 研究', [], 'Twin', 'c', { overwrite: true }))).statusCode).toBe(201);
     expect((await content(alice)).notes.filter((n) => n.title === 'Twin')).toHaveLength(1);
+  });
+});
+
+describe('republishing over visitor edits', () => {
+  const markVisitorEdited = (title: string) =>
+    t.app.db.prepare("UPDATE ob_notes SET visitor_edited_at = '2026-10-24T00:00:00.000Z' WHERE title = ?").run(title);
+
+  it('a vault conflict counts every visitor-edited note in the vault', async () => {
+    expect((await publish(alice, vaultReq('Research'))).statusCode).toBe(201);
+    markVisitorEdited('First');
+    markVisitorEdited('Index');
+    const res = await publish(alice, vaultReq('Research'));
+    expect(res.statusCode).toBe(409);
+    expect(res.json().visitorEdits).toBe(2);
+  });
+
+  it('folder and note conflicts count only their target', async () => {
+    expect((await publish(alice, vaultReq('Research'))).statusCode).toBe(201);
+    expect((await publish(alice, folderReq('Research', [], 'Other', [{ folderKey: null, title: 'Elsewhere', body: 'e' }]))).statusCode).toBe(201);
+    markVisitorEdited('First');
+    markVisitorEdited('Elsewhere');
+    const folder = await publish(alice, folderReq('Research', [], 'Topics', [{ folderKey: null, title: 'First', body: 'x' }]));
+    expect(folder.statusCode).toBe(409);
+    expect(folder.json().visitorEdits).toBe(1);
+    const note = await publish(alice, noteReq('Research', ['Topics'], 'First', 'x'));
+    expect(note.statusCode).toBe(409);
+    expect(note.json().visitorEdits).toBe(1);
+    const clean = await publish(alice, noteReq('Research', [], 'Index', 'x'));
+    expect(clean.statusCode).toBe(409);
+    expect(clean.json().visitorEdits).toBe(0);
+  });
+
+  it('an overwrite replaces visitor edits with owner content', async () => {
+    expect((await publish(alice, vaultReq('Research'))).statusCode).toBe(201);
+    markVisitorEdited('First');
+    expect((await publish(alice, vaultReq('Research', { overwrite: true }))).statusCode).toBe(201);
+    expect((await content(alice)).notes.map((n) => (n as { visitorEdited?: boolean }).visitorEdited)).toEqual([false, false]);
   });
 });
