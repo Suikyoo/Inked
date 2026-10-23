@@ -293,6 +293,71 @@ describe('VisitorPage on a write link', () => {
     expect(bodyInput().value).toBe('draft');
   });
 
+  it('Save with nothing changed sends nothing and leaves edit mode', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    await press(buttonIn(editor()!, 'Save'));
+    expect(writes()).toHaveLength(0);
+    expect(editor()).toBeNull();
+  });
+
+  it('a title-only change does not resend the body', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    type(titleInput(), 'Alpha two');
+    await press(buttonIn(editor()!, 'Save'));
+    expect(JSON.parse(String((writes()[0]![1] as RequestInit).body))).toEqual({ baseUpdatedAt: later, title: 'Alpha two' });
+  });
+
+  it('leaving a note with unsaved changes asks first; declining keeps the draft', async () => {
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    type(bodyInput(), 'unsaved');
+    act(() => railNote('Beta').click());
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(bodyInput().value).toBe('unsaved');
+    await press(drawer()!.querySelector<HTMLButtonElement>('button[aria-label="Close reader"]')!);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(bodyInput().value).toBe('unsaved');
+    confirm.mockReturnValue(true);
+    act(() => railNote('Beta').click());
+    expect(editor()).toBeNull();
+    expect(drawer()!.querySelector('h1')!.textContent).toBe('Beta');
+  });
+
+  it('an untouched editor leaves without asking', async () => {
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    act(() => railNote('Beta').click());
+    expect(confirm).not.toHaveBeenCalled();
+    expect(drawer()!.querySelector('h1')!.textContent).toBe('Beta');
+  });
+
+  it('Escape inside the New note dialog does not close the drawer', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(host!, 'New note'));
+    const dlg = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog')).find((d) => d.hasAttribute('open'))!;
+    act(() => void dlg.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    expect(drawer()).not.toBeNull();
+  });
+
   it('a stale save keeps the draft and says someone else changed the note', async () => {
     writeServer(payload('write'), [json(409, { error: 'stale' })]);
     await render();
@@ -309,6 +374,7 @@ describe('VisitorPage on a write link', () => {
     await render();
     act(() => railNote('Alpha').click());
     await press(buttonIn(drawer()!, 'Edit'));
+    type(bodyInput(), 'changed');
     await press(buttonIn(editor()!, 'Save'));
     expect(editor()!.querySelector('[role="alert"]')!.textContent).toContain('Editing is turned off for this link');
   });

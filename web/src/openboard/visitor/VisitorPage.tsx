@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { ObNote, ObPublicResponse } from 'inked-core';
 import { SearchIcon } from '../../components/Icons';
-import { ConceptMap } from '../../map/ConceptMap';
+import { ConceptMap, type MapSelection } from '../../map/ConceptMap';
 import { ObApiError, fetchPublic, publicImageUrl } from '../api';
 import { ReaderDrawer, useReading } from '../board';
 import { openboardEntries } from '../entries';
@@ -84,6 +84,49 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
   const [creating, setCreating] = useState(false);
   // A note just created opens once the board's payload holds it.
   const [opening, setOpening] = useState<ObNote | null>(null);
+  // Whether the open editor holds changes that are not saved.
+  const dirty = useRef(false);
+  const onDirtyChange = useCallback((d: boolean) => {
+    dirty.current = d;
+  }, []);
+
+  /** True when nothing unsaved would be lost, or the visitor agrees to drop it. */
+  const mayLeave = useCallback(() => {
+    if (!editing || !dirty.current) return true;
+    if (!window.confirm('Discard your changes to this note?')) return false;
+    dirty.current = false;
+    return true;
+  }, [editing]);
+  const guardedOpen = useCallback(
+    (vaultId: string, noteId: string) => {
+      if (noteId === reading || mayLeave()) openNote(vaultId, noteId);
+    },
+    [reading, mayLeave, openNote],
+  );
+  const guardedSelect = useCallback(
+    (sel: MapSelection | null) => {
+      if ((sel?.kind === 'note' && sel.id === reading) || mayLeave()) onMapSelect(sel);
+    },
+    [reading, mayLeave, onMapSelect],
+  );
+  const guardedClose = useCallback(() => {
+    if (mayLeave()) closeReader();
+  }, [mayLeave, closeReader]);
+
+  // Closing or reloading the tab with unsaved changes asks first.
+  useEffect(() => {
+    if (!editing) {
+      dirty.current = false;
+      return;
+    }
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (!dirty.current) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [editing]);
 
   // Reading another note (or closing the drawer) leaves edit mode.
   useEffect(() => {
@@ -121,7 +164,7 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
     } else if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
       e.preventDefault();
       const first = hitNotes[0];
-      if (first) openNote(first.vaultId, first.id);
+      if (first) guardedOpen(first.vaultId, first.id);
     }
   };
 
@@ -160,7 +203,7 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
         )}
         <div className="ob-top-side is-end">
           {canWrite && !empty && (
-            <button type="button" className="btn btn-sm ob-new-note" onClick={() => setCreating(true)}>
+            <button type="button" className="btn btn-sm ob-new-note" onClick={() => mayLeave() && setCreating(true)}>
               New note
             </button>
           )}
@@ -176,16 +219,16 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
         </div>
       ) : (
         <div className="ob-body">
-          <TreeRail payload={data} selectedId={reading} onSelect={openNote} collapsed={railCollapsed} onToggle={() => setRailCollapsed((c) => !c)} query={query} />
+          <TreeRail payload={data} selectedId={reading} onSelect={guardedOpen} collapsed={railCollapsed} onToggle={() => setRailCollapsed((c) => !c)} query={query} />
           <section className="map ob-map" aria-label="Concept map">
-            <ConceptMap entries={entries} hits={hits} hot={null} searching={q.length > 0} loading={false} selected={selected} onSelect={onMapSelect} onOpenNote={openNote} fitRequest={fitRequest} />
+            <ConceptMap entries={entries} hits={hits} hot={null} searching={q.length > 0} loading={false} selected={selected} onSelect={guardedSelect} onOpenNote={guardedOpen} fitRequest={fitRequest} />
           </section>
           <ReaderDrawer
             payload={data}
             reading={reading}
             resolveImage={resolveImage}
-            onOpenNote={openNote}
-            onClose={closeReader}
+            onOpenNote={guardedOpen}
+            onClose={guardedClose}
             actions={(note) =>
               canWrite && editing !== note.id ? (
                 <button type="button" className="btn btn-sm ob-edit" onClick={() => setEditing(note.id)}>
@@ -204,6 +247,7 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
                     setEditing(null);
                   }}
                   onCancel={() => setEditing(null)}
+                  onDirtyChange={onDirtyChange}
                 />
               ) : null
             }

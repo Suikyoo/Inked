@@ -13,7 +13,20 @@ export const VISITOR_BODY_MAX = 100_000;
  * with the version it started from, so a note someone else changed meanwhile is refused, not overwritten;
  * the draft stays for the visitor to copy. An Index note keeps its title.
  */
-export function NoteEditor({ token, note, onSaved, onCancel }: { token: string; note: ObNote; onSaved: (note: ObNote) => void; onCancel: () => void }) {
+export function NoteEditor({
+  token,
+  note,
+  onSaved,
+  onCancel,
+  onDirtyChange,
+}: {
+  token: string;
+  note: ObNote;
+  onSaved: (note: ObNote) => void;
+  onCancel: () => void;
+  /** Told whether the draft differs from the note, so the board can ask before dropping it. */
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const [title, setTitle] = useState(note.title);
   const [body, setBody] = useState(note.body);
   const [busy, setBusy] = useState(false);
@@ -23,6 +36,13 @@ export function NoteEditor({ token, note, onSaved, onCancel }: { token: string; 
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const isIndex = note.title === INDEX_TITLE;
   const ready = title.trim().length > 0 && (isIndex || title.trim() !== INDEX_TITLE);
+  const nextTitle = isIndex ? note.title : title.trim();
+  const titleChanged = nextTitle !== note.title;
+  const bodyChanged = body !== note.body;
+
+  useEffect(() => {
+    onDirtyChange?.(titleChanged || bodyChanged);
+  }, [titleChanged, bodyChanged, onDirtyChange]);
 
   // Typing continues the note: start with the caret at its end.
   useEffect(() => {
@@ -33,15 +53,16 @@ export function NoteEditor({ token, note, onSaved, onCancel }: { token: string; 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!ready || busy) return;
+    // Nothing to save; an unchanged body is never resent (it may be longer than visitors can write).
+    if (!titleChanged && !bodyChanged) return onCancel();
     setBusy(true);
     setError(null);
-    const nextTitle = title.trim();
     try {
       onSaved(
         await saveVisitorNote(token, note.id, {
           baseUpdatedAt: note.updatedAt,
-          ...(isIndex || nextTitle === note.title ? {} : { title: nextTitle }),
-          body,
+          ...(titleChanged ? { title: nextTitle } : {}),
+          ...(bodyChanged ? { body } : {}),
         }),
       );
     } catch (err) {

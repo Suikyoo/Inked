@@ -67,8 +67,8 @@ async function visitorWrite(method: 'PATCH' | 'POST', path: string, body: unknow
   return note;
 }
 
-/** PATCH /api/ob/:token/notes/:id: a visitor's edit; `title` is left out to keep it. */
-export const saveVisitorNote = (token: string, noteId: string, change: { baseUpdatedAt: string; title?: string; body: string }): Promise<ObNote> =>
+/** PATCH /api/ob/:token/notes/:id: a visitor's edit; a field left out keeps its value. */
+export const saveVisitorNote = (token: string, noteId: string, change: { baseUpdatedAt: string; title?: string; body?: string }): Promise<ObNote> =>
   visitorWrite('PATCH', `/api/ob/${seg(token)}/notes/${seg(noteId)}`, change);
 
 /** POST /api/ob/:token/notes: a visitor's new note in a vault the link grants. */

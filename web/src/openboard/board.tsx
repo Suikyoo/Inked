@@ -106,7 +106,8 @@ export function useReading(payload: ObPayload): Reading {
 /**
  * The reading drawer: slides in beside the map (over the page on phones); Escape or its button closes it.
  * `actions` adds buttons to its bar for the shown note; `body` replaces the reader when it returns something
- * (the visitor's editor). An Escape whose default was prevented (inside the editor) does not close it.
+ * (the visitor's editor). An Escape whose default was prevented (inside the editor) or that comes from a
+ * dialog does not close it.
  */
 export function ReaderDrawer({
   payload,
@@ -129,7 +130,8 @@ export function ReaderDrawer({
   useEffect(() => {
     if (!reading) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented) onClose();
+      const inDialog = e.target instanceof Element && e.target.closest('dialog') !== null;
+      if (e.key === 'Escape' && !e.defaultPrevented && !inDialog) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
