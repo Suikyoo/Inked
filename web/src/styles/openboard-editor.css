@@ -270,8 +270,13 @@
   color: var(--text);
 }
 
+/* Gives way to the note title first when the tree is narrow. */
 .obe-visitor-tag {
-  flex: 0 0 auto;
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10.5px;
   color: var(--ink-light);
 }

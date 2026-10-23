@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { INDEX_TITLE } from 'inked-core/indexNote';
 import type { ObNote } from 'inked-core';
 import { prefs } from '../../lib/prefs';
@@ -20,8 +20,15 @@ export function NoteEditor({ token, note, onSaved, onCancel }: { token: string; 
   const [error, setError] = useState<string | null>(null);
   const titleId = useId();
   const bodyId = useId();
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const isIndex = note.title === INDEX_TITLE;
   const ready = title.trim().length > 0 && (isIndex || title.trim() !== INDEX_TITLE);
+
+  // Typing continues the note: start with the caret at its end.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (el) el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -71,6 +78,7 @@ export function NoteEditor({ token, note, onSaved, onCancel }: { token: string; 
         Note text
       </label>
       <textarea
+        ref={bodyRef}
         id={bodyId}
         className="input ob-editor-body"
         value={body}

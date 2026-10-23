@@ -246,6 +246,8 @@ describe('VisitorPage on a write link', () => {
     await press(buttonIn(drawer()!, 'Edit'));
     expect(titleInput().value).toBe('Alpha');
     expect(bodyInput().value).toBe('## Alpha heading\n\nSee [[Beta]].');
+    // Typing continues the note: the caret starts at its end.
+    expect(bodyInput().selectionStart).toBe(bodyInput().value.length);
     type(titleInput(), 'Alpha prime');
     type(bodyInput(), 'Rewritten **text**');
     await press(buttonIn(editor()!, 'Save'));
