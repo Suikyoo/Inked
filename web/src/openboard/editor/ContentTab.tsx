@@ -227,6 +227,7 @@ function ContentTree({ content, reading, onOpen, onUnpublish }: { content: ObPay
             {isIndex && <IndexIcon />}
           </span>
           <span className="ob-row-label">{n.title}</span>
+          {n.visitorEdited && <span className="obe-visitor-tag">Edited by a visitor</span>}
         </button>
         {unpublishBtn({ kind: 'note', id: n.id, name: n.title, notes: 1 })}
       </div>

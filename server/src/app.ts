@@ -148,6 +148,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     limiter: new FailureLimiter(),
     accountLimiter: new FailureLimiter(30, 15 * 60_000, 15 * 60_000),
     obLimiter: new FailureLimiter(20, 60_000),
+    obWriteLimiter: new FailureLimiter(30, 60_000, 60_000),
     llmOrigins,
     imageQuotaBytes: opts.imageQuotaBytes ?? DEFAULT_IMAGE_QUOTA_MB * 1024 * 1024,
     setupToken: opts.setupToken ?? (countUsers(db) === 0 ? randomBytes(16).toString('base64url') : null),
@@ -166,6 +167,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     ctx.limiter.prune();
     ctx.accountLimiter.prune();
     ctx.obLimiter.prune();
+    ctx.obWriteLimiter.prune();
   }, 60 * 60 * 1000);
   sweeper.unref();
   app.addHook('onClose', async () => {

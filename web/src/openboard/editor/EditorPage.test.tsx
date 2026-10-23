@@ -20,7 +20,7 @@ function full(): ObPayload {
     folders: [{ id: 'f1', vaultId: V1, parentId: null, name: 'Ops' }],
     notes: [
       { id: 'n1', vaultId: V1, folderId: null, title: 'Alpha', body: 'Alpha body', createdAt: at, updatedAt: at },
-      { id: 'n2', vaultId: V1, folderId: 'f1', title: 'Beta', body: 'Beta body', createdAt: at, updatedAt: at },
+      { id: 'n2', vaultId: V1, folderId: 'f1', title: 'Beta', body: 'Beta body', createdAt: at, updatedAt: at, visitorEdited: true },
       { id: 'n3', vaultId: V2, folderId: null, title: 'Soup', body: 'Soup body', createdAt: at, updatedAt: at },
     ],
   };
@@ -33,8 +33,8 @@ const onlyVault = (p: ObPayload, id: string): ObPayload => ({
 });
 
 const links = (): ObLink[] => [
-  { id: 'l1', label: 'Reading group', token: 'tok-aaa', vaultIds: [V1], views: 3, createdAt: at },
-  { id: 'l2', label: 'Family', token: 'tok-bbb', vaultIds: [V2], views: 1, createdAt: at },
+  { id: 'l1', label: 'Reading group', token: 'tok-aaa', vaultIds: [V1], views: 3, permission: 'read', createdAt: at },
+  { id: 'l2', label: 'Family', token: 'tok-bbb', vaultIds: [V2], views: 1, permission: 'write', createdAt: at },
 ];
 
 interface Server {
@@ -55,8 +55,8 @@ function route(url: string, init: RequestInit = {}): Response {
   if (u.pathname === '/api/me') return server.me === 200 ? json(200, { user: { id: 'u1', username: 'alice' } }) : json(server.me, { error: 'unauthorized' });
   if (u.pathname === '/api/openboard/links' && method === 'GET') return json(200, server.links);
   if (u.pathname === '/api/openboard/links' && method === 'POST') {
-    const body = JSON.parse(String(init.body)) as { label: string; vaultIds: string[] };
-    const link: ObLink = { id: 'l3', label: body.label, token: 'tok-new', vaultIds: body.vaultIds, views: 0, createdAt: at };
+    const body = JSON.parse(String(init.body)) as { label: string; vaultIds: string[]; permission?: ObLink['permission'] };
+    const link: ObLink = { id: 'l3', label: body.label, token: 'tok-new', vaultIds: body.vaultIds, views: 0, permission: body.permission ?? 'read', createdAt: at };
     server.links = [...server.links, link];
     return json(201, link);
   }
@@ -187,8 +187,31 @@ describe('EditorPage', () => {
     expect(post).toBeDefined();
     const init = post![1] as RequestInit;
     expect((init.headers as Record<string, string>)['X-Inked']).toBe('1');
-    expect(JSON.parse(String(init.body))).toEqual({ label: 'Class notes', vaultIds: [V2] });
+    expect(JSON.parse(String(init.body))).toEqual({ label: 'Class notes', vaultIds: [V2], permission: 'read' });
     expect(rowFor('Class notes')).toBeDefined();
+  });
+
+  it('new links default to Read; choosing Write creates an edit link', async () => {
+    await render();
+    await click(button('+ New link'));
+    const dlg = openDialog();
+    const radio = (value: string) => dlg.querySelector<HTMLInputElement>(`input[type="radio"][value="${value}"]`)!;
+    expect(radio('read').checked).toBe(true);
+    expect(radio('write').checked).toBe(false);
+    type(dlg.querySelector<HTMLInputElement>('input[type="text"]')!, 'Editors');
+    await click(Array.from(dlg.querySelectorAll<HTMLLabelElement>('label')).find((l) => l.textContent?.includes('Recipes'))!.querySelector('input')!);
+    await click(radio('write'));
+    expect(dlg.textContent).toContain('Republishing replaces their changes');
+    await click(button('Create', dlg));
+    const [post] = calls((u, m) => u === '/api/openboard/links' && m === 'POST');
+    expect(JSON.parse(String((post![1] as RequestInit).body))).toMatchObject({ label: 'Editors', permission: 'write' });
+    expect(rowFor('Editors').querySelector('.obe-perm-badge')!.textContent).toBe('Can edit');
+  });
+
+  it('shows each link\x27s permission', async () => {
+    await render();
+    expect(rowFor('Reading group').querySelector('.obe-perm-badge')!.textContent).toBe('Read only');
+    expect(rowFor('Family').querySelector('.obe-perm-badge')!.textContent).toBe('Can edit');
   });
 
   it('shows how to publish instead of the form when nothing is published', async () => {
@@ -235,16 +258,37 @@ describe('EditorPage', () => {
     expect(rows().some((r) => r.textContent?.includes('Reading group'))).toBe(false);
   });
 
-  it('Edit vaults saves the checked vaults through PATCH', async () => {
+  it('Edit saves the checked vaults and the permission through PATCH', async () => {
     await render();
-    await click(button('Edit vaults', rowFor('Reading group')));
+    await click(button('Edit', rowFor('Reading group')));
     const dlg = openDialog();
     const box = Array.from(dlg.querySelectorAll<HTMLLabelElement>('label')).find((l) => l.textContent?.includes('Recipes'))!.querySelector('input')!;
     await click(box);
     await click(button('Save', dlg));
     const [patch] = calls((u, m) => u === '/api/openboard/links/l1' && m === 'PATCH');
-    expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ vaultIds: [V1, V2] });
+    expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ vaultIds: [V1, V2], permission: 'read' });
     expect(rowFor('Reading group').querySelector('.obe-chips')!.textContent).toContain('Recipes');
+  });
+
+  it('Edit changes a write link back to read', async () => {
+    await render();
+    await click(button('Edit', rowFor('Family')));
+    const dlg = openDialog();
+    const read = dlg.querySelector<HTMLInputElement>('input[type="radio"][value="read"]')!;
+    expect(dlg.querySelector<HTMLInputElement>('input[type="radio"][value="write"]')!.checked).toBe(true);
+    await click(read);
+    await click(button('Save', dlg));
+    const [patch] = calls((u, m) => u === '/api/openboard/links/l2' && m === 'PATCH');
+    expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ vaultIds: [V2], permission: 'read' });
+    expect(rowFor('Family').querySelector('.obe-perm-badge')!.textContent).toBe('Read only');
+  });
+
+  it('marks notes visitors edited in the published tree', async () => {
+    await render();
+    await click(button('Published content'));
+    const row = (title: string) => qa('.obe-tree-row').find((r) => r.textContent?.includes(title))!;
+    expect(row('Beta').querySelector('.obe-visitor-tag')!.textContent).toBe('Edited by a visitor');
+    expect(row('Alpha').querySelector('.obe-visitor-tag')).toBeNull();
   });
 
   it('Unpublish confirms, calls DELETE and refreshes the published content', async () => {

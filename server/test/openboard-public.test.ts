@@ -222,10 +222,10 @@ describe('public token API', () => {
     const link = await createLink('Empty', []);
     const res = await visit(`/api/ob/${link.token}`);
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ label: 'Empty', vaults: [], folders: [], notes: [] });
+    expect(res.json()).toEqual({ label: 'Empty', permission: 'read', vaults: [], folders: [], notes: [] });
   });
 
-  it('only GET is routed', async () => {
+  it('the link itself takes only GET', async () => {
     const link = await createLink('L', []);
     const res = await call(t.app, 'POST', `/api/ob/${link.token}`, { body: {} });
     expect(res.statusCode).toBe(404);

@@ -6,12 +6,12 @@ import { bumpTimestamp, type Db, type ObFolderRow, type ObNoteRow, type ObVaultR
 import { ApiError, notFound } from '../errors.js';
 import { UUID_RE } from '../schemas.js';
 import { generateLinkToken } from './token.js';
-import type { ObFolder, ObLink, ObNote, ObPayload, ObVault, PublishConflict, PublishRequest, PublishResult } from './types.js';
+import type { ObFolder, ObLink, ObNote, ObPayload, ObPermission, ObVault, PublishConflict, PublishRequest, PublishResult } from './types.js';
 
 /** A publish that would replace existing content without `overwrite`; maps to 409 with the PublishConflict body. */
 export class PublishConflictError extends ApiError {
   constructor(readonly conflict: PublishConflict) {
-    super(409, 'conflict', undefined, { target: conflict.target, removes: conflict.removes });
+    super(409, 'conflict', undefined, { target: conflict.target, removes: conflict.removes, visitorEdits: conflict.visitorEdits });
   }
 }
 
@@ -81,7 +81,7 @@ function dropUnreferencedImages(db: Db, vaultId: string): void {
   ).run(vaultId);
 }
 
-function touchVault(db: Db, vaultId: string): void {
+export function touchVault(db: Db, vaultId: string): void {
   const row = db.prepare('SELECT updated_at FROM ob_vaults WHERE id = ?').get(vaultId) as { updated_at: string };
   db.prepare('UPDATE ob_vaults SET updated_at = ? WHERE id = ?').run(bumpTimestamp(row.updated_at), vaultId);
 }
@@ -114,12 +114,13 @@ export function publish(
         if (!req.overwrite) {
           const ids = vaults.map((v) => v.id);
           const marks = ids.map(() => '?').join(',');
-          const count = (table: string) =>
-            (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE vault_id IN (${marks})`).get(...ids) as { n: number }).n;
+          const count = (table: string, where = '') =>
+            (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE vault_id IN (${marks})${where}`).get(...ids) as { n: number }).n;
           throw new PublishConflictError({
             error: 'conflict',
             target: { kind: 'vault', name: req.rootName, path: [] },
             removes: { folders: count('ob_folders'), notes: count('ob_notes') },
+            visitorEdits: count('ob_notes', ' AND visitor_edited_at IS NOT NULL'),
           });
         }
         const [keep, ...dups] = vaults;
@@ -183,7 +184,14 @@ export function publish(
           ).n,
         };
         if (removes.folders > 0) {
-          if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes });
+          if (!req.overwrite) {
+            const visitorEdits = (
+              db
+                .prepare(`${subtreeCte} SELECT COUNT(*) AS n FROM ob_notes WHERE folder_id IN (SELECT id FROM sub) AND visitor_edited_at IS NOT NULL`)
+                .get(...args) as { n: number }
+            ).n;
+            throw new PublishConflictError({ error: 'conflict', target, removes, visitorEdits });
+          }
           // Subfolders and their notes go with it via ON DELETE CASCADE.
           db.prepare('DELETE FROM ob_folders WHERE vault_id = ? AND parent_id IS ? AND name = ?').run(...args);
         }
@@ -195,13 +203,15 @@ export function publish(
           req.rootName,
         );
       } else {
-        const args = [vaultId, parentId, req.rootName];
-        const notes = (db.prepare('SELECT COUNT(*) AS n FROM ob_notes WHERE vault_id = ? AND folder_id IS ? AND title = ?').get(...args) as {
-          n: number;
-        }).n;
+        // The target is the note under that title, or the one the owner published under it that a visitor renamed.
+        const args = [vaultId, parentId, req.rootName, req.rootName];
+        const where = 'vault_id = ? AND folder_id IS ? AND (title = ? OR published_title = ?)';
+        const { notes, visitorEdits } = db
+          .prepare(`SELECT COUNT(*) AS notes, COUNT(visitor_edited_at) AS visitorEdits FROM ob_notes WHERE ${where}`)
+          .get(...args) as { notes: number; visitorEdits: number };
         if (notes > 0) {
-          if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes: { folders: 0, notes } });
-          db.prepare('DELETE FROM ob_notes WHERE vault_id = ? AND folder_id IS ? AND title = ?').run(...args);
+          if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes: { folders: 0, notes }, visitorEdits });
+          db.prepare(`DELETE FROM ob_notes WHERE ${where}`).run(...args);
         }
         rootFolderId = parentId;
       }
@@ -215,10 +225,10 @@ export function publish(
       insFolder.run(id, vaultId, f.parentKey === null ? rootFolderId : keyToId.get(f.parentKey)!, f.name);
     }
     const insNote = db.prepare(
-      'INSERT INTO ob_notes (id, vault_id, folder_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO ob_notes (id, vault_id, folder_id, title, body, created_at, updated_at, published_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     );
     for (const n of req.notes) {
-      insNote.run(randomUUID(), vaultId, n.folderKey === null ? rootFolderId : keyToId.get(n.folderKey)!, n.title, n.body, now, now);
+      insNote.run(randomUUID(), vaultId, n.folderKey === null ? rootFolderId : keyToId.get(n.folderKey)!, n.title, n.body, now, now, n.title);
     }
 
     dropUnreferencedImages(db, vaultId);
@@ -229,7 +239,7 @@ export function publish(
 
 const vaultJson = (v: ObVaultRow): ObVault => ({ id: v.id, name: v.name, color: v.color, updatedAt: v.updated_at });
 const folderJson = (f: ObFolderRow): ObFolder => ({ id: f.id, vaultId: f.vault_id, parentId: f.parent_id, name: f.name });
-const noteJson = (n: ObNoteRow): ObNote => ({
+export const noteJson = (n: ObNoteRow): ObNote => ({
   id: n.id,
   vaultId: n.vault_id,
   folderId: n.folder_id,
@@ -237,6 +247,7 @@ const noteJson = (n: ObNoteRow): ObNote => ({
   body: n.body,
   createdAt: n.created_at,
   updatedAt: n.updated_at,
+  visitorEdited: n.visitor_edited_at !== null,
 });
 
 /** Everything the user has published, with note bodies left out (`body: ''`). */
@@ -249,7 +260,7 @@ export function listContent(db: Db, userId: string): ObPayload {
     .all(userId) as unknown as ObFolderRow[];
   const notes = db
     .prepare(
-      `SELECT n.id, n.vault_id, n.folder_id, n.title, '' AS body, n.created_at, n.updated_at
+      `SELECT n.id, n.vault_id, n.folder_id, n.title, '' AS body, n.created_at, n.updated_at, n.visitor_edited_at
        FROM ob_notes n JOIN ob_vaults v ON v.id = n.vault_id WHERE v.user_id = ? ORDER BY n.rowid`,
     )
     .all(userId) as unknown as ObNoteRow[];
@@ -293,6 +304,7 @@ interface ObLinkRow {
   token: string;
   views: number;
   created_at: string;
+  permission: ObPermission;
 }
 
 /** Attempts at a fresh link token before giving up with 500. */
@@ -314,6 +326,7 @@ const linkJson = (db: Db, row: ObLinkRow): ObLink => ({
   token: row.token,
   vaultIds: linkVaultIds(db, row.id),
   views: row.views,
+  permission: row.permission,
   createdAt: row.created_at,
 });
 
@@ -355,16 +368,16 @@ export function listLinks(db: Db, userId: string): ObLink[] {
 export function createLink(
   db: Db,
   userId: string,
-  req: { label: string; vaultIds: readonly string[] },
+  req: { label: string; vaultIds: readonly string[]; permission?: ObPermission },
   newToken: () => string = generateLinkToken,
 ): ObLink {
   return transaction(db, () => {
     const vaultIds = ownedVaultIds(db, userId, req.vaultIds);
     const id = randomUUID();
-    const insert = db.prepare('INSERT INTO ob_links (id, user_id, label, token, views, created_at) VALUES (?, ?, ?, ?, 0, ?)');
+    const insert = db.prepare('INSERT INTO ob_links (id, user_id, label, token, views, created_at, permission) VALUES (?, ?, ?, ?, 0, ?, ?)');
     for (let attempt = 1; ; attempt++) {
       try {
-        insert.run(id, userId, req.label, newToken(), nowIso());
+        insert.run(id, userId, req.label, newToken(), nowIso(), req.permission ?? 'read');
         break;
       } catch (err) {
         if (!isTokenCollision(err)) throw err;
@@ -376,13 +389,19 @@ export function createLink(
   });
 }
 
-/** Renames a link and/or replaces its whole vault set, atomically. 404 unless it is the user's. */
-export function updateLink(db: Db, userId: string, id: string, req: { label?: string; vaultIds?: readonly string[] }): ObLink {
+/** Renames a link, replaces its whole vault set and/or changes its permission, atomically. 404 unless it is the user's. */
+export function updateLink(
+  db: Db,
+  userId: string,
+  id: string,
+  req: { label?: string; vaultIds?: readonly string[]; permission?: ObPermission },
+): ObLink {
   return transaction(db, () => {
     ownedLink(db, userId, id);
     const vaultIds = req.vaultIds === undefined ? undefined : ownedVaultIds(db, userId, req.vaultIds);
     if (req.label !== undefined) db.prepare('UPDATE ob_links SET label = ? WHERE id = ?').run(req.label, id);
     if (vaultIds !== undefined) setLinkVaults(db, id, vaultIds);
+    if (req.permission !== undefined) db.prepare('UPDATE ob_links SET permission = ? WHERE id = ?').run(req.permission, id);
     return ownedLink(db, userId, id);
   });
 }
@@ -396,11 +415,14 @@ export function deleteLink(db: Db, userId: string, id: string): void {
 // ---- Public (token) access ----
 
 /** The link a public token names, or null. Callers check the token's shape first. */
-export function findLinkByToken(db: Db, token: string): { id: string; label: string; userId: string } | null {
-  const row = db.prepare('SELECT id, label, user_id FROM ob_links WHERE token = ?').get(token) as
-    | { id: string; label: string; user_id: string }
+export function findLinkByToken(
+  db: Db,
+  token: string,
+): { id: string; label: string; userId: string; permission: ObPermission } | null {
+  const row = db.prepare('SELECT id, label, user_id, permission FROM ob_links WHERE token = ?').get(token) as
+    | { id: string; label: string; user_id: string; permission: ObPermission }
     | undefined;
-  return row ? { id: row.id, label: row.label, userId: row.user_id } : null;
+  return row ? { id: row.id, label: row.label, userId: row.user_id, permission: row.permission } : null;
 }
 
 /** The vaults granted to the link, with folders and notes, bodies included. */

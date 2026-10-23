@@ -48,6 +48,7 @@ const conflict: PublishConflict = {
   error: 'conflict',
   target: { kind: 'folder', name: 'Deep', path: ['Research', 'Papers'] },
   removes: { folders: 2, notes: 5 },
+  visitorEdits: 0,
 };
 
 interface Call {
@@ -67,6 +68,7 @@ const obLink = (label: string, vaultIds: string[]): ObLink => ({
   token: 'x'.repeat(43),
   vaultIds,
   views: 0,
+  permission: 'read',
   createdAt: '2026-10-01T00:00:00.000Z',
 });
 
@@ -295,10 +297,23 @@ describe('PublishDialog', () => {
     expect(text()).toMatch(/Replace .Deep. on openboard\?/);
     expect(text()).toContain('5 notes');
     expect(text()).toContain('2 folders');
+    expect(text()).not.toContain('visitors');
     expect(imageCalls()).toHaveLength(0);
     await press('Cancel');
     expect(onClose).toHaveBeenCalled();
     expect(publishCalls()).toHaveLength(1);
+  });
+
+  it('warns that overwriting discards visitor edits, with their count', async () => {
+    publishAnswers = [{ status: 409, body: { ...conflict, visitorEdits: 2 } }];
+    await publishIntoPapers();
+    expect(text()).toContain('2 notes there were changed by visitors through Write links. Overwriting discards those changes.');
+  });
+
+  it('words a single visitor edit in the singular', async () => {
+    publishAnswers = [{ status: 409, body: { ...conflict, visitorEdits: 1 } }];
+    await publishIntoPapers();
+    expect(text()).toContain('1 note there was changed by visitors through Write links. Overwriting discards those changes.');
   });
 
   it('Overwrite resends the same publish with overwrite: true, then uploads the images', async () => {
