@@ -81,7 +81,7 @@ function dropUnreferencedImages(db: Db, vaultId: string): void {
   ).run(vaultId);
 }
 
-function touchVault(db: Db, vaultId: string): void {
+export function touchVault(db: Db, vaultId: string): void {
   const row = db.prepare('SELECT updated_at FROM ob_vaults WHERE id = ?').get(vaultId) as { updated_at: string };
   db.prepare('UPDATE ob_vaults SET updated_at = ? WHERE id = ?').run(bumpTimestamp(row.updated_at), vaultId);
 }
@@ -229,7 +229,7 @@ export function publish(
 
 const vaultJson = (v: ObVaultRow): ObVault => ({ id: v.id, name: v.name, color: v.color, updatedAt: v.updated_at });
 const folderJson = (f: ObFolderRow): ObFolder => ({ id: f.id, vaultId: f.vault_id, parentId: f.parent_id, name: f.name });
-const noteJson = (n: ObNoteRow): ObNote => ({
+export const noteJson = (n: ObNoteRow): ObNote => ({
   id: n.id,
   vaultId: n.vault_id,
   folderId: n.folder_id,

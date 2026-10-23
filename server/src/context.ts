@@ -15,6 +15,8 @@ export interface AppContext {
   accountLimiter: FailureLimiter;
   /** Per-IP cap on failed public openboard token lookups. */
   obLimiter: FailureLimiter;
+  /** Per-IP cap on visitor writes through openboard write links (every write counts). */
+  obWriteLimiter: FailureLimiter;
   /** One-time first-run setup token; null once setup is done (or was not needed). */
   setupToken: string | null;
   /** Origins the browser may call for Ask (CSP connect-src and /api/status). */
