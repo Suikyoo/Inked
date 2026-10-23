@@ -41,6 +41,7 @@ describe('openDb migrations', () => {
     try {
       expect(columns(db, 'ob_links')).toContain('permission');
       expect(columns(db, 'ob_notes')).toContain('visitor_edited_at');
+      expect(db.prepare('SELECT published_title FROM ob_notes WHERE id = ?').get('n1')).toEqual({ published_title: 'N' });
       expect(db.prepare('SELECT permission FROM ob_links WHERE id = ?').get('l1')).toEqual({ permission: 'read' });
       expect(db.prepare('SELECT visitor_edited_at FROM ob_notes WHERE id = ?').get('n1')).toEqual({ visitor_edited_at: null });
       expect(() => db.prepare("UPDATE ob_links SET permission = 'admin' WHERE id = 'l1'").run()).toThrow(/CHECK/);

@@ -123,7 +123,8 @@ CREATE TABLE IF NOT EXISTS ob_notes (
   body       TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  visitor_edited_at TEXT       -- set when a visitor changed or added the note through a write link
+  visitor_edited_at TEXT,      -- set when a visitor changed or added the note through a write link
+  published_title TEXT         -- the title the owner published it under; null for a note a visitor added
 );
 CREATE INDEX IF NOT EXISTS ob_notes_vault ON ob_notes(vault_id);
 CREATE INDEX IF NOT EXISTS ob_notes_folder ON ob_notes(folder_id);
@@ -183,15 +184,23 @@ export function openDb(file: string): Db {
  * Columns added after a table first shipped. SCHEMA has them for new databases; CREATE TABLE IF NOT EXISTS
  * skips existing tables, so each one is added here when missing. Idempotent.
  */
-const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
+const ADDED_COLUMNS: { table: string; column: string; definition: string; backfill?: string }[] = [
   { table: 'ob_links', column: 'permission', definition: "TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write'))" },
   { table: 'ob_notes', column: 'visitor_edited_at', definition: 'TEXT' },
+  {
+    table: 'ob_notes',
+    column: 'published_title',
+    definition: 'TEXT',
+    backfill: 'UPDATE ob_notes SET published_title = title WHERE visitor_edited_at IS NULL',
+  },
 ];
 
 function migrate(db: Db): void {
-  for (const { table, column, definition } of ADDED_COLUMNS) {
+  for (const { table, column, definition, backfill } of ADDED_COLUMNS) {
     const has = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    if (has) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    if (backfill) db.exec(backfill);
   }
 }
 
@@ -305,6 +314,7 @@ export interface ObNoteRow {
   created_at: string;
   updated_at: string;
   visitor_edited_at: string | null;
+  published_title: string | null;
 }
 
 export interface UserSettingsRow {

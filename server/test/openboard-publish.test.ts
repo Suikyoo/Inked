@@ -450,6 +450,19 @@ describe('republishing over visitor edits', () => {
     expect(clean.json().visitorEdits).toBe(0);
   });
 
+  it('republishing a note a visitor renamed finds it by its published title and replaces it', async () => {
+    expect((await publish(alice, vaultReq('Research'))).statusCode).toBe(201);
+    t.app.db
+      .prepare("UPDATE ob_notes SET title = 'First, renamed', visitor_edited_at = '2026-10-24T00:00:00.000Z' WHERE title = 'First'")
+      .run();
+    const conflict = await publish(alice, noteReq('Research', ['Topics'], 'First', 'owner again'));
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ removes: { folders: 0, notes: 1 }, visitorEdits: 1 });
+    expect((await publish(alice, noteReq('Research', ['Topics'], 'First', 'owner again', { overwrite: true }))).statusCode).toBe(201);
+    const titles = (await content(alice)).notes.map((n) => n.title).sort();
+    expect(titles).toEqual(['First', 'Index']);
+  });
+
   it('an overwrite replaces visitor edits with owner content', async () => {
     expect((await publish(alice, vaultReq('Research'))).statusCode).toBe(201);
     markVisitorEdited('First');

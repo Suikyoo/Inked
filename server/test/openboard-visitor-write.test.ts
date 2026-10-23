@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { OB_VISITOR_BODY_MAX, OB_VISITOR_VAULT_NOTES_MAX } from '../src/openboard/visitor.js';
+import { OB_VISITOR_BODY_MAX, OB_VISITOR_VAULT_NOTES_MAX, OB_VISITOR_VAULT_TEXT_MAX } from '../src/openboard/visitor.js';
 import { type Account, call, fakeCipher, makeApp, setupAdmin, type TestApp } from './helpers.js';
 
 let t: TestApp;
@@ -178,6 +178,49 @@ describe('visitor edits', () => {
     const fresh = noteBy(await payload(link.token), 'x'.repeat(200));
     expect((await edit(link.token, n.id, { baseUpdatedAt: fresh.updatedAt, body: 'b'.repeat(OB_VISITOR_BODY_MAX + 1) })).statusCode).toBe(413);
     expect((await edit(link.token, n.id, { baseUpdatedAt: fresh.updatedAt, body: 'b'.repeat(OB_VISITOR_BODY_MAX) })).statusCode).toBe(200);
+  });
+
+  it('trims the title and refuses control and bidi characters', async () => {
+    const v = await publishVault('V');
+    const link = await makeLink([v], 'write');
+    const n = noteBy(await payload(link.token), 'Alpha');
+    for (const bad of ['a\u2028b', 'a\u0085b', 'a\u202Eb', 'a\u2066b', 'a\u0000b', ' Index ']) {
+      expect((await edit(link.token, n.id, { baseUpdatedAt: n.updatedAt, title: bad })).statusCode).toBe(400);
+    }
+    const ok = await edit(link.token, n.id, { baseUpdatedAt: n.updatedAt, title: '  Spaced out  ' });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().title).toBe('Spaced out');
+    const created = await create(link.token, { vaultId: v, folderId: null, title: ' New one ', body: '' });
+    expect(created.json().title).toBe('New one');
+  });
+
+  it('a title-only edit works on an owner note longer than the visitor body limit', async () => {
+    const v = await publishVault('V', [{ title: 'Long', body: 'x'.repeat(OB_VISITOR_BODY_MAX + 10) }]);
+    const link = await makeLink([v], 'write');
+    const n = noteBy(await payload(link.token), 'Long');
+    const res = await edit(link.token, n.id, { baseUpdatedAt: n.updatedAt, title: 'Long renamed' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().body.length).toBe(OB_VISITOR_BODY_MAX + 10);
+  });
+
+  it('the vault text cap counts bytes, not characters', async () => {
+    const v = await publishVault('V');
+    const link = await makeLink([v], 'write');
+    const db = new DatabaseSync(path.join(t.dataDir, 'inked.db'));
+    try {
+      // Just under the cap in characters, but each 漢 is three bytes in UTF-8.
+      const filler = '漢'.repeat(Math.floor(OB_VISITOR_VAULT_TEXT_MAX / 3));
+      db.prepare("INSERT INTO ob_notes (id, vault_id, folder_id, title, body, created_at, updated_at) VALUES (?, ?, NULL, 'big', ?, 't', 't')").run(
+        randomUUID(),
+        v,
+        filler,
+      );
+    } finally {
+      db.close();
+    }
+    const res = await create(link.token, { vaultId: v, folderId: null, title: 'More', body: 'x'.repeat(100) });
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error).toBe('vault_full');
   });
 
   it('requires baseUpdatedAt and the CSRF header', async () => {

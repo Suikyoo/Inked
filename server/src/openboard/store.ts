@@ -203,15 +203,15 @@ export function publish(
           req.rootName,
         );
       } else {
-        const args = [vaultId, parentId, req.rootName];
+        // The target is the note under that title, or the one the owner published under it that a visitor renamed.
+        const args = [vaultId, parentId, req.rootName, req.rootName];
+        const where = 'vault_id = ? AND folder_id IS ? AND (title = ? OR published_title = ?)';
         const { notes, visitorEdits } = db
-          .prepare(
-            'SELECT COUNT(*) AS notes, COUNT(visitor_edited_at) AS visitorEdits FROM ob_notes WHERE vault_id = ? AND folder_id IS ? AND title = ?',
-          )
+          .prepare(`SELECT COUNT(*) AS notes, COUNT(visitor_edited_at) AS visitorEdits FROM ob_notes WHERE ${where}`)
           .get(...args) as { notes: number; visitorEdits: number };
         if (notes > 0) {
           if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes: { folders: 0, notes }, visitorEdits });
-          db.prepare('DELETE FROM ob_notes WHERE vault_id = ? AND folder_id IS ? AND title = ?').run(...args);
+          db.prepare(`DELETE FROM ob_notes WHERE ${where}`).run(...args);
         }
         rootFolderId = parentId;
       }
@@ -225,10 +225,10 @@ export function publish(
       insFolder.run(id, vaultId, f.parentKey === null ? rootFolderId : keyToId.get(f.parentKey)!, f.name);
     }
     const insNote = db.prepare(
-      'INSERT INTO ob_notes (id, vault_id, folder_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO ob_notes (id, vault_id, folder_id, title, body, created_at, updated_at, published_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     );
     for (const n of req.notes) {
-      insNote.run(randomUUID(), vaultId, n.folderKey === null ? rootFolderId : keyToId.get(n.folderKey)!, n.title, n.body, now, now);
+      insNote.run(randomUUID(), vaultId, n.folderKey === null ? rootFolderId : keyToId.get(n.folderKey)!, n.title, n.body, now, now, n.title);
     }
 
     dropUnreferencedImages(db, vaultId);
