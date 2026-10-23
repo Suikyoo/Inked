@@ -30,6 +30,7 @@ import {
   unwrapVaultKey,
   wipe,
   preferRead,
+  readCoverage,
   shownProgress,
   type AccountSettings,
   type Checkpoint,
@@ -1241,7 +1242,7 @@ export class AppStore {
     this.patchTree(vaultId, (t) => ({ folders: { ...t.folders, [id]: view } }));
     // Best effort: without an Index the folder's preview offers "Add description".
     try {
-      await this.createNote(vaultId, id, INDEX_TITLE, indexBody(name));
+      await this.createNote(vaultId, id, INDEX_TITLE, indexBody(name), { read: false });
     } catch {
       /* the folder exists; the Index can be added later */
     }
@@ -1260,7 +1261,7 @@ export class AppStore {
     const pending = this.addingIndex.get(key);
     if (pending) return pending;
     const name = folderId ? tree?.folders[folderId]?.name : this.state.vaults[vaultId]?.name;
-    const job = this.createNote(vaultId, folderId, INDEX_TITLE, indexBody(name ?? '')).finally(() => {
+    const job = this.createNote(vaultId, folderId, INDEX_TITLE, indexBody(name ?? ''), { read: false }).finally(() => {
       this.addingIndex.delete(key);
     });
     this.addingIndex.set(key, job);
@@ -1341,7 +1342,10 @@ export class AppStore {
     return this.ownStamps.get(noteId)?.has(updatedAt) ?? false;
   }
 
-  /** `read: false` for text the owner did not write (an Ask answer): it starts unread, like an MCP note. */
+  /**
+   * `read: false` for text the owner did not write (an Ask answer), which starts unread like an MCP
+   * note, and for folder Index notes, which carry no progress (they have no dot on the map).
+   */
   async createNote(
     vaultId: string,
     folderId: string | null,
@@ -1459,8 +1463,14 @@ export class AppStore {
     const head = this.state.trees[vaultId]?.notes[noteId];
     if (!head) return;
     const read = preferRead(head.read, { pct, size }, head.size);
-    // The same mark shows the same progress: a checkpoint at or below what is shown changes nothing.
-    if (head.read && read.pct === head.read.pct && read.size === head.read.size) return;
+    // A mark that neither shows more nor covers more (the same mark included) changes nothing worth a write.
+    if (
+      head.read &&
+      shownProgress(read, head.size) <= shownProgress(head.read, head.size) &&
+      readCoverage(read, head.size) <= readCoverage(head.read, head.size)
+    ) {
+      return;
+    }
     this.patchTree(vaultId, (t) => ({ notes: { ...t.notes, [noteId]: { ...t.notes[noteId], read } } }));
     this.readProgress.enqueue({ noteId, ...read });
   }

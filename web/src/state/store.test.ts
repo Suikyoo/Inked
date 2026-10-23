@@ -1819,6 +1819,17 @@ describe('AppStore', () => {
       expect(sentFor(noteId)).toEqual([{ noteId, pct: 75, size: 1000 }]);
     });
 
+    it('markRead ignores a mark that neither raises the shown progress nor covers more', async () => {
+      // Read to 100 at 1000 bytes, then the note grew to 2000: shown 50, coverage 1000.
+      const { s, vaultId, noteId, head } = await withNote(2000, { pct: 100, size: 1000 });
+      s.markRead(vaultId, noteId, 50, 2000); // same coverage, same shown progress
+      expect(head().read).toEqual({ pct: 100, size: 1000 });
+      expect(queued(s)).toBe(0);
+      s.markRead(vaultId, noteId, 75, 2000);
+      expect(head().read).toEqual({ pct: 75, size: 2000 });
+      expect(queued(s)).toBe(1);
+    });
+
     it('loadNote keeps the head’s read', async () => {
       const { s, vaultId, noteId, sent, head } = await withCreated(1000, { read: false });
       s.markRead(vaultId, noteId, 50, 1000);
@@ -2040,6 +2051,15 @@ describe('describeError', () => {
       api.createNote.mockClear();
       expect(await s.addDescription(vaultId, folder.id)).toBe(existing);
       expect(api.createNote).not.toHaveBeenCalled();
+    });
+
+    it('Index notes from createFolder and addDescription start unread and queue no progress', async () => {
+      const { s, vaultId } = await withTree();
+      const folder = await s.createFolder(vaultId, null, 'Work');
+      const root = await s.addDescription(vaultId, null);
+      expect(indexNoteOf(s.getState().trees[vaultId], folder.id)?.read).toBeNull();
+      expect(root.read).toBeNull();
+      expect((s as unknown as { readProgress: { size: number } }).readProgress.size).toBe(0);
     });
 
     it('two rapid addDescription calls give one Index note', async () => {
