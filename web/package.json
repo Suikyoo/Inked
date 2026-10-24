@@ -13,10 +13,17 @@
     "models:fetch": "node ../scripts/fetch-model.mjs public/models"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@fontsource/public-sans": "^5.3.0",
     "@fontsource/spectral": "^5.3.0",
     "@huggingface/transformers": "3.8.1",
+    "@replit/codemirror-vim": "^6.4.0",
     "dompurify": "^3.4.16",
     "hash-wasm": "^4.12.0",
     "inked-core": "*",
