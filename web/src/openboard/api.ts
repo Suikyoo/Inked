@@ -1,4 +1,4 @@
-import type { ObLink, ObNote, ObPayload, ObPermission, ObPublicResponse } from 'inked-core';
+import type { ObFolder, ObLink, ObNote, ObPayload, ObPermission, ObPublicResponse, ObVault } from 'inked-core';
 
 /**
  * Openboard API client. Deliberately standalone (bare `fetch`, no app client, store or crypto) so the visitor
@@ -147,6 +147,30 @@ export const previewPayload = (linkId?: string): Promise<ObPayload> =>
   owner('GET', linkId ? `/api/openboard/preview?linkId=${seg(linkId)}` : '/api/openboard/preview');
 
 export const unpublish = (kind: 'vault' | 'folder' | 'note', id: string): Promise<void> => owner('DELETE', `/api/openboard/${kind}s/${seg(id)}`);
+
+// ---- Authoring in openboard -------------------------------------------------------------------------------
+
+/**
+ * The owner's edit of a published note, straight into the published copy. It diverges from the private note on
+ * purpose: nothing copies openboard content back, and the next republish of that target warns before
+ * discarding the edit.
+ */
+export const saveOwnerNote = (noteId: string, patch: { title?: string; body: string; baseUpdatedAt: string }): Promise<ObNote> =>
+  owner('PATCH', `/api/openboard/notes/${seg(noteId)}`, patch);
+
+/** A vault authored here. Its content is stored unencrypted and exists nowhere else. */
+export const createOwnerVault = (name: string, color: string): Promise<ObVault> => owner('POST', '/api/openboard/vaults', { name, color });
+
+export const updateOwnerVault = (id: string, patch: { name?: string; color?: string }): Promise<ObVault> =>
+  owner('PATCH', `/api/openboard/vaults/${seg(id)}`, patch);
+
+export const createOwnerFolder = (vaultId: string, parentId: string | null, name: string): Promise<ObFolder> =>
+  owner('POST', '/api/openboard/folders', { vaultId, parentId, name });
+
+export const renameOwnerFolder = (id: string, name: string): Promise<ObFolder> => owner('PATCH', `/api/openboard/folders/${seg(id)}`, { name });
+
+export const createOwnerNote = (vaultId: string, folderId: string | null, title: string, body: string): Promise<ObNote> =>
+  owner('POST', '/api/openboard/notes', { vaultId, folderId, title, body });
 
 /** Where the owner reads a published image (the editor's preview). */
 export function ownerImageUrl(vaultId: string, imageId: string): string {
