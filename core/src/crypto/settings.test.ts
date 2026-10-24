@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decryptAccountSettings, encryptAccountSettings, isAccountSettings } from './fields';
+import { decryptAccountSettings, encryptAccountSettings, isAccountSettings, type AccountSettings } from './fields';
 import { CryptoError } from './errors';
 import { deriveFromPassword, deriveRecoveryKeys, generateKdfSalt, generateRecoveryKey, generateUserKey, type KdfParams } from './index';
 
@@ -20,6 +20,18 @@ describe('account settings field', () => {
     const k = await key();
     const ct = await encryptAccountSettings(k, 'u1', { semantic: true, llm });
     expect(await decryptAccountSettings(k, 'u1', ct)).toEqual({ semantic: true, llm });
+  });
+  it('round-trips vim settings', async () => {
+    const k = await key();
+    const s: AccountSettings = { vim: { on: true, config: "vim.keymap.set('i', 'jk', '<Esc>')" } };
+    const ct = await encryptAccountSettings(k, 'u1', s);
+    expect(await decryptAccountSettings(k, 'u1', ct)).toEqual(s);
+  });
+  it('rejects a malformed vim value', () => {
+    expect(isAccountSettings({ vim: { on: true } })).toBe(false);
+    expect(isAccountSettings({ vim: { on: 'yes', config: '' } })).toBe(false);
+    expect(isAccountSettings({ vim: 'on' })).toBe(false);
+    expect(isAccountSettings({ vim: { on: true, config: '' } })).toBe(true);
   });
   it('round-trips an empty object', async () => {
     const k = await key();
