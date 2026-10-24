@@ -406,6 +406,49 @@ describe('authoring in the openboard control', () => {
     expect(calls((url, m) => m === 'PATCH' && url.startsWith('/api/openboard/notes/'))).toHaveLength(1);
   });
 
+  it('asks before dropping an unsaved edit, and keeps it when refused', async () => {
+    await content();
+    await click(q('.obe-side .ob-row-note')!);
+    await click(button('Edit', q('.ob-drawer')!));
+
+    const body = q<HTMLTextAreaElement>('.ob-editor-body')!;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      set.call(body, 'unsaved work');
+      body.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      await click(q('.ob-drawer .ibtn')!);
+      expect(confirmSpy).toHaveBeenCalled();
+      // Refused: the editor and the draft are still there.
+      expect(q<HTMLTextAreaElement>('.ob-editor-body')?.value).toBe('unsaved work');
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it('drops the edit when the owner agrees', async () => {
+    await content();
+    await click(q('.obe-side .ob-row-note')!);
+    await click(button('Edit', q('.ob-drawer')!));
+    const body = q<HTMLTextAreaElement>('.ob-editor-body')!;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      set.call(body, 'unsaved work');
+      body.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      await click(q('.ob-drawer .ibtn')!);
+      expect(q('.ob-editor')).toBeNull();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
   it('creates a native vault, and says its content is unencrypted', async () => {
     await content({ vaults: [], folders: [], notes: [] });
     const form = q('.obe-new-vault')!;

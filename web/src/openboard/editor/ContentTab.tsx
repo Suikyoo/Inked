@@ -60,6 +60,10 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
   const [editing, setEditing] = useState<string | null>(null);
   /** A pending "New folder" / "New note" prompt, by vault. */
   const [creating, setCreating] = useState<{ kind: 'folder' | 'note'; vaultId: string } | null>(null);
+  const dirty = useRef(false);
+  const onDirtyChange = useCallback((d: boolean) => {
+    dirty.current = d;
+  }, []);
 
   const fail = useCallback(
     (e: unknown) => {
@@ -103,6 +107,34 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
     setPendingOpen(null);
   }, [pendingOpen, preview, openNote]);
 
+  /** True when nothing unsaved would be lost, or the owner agrees to drop it. */
+  const mayLeave = useCallback(() => {
+    if (!editing || !dirty.current) return true;
+    if (!window.confirm('Discard your changes to this note?')) return false;
+    dirty.current = false;
+    return true;
+  }, [editing]);
+
+  // Reading another note, or closing the drawer, leaves edit mode.
+  useEffect(() => {
+    setEditing((id) => (id === reading ? id : null));
+  }, [reading]);
+
+  // Closing or reloading the tab with unsaved changes asks first.
+  useEffect(() => {
+    if (!editing) {
+      dirty.current = false;
+      return;
+    }
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (!dirty.current) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [editing]);
+
   const linkLabel = links.find((l) => l.id === linkId)?.label;
 
   return (
@@ -110,7 +142,9 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
       <ContentTree
         content={content}
         reading={reading}
-        onOpen={openFromTree}
+        onOpen={(n) => {
+          if (n.id === reading || mayLeave()) openFromTree(n);
+        }}
         onUnpublish={setTarget}
         onNewFolder={(vaultId) => setCreating({ kind: 'folder', vaultId })}
         onNewNote={(vaultId) => setCreating({ kind: 'note', vaultId })}
@@ -144,15 +178,32 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
             </div>
           ) : (
             <section className="map ob-map" aria-label="Concept map">
-              <ConceptMap entries={entries} hits={NO_HITS} hot={null} loading={preview === null} selected={selected} onSelect={onMapSelect} onOpenNote={openNote} fitRequest={fitRequest} />
+              <ConceptMap
+                entries={entries}
+                hits={NO_HITS}
+                hot={null}
+                loading={preview === null}
+                selected={selected}
+                onSelect={(sel) => {
+                  if ((sel?.kind === 'note' && sel.id === reading) || mayLeave()) onMapSelect(sel);
+                }}
+                onOpenNote={(vaultId, noteId) => {
+                  if (noteId === reading || mayLeave()) openNote(vaultId, noteId);
+                }}
+                fitRequest={fitRequest}
+              />
             </section>
           )}
           <ReaderDrawer
             payload={shown}
             reading={reading}
             resolveImage={resolveImage}
-            onOpenNote={openNote}
-            onClose={closeReader}
+            onOpenNote={(vaultId, noteId) => {
+              if (noteId === reading || mayLeave()) openNote(vaultId, noteId);
+            }}
+            onClose={() => {
+              if (mayLeave()) closeReader();
+            }}
             actions={(note) =>
               editing === note.id ? null : (
                 <button type="button" className="btn btn-sm ob-edit" onClick={() => setEditing(note.id)}>
@@ -173,7 +224,11 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
                     setEditing(null);
                     void onChanged();
                   }}
-                  onCancel={() => setEditing(null)}
+                  onCancel={() => {
+                    dirty.current = false;
+                    setEditing(null);
+                  }}
+                  onDirtyChange={onDirtyChange}
                   // The owner wrote it, so its links are as trusted as published ones.
                   untrustedPreview={false}
                   titleMax={OB_TITLE_MAX}
