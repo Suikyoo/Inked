@@ -337,7 +337,7 @@ Motion is quiet and tied to the ink metaphor: it confirms a change of state and 
 - **Hover and press:** color changes over `--dur-1`; buttons scale to 0.98 while pressed.
 - **Banners and notices:** collapse in and out, holding their last content while they close.
 - **Map:** edges write on once per session, ink draws along a path over `--dur-ink`, and a saved note ripples (see Live ripples under Concept map).
-- **Vault icon:** in the sidebar row and on the map hub only. Hovering or focusing the row or hub turns the outline hexagon 60° over `--dur-3` (`--ease-std`), which lands on the same shape, like a dial; it turns back on leave. A click rushes ink: the unlit spokes draw in, hold and draw back out over 760ms (`--ease-std`) while the core pulses once, so the real level always stays drawn. Reduced motion drops both.
+- **Vault icon:** on a vault row (the sidebar, and the openboard rail and published-content tree) and on the map hub. Nowhere else, and never with a level it has not been given: the spoke count is always `activeNoteCount7d / max(noteCount, 1)`, from one shared rule (`state/vaultStats.ts`). Hovering or focusing the row or hub turns the outline hexagon 60° over `--dur-3` (`--ease-std`), which lands on the same shape, like a dial; it turns back on leave. A click rushes ink: the unlit spokes draw in, hold and draw back out over 760ms (`--ease-std`) while the core pulses once, so the real level always stays drawn. Reduced motion drops both.
 - Animate opacity and transform, and color on hover. The exceptions are `clip-path` (the unlock wipe), SVG `stroke-dashoffset` (map ink and write-on) and `grid-template-rows` (tree collapse, banners). Never width, height or position.
 
 ### Reduced motion

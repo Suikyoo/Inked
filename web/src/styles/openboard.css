@@ -165,6 +165,15 @@ body,
   font: italic 500 14px/1 var(--font-serif);
   color: var(--text);
 }
+/* The vault icon's dial turn (the icon itself is in base.css), as on the app's sidebar row. */
+.ob-row-vault:is(:hover, :focus-visible) .vault-icon .vi-out {
+  transform: rotate(60deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-row-vault:is(:hover, :focus-visible) .vault-icon .vi-out {
+    transform: none;
+  }
+}
 .ob-row-chev {
   width: 12px;
   flex: 0 0 12px;

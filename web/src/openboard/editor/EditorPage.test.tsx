@@ -479,6 +479,29 @@ describe('authoring in the openboard control', () => {
     expect(q('.obe-new-vault .form-error')?.textContent).toMatch(/already/i);
   });
 
+  it('draws the vault icon at the share of notes edited this week, not a bare hexagon', async () => {
+    const now = Date.now();
+    const fresh = new Date(now - 3_600_000).toISOString();
+    const stale = new Date(now - 60 * 86_400_000).toISOString();
+    await content({
+      vaults: [{ id: V1, name: 'Research', color: '#7452e0', updatedAt: fresh, origin: 'published' }],
+      folders: [],
+      notes: [1, 2, 3, 4].map((k) => ({ id: `n${k}`, vaultId: V1, folderId: null, title: `Note ${k}`, body: '', createdAt: stale, updatedAt: k <= 2 ? fresh : stale })),
+    });
+    // Two of four edited this week: level 0.5, which is three of the six spokes.
+    const icon = q('.obe-side .ob-row-vault .vault-icon')!;
+    expect(icon.querySelectorAll('.vi-spoke.is-lit')).toHaveLength(3);
+    expect(icon.querySelector('title')!.textContent).toBe('50% of notes edited this week');
+  });
+
+  it('rushes ink through the clicked vault’s icon, as the sidebar does', async () => {
+    await content();
+    const row = q('.obe-side .ob-row-vault')!;
+    expect(row.querySelector('.vi-rush')).toBeNull();
+    await click(row);
+    expect(row.querySelector('.vi-rush')).not.toBeNull();
+  });
+
   it('badges a native vault in the tree', async () => {
     await content(nativePayload());
     expect(q('.obe-side')!.textContent).toContain('Openboard-only');

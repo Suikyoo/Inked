@@ -215,6 +215,15 @@ describe('VisitorPage', () => {
     expect(q('svg.cmap-svg')).toBeNull();
   });
 
+  it('rushes ink through the clicked vault’s icon, as the sidebar does', async () => {
+    respond(200, payload());
+    await render();
+    const row = q('.ob-rail .ob-row-vault')!;
+    expect(row.querySelector('.vi-rush')).toBeNull();
+    act(() => (row as HTMLButtonElement).click());
+    expect(row.querySelector('.vi-rush')).not.toBeNull();
+  });
+
   it('starts with the rail collapsed under 900px wide', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
     respond(200, payload());

@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { indexNoteOf } from 'inked-core/indexNote';
 import { nextVaultColor } from 'inked-core/vaultColors';
 import type { ObFolder, ObLink, ObNote, ObPayload } from 'inked-core';
-import { VaultIcon } from '../../brand/VaultIcon';
+import { VaultIcon, inkLevelLabel } from '../../brand/VaultIcon';
 import { ColorPicker } from '../../components/ColorPicker';
 import { ConfirmDialog, PromptDialog } from '../../components/Dialog';
 import { ChevronRight, IndexIcon } from '../../components/Icons';
 import { ConceptMap } from '../../map/ConceptMap';
+import { notesInkLevel } from '../../state/vaultStats';
 import { ObApiError, createOwnerFolder, createOwnerNote, createOwnerVault, errorText, ownerImageUrl, previewPayload, saveOwnerNote, unpublish } from '../api';
 import { ObNoteEditor } from '../ObNoteEditor';
 import { ReaderDrawer, useReading } from '../board';
@@ -419,6 +420,8 @@ function ContentTree({
   const nativeVaults = useMemo(() => new Set(content.vaults.filter((v) => v.origin === 'native').map((v) => v.id)), [content.vaults]);
   const trees = useMemo(() => buildTrees(content), [content]);
   const [shut, setShut] = useState<ReadonlySet<string>>(() => new Set());
+  // Ink rush: a click on a vault flashes its icon's spokes, as it does in the app's sidebar and on the map hub.
+  const [rush, setRush] = useState({ vaultId: '', seq: 0 });
   const flip = (id: string) =>
     setShut((s) => {
       const next = new Set(s);
@@ -508,12 +511,25 @@ function ContentTree({
           content.vaults.map((v) => {
             const t = trees.get(v.id)!;
             const open = !shut.has(v.id);
-            const count = content.notes.filter((n) => n.vaultId === v.id).length;
+            const notes = content.notes.filter((n) => n.vaultId === v.id);
+            const count = notes.length;
+            // The same 7-day rule the visitor rail, the map hub and the app's sidebar use: the icon must not
+            // read as "nothing written this week" here when it reads full elsewhere.
+            const ink = notesInkLevel(notes);
             return (
               <section key={v.id} className="ob-vault">
                 <div className="obe-tree-row">
-                  <button type="button" className="ob-row ob-row-vault" aria-expanded={open} onClick={() => flip(v.id)}>
-                    <VaultIcon color={v.color} level={0} size={14} />
+                  <button
+                    type="button"
+                    className="ob-row ob-row-vault"
+                    aria-expanded={open}
+                    title={`${v.name} · ${inkLevelLabel(ink)}`}
+                    onClick={() => {
+                      flip(v.id);
+                      setRush((r) => ({ vaultId: v.id, seq: r.seq + 1 }));
+                    }}
+                  >
+                    <VaultIcon color={v.color} level={ink} size={14} rush={rush.vaultId === v.id ? rush.seq : 0} />
                     <span className="ob-row-label ob-vault-name">{v.name}</span>
                     <span className="ob-row-count">{count}</span>
                   </button>
