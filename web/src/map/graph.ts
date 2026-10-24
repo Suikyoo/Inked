@@ -1,4 +1,6 @@
-import { shownProgress, type Checkpoint } from 'inked-core';
+// From the subpath, not the barrel: the barrel re-exports the crypto tree, which would drag argon2 into
+// every chunk that reaches this module — including the openboard bundles, which must ship no crypto.
+import { shownProgress, type Checkpoint } from 'inked-core/readProgress';
 import { indexNoteOf, INDEX_TITLE } from 'inked-core/indexNote';
 import { titleIndex } from '../lib/titles';
 import { wikiLinkTargets } from '../markdown/plugins';
