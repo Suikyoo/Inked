@@ -469,9 +469,6 @@
   padding-top: var(--sp-4);
   border-top: 1px solid var(--line);
 }
-.obe-new-vault .input {
-  width: 100%;
-}
 
 .obe-stage {
   flex: 1 1 0;
