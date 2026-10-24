@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyKeymaps, applyVimOptions, clearKeymaps, optionExtensions, type VimApi } from './applyVim';
+import { applyKeymaps, clearKeymaps, indentStringFor, optionExtensions, type VimApi } from './applyVim';
 
 /** Records every call made to the vim engine, in order, so the tests assert on sequence as well as content. */
 function spy(): VimApi & { calls: string[][] } {
@@ -61,18 +61,18 @@ describe('optionExtensions', () => {
   });
 });
 
-describe('applyVimOptions', () => {
-  it('sets only the options vim owns', () => {
-    const set: [string, unknown][] = [];
-    const api: VimApi = { ...spy(), setOption: (n, v) => set.push([n, v]) };
-    applyVimOptions(api, { ignorecase: true, scrolloff: 4, wrap: true, number: true });
-    expect(set).toEqual([
-      ['ignorecase', true],
-      ['scrolloff', 4],
-    ]);
+
+describe('indentStringFor', () => {
+  it('indents with vim’s own default tabstop of 8 when none is given', () => {
+    expect(indentStringFor({ expandtab: true })).toBe(' '.repeat(8));
   });
 
-  it('does nothing when the engine has no setOption', () => {
-    expect(() => applyVimOptions(spy(), { ignorecase: true })).not.toThrow();
+  it('indents with the configured tabstop', () => {
+    expect(indentStringFor({ expandtab: true, tabstop: 4 })).toBe('    ');
+  });
+
+  it('indents with a tab when expandtab is off', () => {
+    expect(indentStringFor({ expandtab: false, tabstop: 4 })).toBe('\t');
   });
 });
+

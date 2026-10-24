@@ -17,15 +17,17 @@ export interface VimKeymap {
   remap: boolean;
 }
 
+/**
+ * The options the config may set. Deliberately only what the editor can actually honour: `@replit/codemirror-vim`
+ * defines just `filetype`, `textwidth`, `langmap`, `pcre` and `insertModeEscKeysTimeout`, so `ignorecase`,
+ * `smartcase` and `scrolloff` are rejected rather than accepted and quietly ignored.
+ */
 export interface VimOptions {
   number?: boolean;
   relativenumber?: boolean;
   wrap?: boolean;
   tabstop?: number;
   expandtab?: boolean;
-  ignorecase?: boolean;
-  smartcase?: boolean;
-  scrolloff?: number;
 }
 
 export interface VimConfigError {
@@ -52,9 +54,6 @@ const OPTIONS: Record<keyof VimOptions, 'boolean' | 'number'> = {
   wrap: 'boolean',
   tabstop: 'number',
   expandtab: 'boolean',
-  ignorecase: 'boolean',
-  smartcase: 'boolean',
-  scrolloff: 'number',
 };
 const OPTION_NAMES = Object.keys(OPTIONS).join(', ');
 
@@ -253,11 +252,6 @@ function parseLiteral(p: Parser): string | number | boolean {
   throw new Bad(p.line, UNREADABLE);
 }
 
-/** Tells a mode list `{'n','v'}` from an opts table `{ desc = '…' }` by what follows the brace. */
-function bracedIsOptsTable(p: Parser): boolean {
-  return p.is('punct', '{') && p.peek(1)?.kind === 'name' && p.peek(2)?.value === '=';
-}
-
 /** `vim.o.<name> = <literal>` / `vim.opt.<name> = <literal>`, checked against the allowlist. */
 function parseOption(p: Parser, line: number): [keyof VimOptions, boolean | number] {
   p.eat('punct', '.');
@@ -292,7 +286,7 @@ function parseKeymapSet(p: Parser, line: number): VimKeymap {
   let opts: Record<string, string | number | boolean> = {};
   if (p.is('punct', ',')) {
     p.next();
-    if (bracedIsOptsTable(p) || p.is('punct', '{')) opts = parseOptsTable(p);
+    if (p.is('punct', '{')) opts = parseOptsTable(p);
   }
   p.eat('punct', ')');
 

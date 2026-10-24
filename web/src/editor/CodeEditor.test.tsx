@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodeEditor, type EditorHandle } from './CodeEditor';
+import type { VimConfig } from './vimConfig';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -98,5 +99,31 @@ describe('CodeEditor wrapping', () => {
     // The vim package arrives by dynamic import, which takes longer than one microtask tick.
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(wrapping()).toBe(false);
+  });
+});
+
+describe('CodeEditor turning vim off', () => {
+  it('clears the mappings vim mode set, since they are global to the engine', async () => {
+    const handleRef: { current: EditorHandle | null } = { current: null };
+    const render = (vim: { on: boolean; config: VimConfig } | null) =>
+      act(async () => {
+        root.render(<CodeEditor value="ab" onChange={() => undefined} handleRef={handleRef} vim={vim} ariaLabel="Markdown source" />);
+      });
+    const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+
+    await render({ on: true, config: { keymaps: [{ modes: ['i'], lhs: 'jk', rhs: '<Esc>', remap: false }], options: {}, errors: [] } });
+    await settle();
+    const { Vim } = await import('@replit/codemirror-vim');
+    const cleared: string[] = [];
+    const spy = vi.spyOn(Vim as unknown as { mapclear: (c?: string) => void }, 'mapclear').mockImplementation((c?: string) => {
+      cleared.push(c ?? '');
+    });
+    try {
+      await render(null);
+      await settle();
+      expect(cleared).toEqual(['normal', 'insert', 'visual']);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

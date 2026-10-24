@@ -12,7 +12,7 @@ import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, drawSelection, highlightSpecialChars, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
-import { applyKeymaps, applyVimOptions, clearKeymaps, loadVim, optionExtensions, type VimApi } from './applyVim';
+import { applyKeymaps, clearKeymaps, loadVim, optionExtensions, type VimApi } from './applyVim';
 import { externalChange } from './pushValue';
 import type { VimConfig } from './vimConfig';
 
@@ -47,6 +47,12 @@ export interface CodeEditorProps {
  * clear mappings an earlier editor set, and the dynamic import is cached by the module system anyway.
  */
 let vimApi: VimApi | null = null;
+
+/** readOnly and the content attributes, as one extension, for construction and for every later change. */
+const stateExtensions = (readOnly: boolean, ariaLabel: string, spellCheck: boolean) => [
+  EditorState.readOnly.of(readOnly),
+  EditorView.contentAttributes.of({ 'aria-label': ariaLabel, spellcheck: String(spellCheck) }),
+];
 
 /** A textarea normalises CRLF and CodeMirror does not, so a Windows paste is flattened on the way in. */
 const normalise = (text: string) => text.replace(/\r\n?/g, '\n');
@@ -96,7 +102,7 @@ export function CodeEditor({
           // Wrapping is on as the textarea's was; `vim.o.wrap = false` is the only thing that turns it off.
           wrapRoom.current.of(EditorView.lineWrapping),
           optionRoom.current.of([]),
-          stateRoom.current.of([]),
+          stateRoom.current.of(stateExtensions(readOnly, ariaLabel, spellCheck)),
           cmPlaceholder(placeholder),
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !pushing.current) live.current.onChange(u.state.doc.toString());
@@ -146,12 +152,7 @@ export function CodeEditor({
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
-    view.dispatch({
-      effects: stateRoom.current.reconfigure([
-        EditorState.readOnly.of(readOnly),
-        EditorView.contentAttributes.of({ 'aria-label': ariaLabel, spellcheck: String(spellCheck) }),
-      ]),
-    });
+    view.dispatch({ effects: stateRoom.current.reconfigure(stateExtensions(readOnly, ariaLabel, spellCheck)) });
   }, [readOnly, spellCheck, ariaLabel]);
 
   // Vim mode. The package is only fetched once it is actually wanted; its mappings are module-global.
@@ -175,7 +176,6 @@ export function CodeEditor({
       vimApi = api;
       if (!alive || !viewRef.current) return;
       applyKeymaps(api, vim.config.keymaps);
-      applyVimOptions(api, vim.config.options);
       viewRef.current.dispatch({
         effects: [
           vimRoom.current.reconfigure(extension),

@@ -12,7 +12,8 @@ import { isCryptoError } from 'inked-core';
 import { AskSettings } from './SettingsAsk';
 import { DiagramSettings } from './SettingsDiagrams';
 import { prefs } from '../lib/prefs';
-import { copyText, describeError, formatDateTime, MIN_PASSWORD, nextVaultColor, rotationCommitError, VAULT_COLORS } from '../lib/util';
+import { ColorPicker } from '../components/ColorPicker';
+import { copyText, describeError, formatDateTime, MIN_PASSWORD, nextVaultColor, rotationCommitError } from '../lib/util';
 import { useSemantic, useSemanticStore } from '../semantic/SemanticContext';
 import { useAppState, useStore, vaultStats } from '../state/StoreContext';
 import type { PreparedRecoveryKey, VaultView } from '../state/store';
@@ -316,30 +317,6 @@ function RecoveryKey() {
         </>
       )}
     </section>
-  );
-}
-
-function ColorPicker({ value, onChange, label }: { value: string; onChange: (c: string) => void; label: string }) {
-  const custom = !VAULT_COLORS.some((c) => c.toLowerCase() === value.toLowerCase());
-  return (
-    <div className="swatches" role="radiogroup" aria-label={label}>
-      {VAULT_COLORS.map((c) => (
-        <button
-          key={c}
-          type="button"
-          role="radio"
-          aria-checked={c.toLowerCase() === value.toLowerCase()}
-          aria-label={c}
-          className="swatch"
-          style={{ background: c }}
-          onClick={() => onChange(c)}
-        />
-      ))}
-      <label className={custom ? 'swatch swatch-custom is-on' : 'swatch swatch-custom'} title="Custom colour">
-        <span className="sr-only">Custom colour</span>
-        <input type="color" value={value} onChange={(e) => onChange(e.target.value.toUpperCase())} />
-      </label>
-    </div>
   );
 }
 

@@ -15,8 +15,6 @@ export interface VimApi {
   map(lhs: string, rhs: string, ctx: string): void;
   noremap(lhs: string, rhs: string, ctx: string): void;
   mapclear(ctx?: string): void;
-  /** Vim's own options, which are not CodeMirror extensions. Absent in tests that only watch mappings. */
-  setOption?(name: string, value: unknown): void;
 }
 
 const CONTEXTS = ['normal', 'insert', 'visual'] as const;
@@ -38,15 +36,12 @@ export function applyKeymaps(api: VimApi, keymaps: VimKeymap[]): void {
   }
 }
 
-/** The options vim owns rather than CodeMirror. */
-const VIM_OWNED = ['ignorecase', 'smartcase', 'scrolloff'] as const;
+/** Vim's own default: a tab stops every 8 columns, so `expandtab` with no `tabstop` inserts 8 spaces. */
+const VIM_DEFAULT_TABSTOP = 8;
 
-/** Sets vim's own options globally. Options it does not own are `optionExtensions`' job. */
-export function applyVimOptions(api: VimApi, o: VimOptions): void {
-  for (const name of VIM_OWNED) {
-    const value = o[name];
-    if (value !== undefined) api.setOption?.(name, value);
-  }
+/** What one indent inserts: spaces under `expandtab`, otherwise a real tab. */
+export function indentStringFor(o: VimOptions): string {
+  return o.expandtab ? ' '.repeat(o.tabstop ?? VIM_DEFAULT_TABSTOP) : '\t';
 }
 
 /** `relativenumber`: the cursor's line keeps its own number, the rest count distance from it. */
@@ -61,7 +56,7 @@ export function optionExtensions(o: VimOptions): Extension[] {
   if (o.number || o.relativenumber) out.push(lineNumbers(o.relativenumber ? { formatNumber: relativeNumber } : undefined));
   if (o.wrap) out.push(EditorView.lineWrapping);
   if (o.tabstop !== undefined) out.push(EditorState.tabSize.of(o.tabstop));
-  if (o.expandtab !== undefined) out.push(indentUnit.of(o.expandtab ? ' '.repeat(o.tabstop ?? 2) : '\t'));
+  if (o.expandtab !== undefined) out.push(indentUnit.of(indentStringFor(o)));
   return out;
 }
 

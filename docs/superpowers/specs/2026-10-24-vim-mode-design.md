@@ -86,7 +86,9 @@ The one subtlety every controlled CM6 component has: when `value` arrives back f
 
 5. **`vim.keymap.set` is the supported binding form, with a string right-hand side.** Accepted: a mode as `'n' | 'i' | 'v'` or a list of them, an `lhs` string, an `rhs` string, and an optional trailing table whose keys are parsed and ignored except that unknown keys are not an error (so `desc = "..."`, `silent = true`, `noremap = true` all pass). `noremap = true` and the `vim.keymap.set` default both compile to `Vim.noremap`; `remap = true` compiles to `Vim.map`. *Why:* this is the modern idiom the owner would reach for, and `noremap` by default matches `vim.keymap.set`'s real behaviour. *Cost if wrong:* `rhs` as a Lua function is the other common idiom and cannot work without a VM — the compiler rejects it with "a function right-hand side needs real Lua; use a key sequence string", which is an honest dead end rather than a silent no-op.
 
-6. **A fixed option allowlist, everything else is an error.** `vim.o.<name>` and `vim.opt.<name>` accept `number`, `relativenumber`, `wrap`, `tabstop`, `expandtab`, `ignorecase`, `smartcase` and `scrolloff`, each mapped onto a CM6 extension or a vim option. An unknown name errors with the list of what is supported. *Why:* silently swallowing `vim.o.swapfile = false` teaches the owner the config does more than it does. *Cost if wrong:* adding an option is one table entry plus the extension that implements it.
+6. **A fixed option allowlist, everything else is an error.** `vim.o.<name>` and `vim.opt.<name>` accept `number`, `relativenumber`, `wrap`, `tabstop` and `expandtab`, each mapped onto a CM6 extension. An unknown name errors with the list of what is supported. *Why:* silently swallowing `vim.o.swapfile = false` teaches the owner the config does more than it does. *Cost if wrong:* adding an option is one table entry plus the extension that implements it.
+
+   **Corrected after implementation.** This ruling originally also listed `ignorecase`, `smartcase` and `scrolloff`, to be set through `Vim.setOption`. They were wrong: `@replit/codemirror-vim` defines only `filetype`, `textwidth`, `langmap`, `pcre` and `insertModeEscKeysTimeout` (`defineOption` calls in `@replit/codemirror-vim-core/vim.js`), and its `setOption` accepts any name without storing anything that is ever read — so those three compiled, applied, and did nothing. That is precisely the failure this ruling exists to prevent, so they were removed from the allowlist and are now rejected by name. Implementing them for real would mean a CodeMirror view plugin for `scrolloff` and patching the engine's search for the case options; neither is in this project's scope.
 
 7. **A config that does not compile applies no custom keymaps; vim defaults still work.** Settings shows every error with its line number, and the editor runs with built-in vim bindings only. There is no "last known good" config. *Why:* predictable. A half-applied config — some lines in, some rejected — would leave the owner guessing which half. *Cost if wrong:* a one-character typo costs all custom keymaps until it is fixed, which is loud and quickly diagnosed, rather than quiet and lasting.
 
@@ -110,8 +112,8 @@ vim.keymap.set({'n', 'v'}, 'L', '$')
 vim.keymap.set('n', '<Space>w', ':w<CR>', { desc = 'save the note' })
 
 vim.o.relativenumber = true
-vim.o.ignorecase = true
-vim.o.scrolloff = 4
+vim.o.expandtab = true
+vim.o.tabstop = 4
 ```
 
 What is rejected, each with its line number:
@@ -121,7 +123,7 @@ What is rejected, each with its line number:
 | `vim.keymap.set('n', 'x', function() ... end)` | a function right-hand side needs real Lua; use a key sequence string |
 | `require('lazy').setup(...)` | `require` is not supported; this config defines keymaps and options only |
 | `if vim.fn.has('mac') then ... end` | control flow is not supported; this config defines keymaps and options only |
-| `vim.o.swapfile = false` | unknown option `swapfile`; supported: number, relativenumber, wrap, … |
+| `vim.o.swapfile = false` | unknown option `swapfile`; supported: number, relativenumber, wrap, tabstop, expandtab |
 | `vim.keymap.set('q', 'x', 'y')` | unknown mode `q`; use `n`, `i` or `v` |
 
 ## Files

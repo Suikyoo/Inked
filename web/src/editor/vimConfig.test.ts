@@ -64,11 +64,19 @@ describe('compileVimConfig: keymaps', () => {
 
 describe('compileVimConfig: options and rejections', () => {
   it('reads vim.o and vim.opt options', () => {
-    expect(ok('vim.o.relativenumber = true\nvim.opt.scrolloff = 4\nvim.o.wrap = false').options).toEqual({
+    expect(ok('vim.o.relativenumber = true\nvim.opt.tabstop = 4\nvim.o.wrap = false').options).toEqual({
       relativenumber: true,
-      scrolloff: 4,
+      tabstop: 4,
       wrap: false,
     });
+  });
+
+  it('rejects options the engine cannot honour, rather than accepting them silently', () => {
+    for (const name of ['ignorecase', 'smartcase', 'scrolloff']) {
+      const e = compileVimConfig(`vim.o.${name} = true`).errors[0];
+      expect(e.message).toContain(name);
+      expect(e.message).toContain('supported');
+    }
   });
 
   it('rejects an unknown option and lists the supported ones', () => {
@@ -78,7 +86,7 @@ describe('compileVimConfig: options and rejections', () => {
   });
 
   it('rejects a value of the wrong type', () => {
-    expect(compileVimConfig('vim.o.scrolloff = true').errors[0].message).toContain('number');
+    expect(compileVimConfig('vim.o.tabstop = true').errors[0].message).toContain('number');
     expect(compileVimConfig('vim.o.wrap = 3').errors[0].message).toContain('true or false');
   });
 
