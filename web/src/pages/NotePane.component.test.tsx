@@ -165,7 +165,7 @@ describe('vim mode in the note editor', () => {
     mount({ mode: 'edit' });
     expect(lastVimProp.current).toEqual({
       on: true,
-      config: { keymaps: [{ modes: ['i'], lhs: 'jk', rhs: '<Esc>', remap: false }], options: {}, errors: [] },
+      config: { keymaps: [{ modes: ['i'], lhs: 'jk', rhs: '<Esc>', remap: false }], options: {}, globals: {}, errors: [] },
     });
   });
 

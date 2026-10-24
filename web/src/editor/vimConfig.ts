@@ -30,6 +30,15 @@ export interface VimOptions {
   expandtab?: boolean;
 }
 
+/**
+ * The `vim.g` globals the config may set. Only the two leaders: the engine has no notion of globals, so any
+ * other name would be accepted and then quietly ignored — the failure the option allowlist exists to prevent.
+ */
+export interface VimGlobals {
+  mapleader?: string;
+  maplocalleader?: string;
+}
+
 export interface VimConfigError {
   /** 1-based line in the config text. */
   line: number;
@@ -39,6 +48,7 @@ export interface VimConfigError {
 export interface VimConfig {
   keymaps: VimKeymap[];
   options: VimOptions;
+  globals: VimGlobals;
   errors: VimConfigError[];
 }
 
@@ -56,6 +66,35 @@ const OPTIONS: Record<keyof VimOptions, 'boolean' | 'number'> = {
   expandtab: 'boolean',
 };
 const OPTION_NAMES = Object.keys(OPTIONS).join(', ');
+
+const GLOBALS = ['mapleader', 'maplocalleader'] as const;
+const GLOBAL_NAMES = GLOBALS.join(', ');
+
+/** Vim's own default leader, used until `vim.g.mapleader` says otherwise. */
+const DEFAULT_LEADER = '\\';
+
+/**
+ * One character of a leader in the engine's key notation.
+ *
+ * A leader is substituted into a mapping's keys, which the engine then tokenises — so a literal space has to
+ * become `<Space>` and a literal `<` has to become `<lt>`, or the engine reads them as syntax. Both spellings
+ * are the engine's own (see `<Space>` in its default keymap, and its `lt` key name).
+ */
+const KEY_NOTATION: Record<string, string> = { ' ': '<Space>', '<': '<lt>', '\t': '<Tab>' };
+const asKeys = (leader: string) => [...leader].map((c) => KEY_NOTATION[c] ?? c).join('');
+
+/** `<leader>` and `<localleader>`, in any case, as real configs spell them (`<Leader>` is the common one). */
+const LEADER_RE = /<leader>/gi;
+const LOCALLEADER_RE = /<localleader>/gi;
+const usesLeader = (text: string) => LEADER_RE.test(text);
+const usesLocalLeader = (text: string) => LOCALLEADER_RE.test(text);
+
+/** Substitutes the leaders in force into a mapping's keys, the way vim expands them at definition time. */
+function expandLeaders(text: string, globals: VimGlobals): string {
+  return text
+    .replace(LOCALLEADER_RE, asKeys(globals.maplocalleader ?? DEFAULT_LEADER))
+    .replace(LEADER_RE, asKeys(globals.mapleader ?? DEFAULT_LEADER));
+}
 
 // ---- Tokens -----------------------------------------------------------------------------------------------
 
@@ -265,6 +304,20 @@ function parseOption(p: Parser, line: number): [keyof VimOptions, boolean | numb
   return [name as keyof VimOptions, value as boolean | number];
 }
 
+/** `vim.g.<name> = <literal>`, allowlisted to the two leaders. */
+function parseGlobal(p: Parser, line: number): [keyof VimGlobals, string] {
+  p.eat('punct', '.');
+  const name = p.eat('name').value;
+  p.eat('punct', '=');
+  const value = parseLiteral(p);
+  if (!GLOBALS.includes(name as (typeof GLOBALS)[number])) {
+    throw new Bad(line, `unknown global \`${name}\`; supported: ${GLOBAL_NAMES}`);
+  }
+  if (typeof value !== 'string') throw new Bad(line, `\`${name}\` takes a string, such as ' ' or ','`);
+  if (value === '') throw new Bad(line, `\`${name}\` cannot be empty`);
+  return [name as keyof VimGlobals, value];
+}
+
 /** The statement heads worth a message of their own, rather than "cannot read this line". */
 const NAMED_REJECTIONS: Record<string, string> = {
   require: `\`require\` is not supported; ${ONLY}`,
@@ -276,13 +329,18 @@ const NAMED_REJECTIONS: Record<string, string> = {
   local: `local variables are not supported; ${ONLY}`,
 };
 
-function parseKeymapSet(p: Parser, line: number): VimKeymap {
+interface ParsedKeymap extends VimKeymap {
+  /** Which leaders this mapping spelled, so setting that same one later can be refused as too late. */
+  used: { mapleader: boolean; maplocalleader: boolean };
+}
+
+function parseKeymapSet(p: Parser, line: number, globals: VimGlobals): ParsedKeymap {
   p.eat('punct', '(');
   const rawModes = p.is('punct', '{') ? parseStringList(p) : [parseString(p)];
   p.eat('punct', ',');
-  const lhs = parseString(p);
+  const rawLhs = parseString(p);
   p.eat('punct', ',');
-  const rhs = parseString(p);
+  const rawRhs = parseString(p);
   let opts: Record<string, string | number | boolean> = {};
   if (p.is('punct', ',')) {
     p.next();
@@ -297,19 +355,36 @@ function parseKeymapSet(p: Parser, line: number): VimKeymap {
     if (!modes.includes(mode)) modes.push(mode);
   }
   if (modes.length === 0) throw new Bad(line, 'no mode given; use \'n\', \'i\' or \'v\'');
-  if (lhs === '') throw new Bad(line, 'the key to map cannot be empty');
+  if (rawLhs === '') throw new Bad(line, 'the key to map cannot be empty');
 
   // `vim.keymap.set` does not remap by default; `remap = true` opts in, and an explicit `noremap` wins.
   const remap = opts.noremap === true ? false : opts.remap === true;
-  return { modes, lhs, rhs, remap };
+  return {
+    modes,
+    lhs: expandLeaders(rawLhs, globals),
+    rhs: expandLeaders(rawRhs, globals),
+    remap,
+    used: {
+      mapleader: usesLeader(rawLhs) || usesLeader(rawRhs),
+      maplocalleader: usesLocalLeader(rawLhs) || usesLocalLeader(rawRhs),
+    },
+  };
 }
 
 export function compileVimConfig(text: string): VimConfig {
-  const keymaps: VimKeymap[] = [];
+  const keymaps: ParsedKeymap[] = [];
   const options: VimOptions = {};
+  const globals: VimGlobals = {};
   const errors: VimConfigError[] = [];
+  /** Where each leader was first spelled, so setting that one later can say what it is too late for. */
+  const usedAt: Record<keyof VimGlobals, number | null> = { mapleader: null, maplocalleader: null };
   if (text.length > VIM_CONFIG_MAX) {
-    return { keymaps: [], options: {}, errors: [{ line: 1, message: `this config is too long (over ${VIM_CONFIG_MAX} characters)` }] };
+    return {
+      keymaps: [],
+      options: {},
+      globals: {},
+      errors: [{ line: 1, message: `this config is too long (over ${VIM_CONFIG_MAX} characters)` }],
+    };
   }
   const p = new Parser(tokenize(text));
 
@@ -324,7 +399,20 @@ export function compileVimConfig(text: string): VimConfig {
       if (which === 'keymap') {
         p.eat('punct', '.');
         p.eat('name', 'set');
-        keymaps.push(parseKeymapSet(p, line));
+        const keymap = parseKeymapSet(p, line, globals);
+        for (const g of GLOBALS) if (keymap.used[g] && usedAt[g] === null) usedAt[g] = line;
+        keymaps.push(keymap);
+      } else if (which === 'g') {
+        const [name, value] = parseGlobal(p, line);
+        // Vim expands a leader where the mapping is written, so a leader set afterwards never reaches it.
+        const already = usedAt[name];
+        if (already !== null) {
+          throw new Bad(
+            line,
+            `\`${name}\` is set too late: the mapping on line ${already} already used it, so it took the previous leader. Move this line above it.`,
+          );
+        }
+        globals[name] = value;
       } else if (which === 'o' || which === 'opt') {
         const [name, value] = parseOption(p, line);
         (options as Record<string, boolean | number>)[name] = value;
@@ -339,5 +427,6 @@ export function compileVimConfig(text: string): VimConfig {
   }
 
   // One bad line costs every keymap: half-applied config would leave the owner guessing which half.
-  return errors.length > 0 ? { keymaps: [], options: {}, errors } : { keymaps, options, errors };
+  if (errors.length > 0) return { keymaps: [], options: {}, globals: {}, errors };
+  return { keymaps: keymaps.map(({ used: _drop, ...k }) => k), options, globals, errors };
 }

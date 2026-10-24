@@ -105,3 +105,76 @@ describe('compileVimConfig: options and rejections', () => {
     expect(c.errors).toEqual([{ line: 1, message: expect.stringContaining('too long') }]);
   });
 });
+
+describe('compileVimConfig: vim.g and the leader', () => {
+  const lhsOf = (t: string) => ok(t).keymaps[0]!.lhs;
+
+  it('reads mapleader and maplocalleader', () => {
+    expect(ok("vim.g.mapleader = ' '\nvim.g.maplocalleader = ','").globals).toEqual({ mapleader: ' ', maplocalleader: ',' });
+  });
+
+  it('expands a space leader into the engine’s key notation', () => {
+    expect(lhsOf("vim.g.mapleader = ' '\nvim.keymap.set('n', '<leader>w', ':w<CR>')")).toBe('<Space>w');
+  });
+
+  it('accepts the <Leader> spelling real configs use', () => {
+    expect(lhsOf("vim.g.mapleader = ' '\nvim.keymap.set('n', '<Leader>w', 'x')")).toBe('<Space>w');
+    expect(lhsOf("vim.g.mapleader = ' '\nvim.keymap.set('n', '<LEADER>w', 'x')")).toBe('<Space>w');
+  });
+
+  it('uses backslash when no leader is set, as vim does', () => {
+    expect(lhsOf("vim.keymap.set('n', '<leader>w', 'x')")).toBe('\\w');
+  });
+
+  it('expands a comma leader literally', () => {
+    expect(lhsOf("vim.g.mapleader = ','\nvim.keymap.set('n', '<leader>f', 'x')")).toBe(',f');
+  });
+
+  it('escapes a leader the engine would read as notation', () => {
+    expect(lhsOf("vim.g.mapleader = '<'\nvim.keymap.set('n', '<leader>w', 'x')")).toBe('<lt>w');
+  });
+
+  it('expands in the right-hand side too, as vim does at definition time', () => {
+    expect(ok("vim.g.mapleader = ' '\nvim.keymap.set('n', 'x', '<leader>w')").keymaps[0]!.rhs).toBe('<Space>w');
+  });
+
+  it('expands localleader from its own global', () => {
+    expect(lhsOf("vim.g.maplocalleader = ';'\nvim.keymap.set('n', '<localleader>t', 'x')")).toBe(';t');
+  });
+
+  it('refuses a second leader mid-file rather than quietly using two', () => {
+    const c = compileVimConfig(
+      "vim.g.mapleader = ','\nvim.keymap.set('n', '<leader>a', 'x')\nvim.g.mapleader = ';'\nvim.keymap.set('n', '<leader>b', 'y')",
+    );
+    expect(c.errors).toHaveLength(1);
+    expect(c.errors[0]!.line).toBe(3);
+  });
+
+  it('lets maplocalleader be set late when only <leader> was used', () => {
+    const c = ok("vim.keymap.set('n', '<leader>a', 'x')\nvim.g.maplocalleader = ';'");
+    expect(c.globals).toEqual({ maplocalleader: ';' });
+    expect(c.keymaps[0]!.lhs).toBe('\\a');
+  });
+
+  it('refuses a leader set after a <leader> mapping, naming both lines', () => {
+    const e = compileVimConfig("vim.keymap.set('n', '<leader>w', 'x')\nvim.g.mapleader = ' '").errors[0]!;
+    expect(e.line).toBe(2);
+    expect(e.message).toContain('line 1');
+    expect(e.message).toMatch(/above/i);
+  });
+
+  it('is happy when the leader is set first', () => {
+    expect(compileVimConfig("vim.g.mapleader = ' '\nvim.keymap.set('n', '<leader>w', 'x')").errors).toEqual([]);
+  });
+
+  it('rejects an unknown vim.g name with the supported list', () => {
+    const e = compileVimConfig('vim.g.loaded_netrw = 1').errors[0]!;
+    expect(e.message).toContain('loaded_netrw');
+    expect(e.message).toContain('mapleader');
+  });
+
+  it('rejects a leader that is not a non-empty string', () => {
+    expect(compileVimConfig('vim.g.mapleader = true').errors[0]!.message).toContain('string');
+    expect(compileVimConfig("vim.g.mapleader = ''").errors[0]!.message).toMatch(/empty/i);
+  });
+});

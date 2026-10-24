@@ -92,7 +92,7 @@ describe('CodeEditor wrapping', () => {
 
   it('stops wrapping when the config says vim.o.wrap = false', async () => {
     const handleRef: { current: EditorHandle | null } = { current: null };
-    const vim = { on: true, config: { keymaps: [], options: { wrap: false }, errors: [] } };
+    const vim = { on: true, config: { keymaps: [], options: { wrap: false }, globals: {}, errors: [] } };
     await act(async () => {
       root.render(<CodeEditor value="ab" onChange={() => undefined} handleRef={handleRef} vim={vim} ariaLabel="Markdown source" />);
     });
@@ -111,7 +111,7 @@ describe('CodeEditor turning vim off', () => {
       });
     const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
 
-    await render({ on: true, config: { keymaps: [{ modes: ['i'], lhs: 'jk', rhs: '<Esc>', remap: false }], options: {}, errors: [] } });
+    await render({ on: true, config: { keymaps: [{ modes: ['i'], lhs: 'jk', rhs: '<Esc>', remap: false }], options: {}, globals: {}, errors: [] } });
     await settle();
     const { Vim } = await import('@replit/codemirror-vim');
     const cleared: string[] = [];
@@ -141,7 +141,7 @@ describe('CodeEditor toggling vim off before its engine arrives', () => {
       applied.push(l);
     });
     try {
-      const config: VimConfig = { keymaps: [{ modes: ['n'], lhs: 'H', rhs: '^', remap: false }], options: {}, errors: [] };
+      const config: VimConfig = { keymaps: [{ modes: ['n'], lhs: 'H', rhs: '^', remap: false }], options: {}, globals: {}, errors: [] };
       // Two synchronous commits: the on-effect runs and starts the import, then the off-effect runs before
       // the import's continuation can — no await point between them for a microtask to slip through.
       act(() => render({ on: true, config }));
