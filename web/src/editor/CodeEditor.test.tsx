@@ -153,3 +153,32 @@ describe('CodeEditor toggling vim off before its engine arrives', () => {
     }
   });
 });
+
+describe('CodeEditor and the style nonce', () => {
+  /**
+   * `style-src 'self'` blocks CodeMirror's injected stylesheet outright, which leaves the editor with no
+   * base theme at all — an unpositioned caret and no selection layer. The server puts a per-request nonce
+   * in the policy and in a meta tag; the editor has to pass it on or the stylesheet is still refused.
+   */
+  const meta = (content: string) => {
+    const el = document.createElement('meta');
+    el.name = 'csp-nonce';
+    el.content = content;
+    document.head.append(el);
+    return el;
+  };
+
+  it('stamps the page nonce onto the stylesheet it injects', () => {
+    const el = meta('test-nonce-abc');
+    try {
+      const handleRef: { current: EditorHandle | null } = { current: null };
+      act(() => {
+        root.render(<CodeEditor value="ab" onChange={() => undefined} handleRef={handleRef} vim={null} ariaLabel="Markdown source" />);
+      });
+      const styles = [...document.head.querySelectorAll('style')].map((s) => s.getAttribute('nonce'));
+      expect(styles).toContain('test-nonce-abc');
+    } finally {
+      el.remove();
+    }
+  });
+});
