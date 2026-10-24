@@ -20,11 +20,15 @@ vi.mock('./useNoteEditor', () => ({
     conflict: false,
   }),
 }));
+vi.mock('../editor/CodeEditor', async () => (await import('../test/codeEditor')).codeEditorMock());
 import { NotePane } from './NotePane';
+import { AccountSettingsProvider } from '../state/AccountSettingsContext';
+import { accountStub } from '../test/account';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const ID = '3f2b8c1e-5d4a-4e7b-9a6c-1d2e3f4a5b6c';
+const accountState = {};
 let root: Root | null = null;
 let host: HTMLElement | null = null;
 let rerender: () => void = () => undefined;
@@ -52,7 +56,9 @@ function mount(store: Partial<AppStore>) {
   const element = (
     <MemoryRouter initialEntries={[{ pathname: '/v/v1/n/n1', state: { mode: 'edit' } }]}>
       <StoreProvider store={full}>
+        <AccountSettingsProvider store={accountStub(accountState)}>
         <NotePane vault={state.vaults.v1!} noteId="n1" />
+        </AccountSettingsProvider>
       </StoreProvider>
     </MemoryRouter>
   );

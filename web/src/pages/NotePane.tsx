@@ -13,6 +13,9 @@ import { folderPath, titleIndex, useAppState, useStore, vaultStats } from '../st
 import type { VaultView } from '../state/store';
 import { useImageInsert } from './imagePaste';
 import { useInkedImages } from './useInkedImages';
+import { CodeEditor, type EditorHandle } from '../editor/CodeEditor';
+import { compileVimConfig } from '../editor/vimConfig';
+import { useAccountSettings } from '../state/AccountSettingsContext';
 import { useDiagrams } from '../diagrams/useDiagrams';
 import { useNoteEditor, type SaveStatus } from './useNoteEditor';
 import { useReadProgress } from './useReadProgress';
@@ -112,12 +115,17 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
   const [title, setTitle] = useState(head?.title ?? '');
   const [titleError, setTitleError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
-  const textRef = useRef<HTMLTextAreaElement>(null);
+  const handleRef = useRef<EditorHandle | null>(null);
   const articleRef = useRef<HTMLElement>(null);
+  const storedVim = useAccountSettings().settings.vim;
+  const vim = useMemo(
+    () => (storedVim?.on ? { on: true, config: compileVimConfig(storedVim.config) } : null),
+    [storedVim?.on, storedVim?.config],
+  );
   const imageInsert = useImageInsert({
     store,
     vaultId: vault.id,
-    textRef,
+    handle: handleRef,
     body: editor.body,
     setBody: editor.setBody,
     disabled: state.locking,
@@ -135,7 +143,7 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
       }, 0);
       navigate('.', { replace: true, state: null });
     } else if (editBody) {
-      window.setTimeout(() => textRef.current?.focus(), 0);
+      window.setTimeout(() => handleRef.current?.focus(), 0);
       navigate('.', { replace: true, state: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -160,7 +168,7 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
         setMode((m) => (m === 'edit' ? 'view' : 'edit'));
       } else if (k === 's') {
         e.preventDefault();
-        editor.setBody(textRef.current?.value ?? editor.body);
+        editor.setBody(handleRef.current?.body() ?? editor.body);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -260,7 +268,7 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  (mode === 'edit' ? textRef.current : titleRef.current)?.focus();
+                  (mode === 'edit' ? handleRef.current : titleRef.current)?.focus();
                   if (mode !== 'edit') titleRef.current?.blur();
                 } else if (e.key === 'Escape' && head) {
                   setTitle(head.title);
@@ -314,17 +322,18 @@ export function NotePane({ vault, noteId }: { vault: VaultView; noteId: string }
             <Spinner label="Decrypting note" /> Decrypting…
           </div>
         ) : mode === 'edit' ? (
-          <textarea
-            ref={textRef}
-            key="edit" className="editor"
-            aria-label={`Markdown source of ${head?.title ?? 'note'}`}
+          <CodeEditor
+            key="edit"
+            handleRef={handleRef}
+            ariaLabel={`Markdown source of ${head?.title ?? 'note'}`}
             value={editor.body}
-            onChange={(e) => editor.setBody(e.target.value)}
+            onChange={editor.setBody}
             onPaste={imageInsert.onPaste}
             onDrop={imageInsert.onDrop}
             onDragOver={imageInsert.onDragOver}
             readOnly={state.locking}
             spellCheck={prefs.spellcheck()}
+            vim={vim}
             placeholder={'# Heading\n\nWrite in Markdown. Link notes with [[Note title]].'}
           />
         ) : editor.body.trim() === '' ? (

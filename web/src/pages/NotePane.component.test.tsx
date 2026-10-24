@@ -19,7 +19,11 @@ vi.mock('./useNoteEditor', () => ({
     conflict: false,
   }),
 }));
+vi.mock('../editor/CodeEditor', async () => (await import('../test/codeEditor')).codeEditorMock());
 import { NotePane } from './NotePane';
+import { AccountSettingsProvider } from '../state/AccountSettingsContext';
+import { accountStub } from '../test/account';
+import { lastVimProp } from '../test/codeEditor';
 import { mockPhone } from '../test/phone';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -33,9 +37,12 @@ afterEach(() => {
   host = null;
   vi.useRealTimers();
   markRead.mockClear();
+  accountState = {};
 });
 
 const markRead = vi.fn();
+/** Account settings the next mount sees; a test sets it before mounting to turn vim on. */
+let accountState: Partial<import('../state/accountSettings').AccountSettingsState> = {};
 function mount(locState: unknown, bodies: Record<string, string> = { n1: 'Some text' }) {
   vi.useFakeTimers();
   const state = {
@@ -54,7 +61,9 @@ function mount(locState: unknown, bodies: Record<string, string> = { n1: 'Some t
     root!.render(
       <MemoryRouter initialEntries={[{ pathname: '/v/v1/n/n1', state: locState }]}>
         <StoreProvider store={store}>
-          <NotePane vault={state.vaults.v1!} noteId="n1" />
+          <AccountSettingsProvider store={accountStub(accountState)}>
+            <NotePane vault={state.vaults.v1!} noteId="n1" />
+          </AccountSettingsProvider>
         </StoreProvider>
       </MemoryRouter>,
     ),
@@ -136,5 +145,34 @@ describe('NotePane reading progress', () => {
     mount(null, { n1: 'A newer body' });
     act(() => void vi.advanceTimersByTime(5000));
     expect(markRead).not.toHaveBeenCalled();
+  });
+});
+
+describe('vim mode in the note editor', () => {
+  it('passes no vim state to the editor when the account has none', () => {
+    mount({ mode: 'edit' });
+    expect(lastVimProp.current).toBeNull();
+  });
+
+  it('passes no vim state when the account has vim turned off', () => {
+    accountState = { settings: { vim: { on: false, config: "vim.keymap.set('i', 'jk', '<Esc>')" } } };
+    mount({ mode: 'edit' });
+    expect(lastVimProp.current).toBeNull();
+  });
+
+  it('compiles the stored config and passes it to the editor', () => {
+    accountState = { settings: { vim: { on: true, config: "vim.keymap.set('i', 'jk', '<Esc>')" } } };
+    mount({ mode: 'edit' });
+    expect(lastVimProp.current).toEqual({
+      on: true,
+      config: { keymaps: [{ modes: ['i'], lhs: 'jk', rhs: '<Esc>', remap: false }], options: {}, errors: [] },
+    });
+  });
+
+  it('passes a config that failed to compile with no keymaps, so vim defaults still work', () => {
+    accountState = { settings: { vim: { on: true, config: "vim.keymap.set('q', 'x', 'y')" } } };
+    mount({ mode: 'edit' });
+    expect(lastVimProp.current?.config.keymaps).toEqual([]);
+    expect(lastVimProp.current?.config.errors).toHaveLength(1);
   });
 });
