@@ -2,11 +2,26 @@
 import { history, undo } from '@codemirror/commands';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { externalChange } from './pushValue';
 
-/** A view with undo history, holding `doc`. */
-const viewOf = (doc: string) => new EditorView({ state: EditorState.create({ doc, extensions: [history()] }) });
+/**
+ * A view with undo history, holding `doc`.
+ *
+ * Destroyed after each test: CodeMirror schedules a measure on an animation frame, and a view still alive
+ * when the test ends measures against jsdom, which has no `getClientRects` — an unhandled error that Vitest
+ * warns can turn other tests green dishonestly.
+ */
+const views: EditorView[] = [];
+const viewOf = (doc: string) => {
+  const view = new EditorView({ state: EditorState.create({ doc, extensions: [history()] }) });
+  views.push(view);
+  return view;
+};
+
+afterEach(() => {
+  while (views.length) views.pop()!.destroy();
+});
 
 describe('externalChange', () => {
   it('replaces the whole document', () => {
