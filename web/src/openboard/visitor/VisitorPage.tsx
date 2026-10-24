@@ -242,6 +242,8 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
                   key={note.id}
                   token={token}
                   note={note}
+                  payload={data}
+                  resolveImage={resolveImage}
                   onSaved={(saved) => {
                     setData((d) => withNote(d, saved));
                     setEditing(null);

@@ -231,6 +231,25 @@ describe('VisitorPage on a write link', () => {
   const titleInput = () => editor()!.querySelector<HTMLInputElement>('input.ob-editor-title')!;
   const bodyInput = () => editor()!.querySelector<HTMLTextAreaElement>('textarea.ob-editor-body')!;
 
+  it('lets a visitor see their draft rendered before saving it', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    const body = bodyInput();
+    act(() => {
+      set.call(body, '# Draft heading');
+      body.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await press(buttonIn(editor()!, 'View'));
+    expect(editor()!.querySelector('.ob-editor-preview')?.querySelector('h1')?.textContent).toBe('Draft heading');
+    // The draft is not saved by previewing it.
+    expect(writes()).toHaveLength(0);
+  });
+
   it('a read link offers no Edit and no New note', async () => {
     writeServer(payload('read'));
     await render();

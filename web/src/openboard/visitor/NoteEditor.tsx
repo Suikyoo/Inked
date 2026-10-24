@@ -1,128 +1,50 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { INDEX_TITLE } from 'inked-core/indexNote';
-import type { ObNote } from 'inked-core';
-import { prefs } from '../../lib/prefs';
+import type { ObNote, ObPayload } from 'inked-core';
 import { saveVisitorNote, visitorWriteErrorText } from '../api';
+import { ObNoteEditor } from '../ObNoteEditor';
 
-/** The server's limits for visitor writes (server/src/openboard/visitor.ts). */
+/** The server's limits for visitor writes (server/src/openboard/write.ts). */
 export const VISITOR_TITLE_MAX = 200;
 export const VISITOR_BODY_MAX = 100_000;
 
 /**
- * A Write-link visitor's editor for one published note: its title and its Markdown. Save sends the change
- * with the version it started from, so a note someone else changed meanwhile is refused, not overwritten;
- * the draft stays for the visitor to copy. An Index note keeps its title.
+ * A Write-link visitor's editor for one published note: its title and its Markdown, with an Edit|View toggle
+ * so a draft can be seen rendered before it is saved.
+ *
+ * Save sends the change with the version it started from, so a note someone else changed meanwhile is
+ * refused, not overwritten; the draft stays for the visitor to copy. An Index note keeps its title.
  */
 export function NoteEditor({
   token,
   note,
+  payload,
+  resolveImage,
   onSaved,
   onCancel,
   onDirtyChange,
 }: {
   token: string;
   note: ObNote;
+  payload: ObPayload;
+  resolveImage: (vaultId: string, imageId: string) => string;
   onSaved: (note: ObNote) => void;
   onCancel: () => void;
   /** Told whether the draft differs from the note, so the board can ask before dropping it. */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const [title, setTitle] = useState(note.title);
-  const [body, setBody] = useState(note.body);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const titleId = useId();
-  const bodyId = useId();
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
-  const isIndex = note.title === INDEX_TITLE;
-  const ready = title.trim().length > 0 && (isIndex || title.trim() !== INDEX_TITLE);
-  const nextTitle = isIndex ? note.title : title.trim();
-  const titleChanged = nextTitle !== note.title;
-  const bodyChanged = body !== note.body;
-
-  useEffect(() => {
-    onDirtyChange?.(titleChanged || bodyChanged);
-  }, [titleChanged, bodyChanged, onDirtyChange]);
-
-  // Typing continues the note: start with the caret at its end.
-  useEffect(() => {
-    const el = bodyRef.current;
-    if (el) el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!ready || busy) return;
-    // Nothing to save; an unchanged body is never resent (it may be longer than visitors can write).
-    if (!titleChanged && !bodyChanged) return onCancel();
-    setBusy(true);
-    setError(null);
-    try {
-      onSaved(
-        await saveVisitorNote(token, note.id, {
-          baseUpdatedAt: note.updatedAt,
-          ...(titleChanged ? { title: nextTitle } : {}),
-          ...(bodyChanged ? { body } : {}),
-        }),
-      );
-    } catch (err) {
-      setError(visitorWriteErrorText(err));
-      setBusy(false);
-    }
-  };
-
-  // Escape stays in the editor: the drawer would otherwise close and drop the draft.
-  const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
-    if (e.key === 'Escape') e.preventDefault();
-  };
-
   return (
-    <form className="ob-editor" onSubmit={submit} onKeyDown={onKeyDown} aria-label={`Edit “${note.title}”`}>
-      <label className="sr-only" htmlFor={titleId}>
-        Title
-      </label>
-      <input
-        id={titleId}
-        type="text"
-        className="input ob-editor-title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        maxLength={VISITOR_TITLE_MAX}
-        readOnly={isIndex}
-        disabled={busy}
-        autoComplete="off"
-        spellCheck={prefs.spellcheck()}
-      />
-      {isIndex && <p className="field-hint">This is the folder’s page, so its title stays.</p>}
-      {!isIndex && title.trim() === INDEX_TITLE && <p className="field-hint">“Index” is kept for folder pages. Choose another title.</p>}
-      <label className="sr-only" htmlFor={bodyId}>
-        Note text
-      </label>
-      <textarea
-        ref={bodyRef}
-        id={bodyId}
-        className="input ob-editor-body"
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        maxLength={VISITOR_BODY_MAX}
-        disabled={busy}
-        spellCheck={prefs.spellcheck()}
-        autoFocus
-      />
-      <p className="field-hint">Markdown. Link another note with [[Its title]].</p>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="ob-editor-actions">
-        <button type="button" className="btn btn-sm" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
-        <button type="submit" className="btn btn-sm btn-primary" disabled={!ready || busy}>
-          {busy ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-    </form>
+    <ObNoteEditor
+      note={note}
+      payload={payload}
+      resolveImage={resolveImage}
+      onSave={(patch) => saveVisitorNote(token, note.id, patch)}
+      errorText={visitorWriteErrorText}
+      onSaved={onSaved}
+      onCancel={onCancel}
+      onDirtyChange={onDirtyChange}
+      // A visitor's note is untrusted once saved, so the preview must show it that way.
+      untrustedPreview
+      titleMax={VISITOR_TITLE_MAX}
+      bodyMax={VISITOR_BODY_MAX}
+    />
   );
 }

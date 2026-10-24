@@ -18,8 +18,12 @@ export interface ObNoteEditorProps {
   note: ObNote;
   payload: ObPayload;
   resolveImage: (vaultId: string, imageId: string) => string;
-  /** Saves the draft and resolves to the stored note. Throws for `errorText` to turn into a sentence. */
-  onSave: (patch: { title?: string; body: string; baseUpdatedAt: string }) => Promise<ObNote>;
+  /**
+   * Saves the draft and resolves to the stored note. Throws for `errorText` to turn into a sentence.
+   * Only what changed is sent: an unchanged body is never resent, since it may be longer than the writer is
+   * allowed to submit (an owner note edited by a visitor, say).
+   */
+  onSave: (patch: { title?: string; body?: string; baseUpdatedAt: string }) => Promise<ObNote>;
   errorText: (e: unknown) => string;
   onSaved: (note: ObNote) => void;
   onCancel: () => void;
@@ -83,7 +87,13 @@ export function ObNoteEditor({
     setBusy(true);
     setError(null);
     try {
-      onSaved(await onSave({ ...(titleChanged ? { title: nextTitle } : {}), body, baseUpdatedAt: note.updatedAt }));
+      onSaved(
+        await onSave({
+          ...(titleChanged ? { title: nextTitle } : {}),
+          ...(bodyChanged ? { body } : {}),
+          baseUpdatedAt: note.updatedAt,
+        }),
+      );
     } catch (err) {
       setError(errorText(err));
       setBusy(false);

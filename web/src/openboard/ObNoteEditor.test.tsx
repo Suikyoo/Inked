@@ -39,7 +39,8 @@ afterEach(() => {
 });
 
 function mount(over: Partial<Parameters<typeof ObNoteEditor>[0]> = {}) {
-  const onSave = over.onSave ?? vi.fn(async (p: { title?: string; body: string }) => note({ ...p, updatedAt: '2026-10-22T10:00:00.000Z' }));
+  const onSave =
+    over.onSave ?? vi.fn(async (p: { title?: string; body?: string }) => note({ ...p, updatedAt: '2026-10-22T10:00:00.000Z' }));
   const onSaved = over.onSaved ?? vi.fn();
   const onCancel = over.onCancel ?? vi.fn();
   const props = {
@@ -132,7 +133,8 @@ describe('ObNoteEditor', () => {
     const { onSave } = mount();
     type(host.querySelector<HTMLInputElement>('input')!, 'Renamed');
     await act(async () => button('Save').click());
-    expect(onSave).toHaveBeenCalledWith({ title: 'Renamed', body: 'alpha body', baseUpdatedAt: at });
+    // An unchanged body is omitted too, so a title-only edit never resends it.
+    expect(onSave).toHaveBeenCalledWith({ title: 'Renamed', baseUpdatedAt: at });
   });
 
   it('saves the draft and hands back the stored note', async () => {
