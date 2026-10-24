@@ -127,3 +127,29 @@ describe('CodeEditor turning vim off', () => {
     }
   });
 });
+
+describe('CodeEditor toggling vim off before its engine arrives', () => {
+  it('never applies the keymaps of a config that was turned off mid-import', async () => {
+    const handleRef: { current: EditorHandle | null } = { current: null };
+    const render = (vim: { on: boolean; config: VimConfig } | null) =>
+      root.render(<CodeEditor value="ab" onChange={() => undefined} handleRef={handleRef} vim={vim} ariaLabel="Markdown source" />);
+
+    // Cached, so the dynamic import inside the effect resolves on a microtask rather than a file read.
+    const { Vim } = await import('@replit/codemirror-vim');
+    const applied: string[] = [];
+    const spy = vi.spyOn(Vim as unknown as { noremap: (l: string, r: string, c: string) => void }, 'noremap').mockImplementation((l) => {
+      applied.push(l);
+    });
+    try {
+      const config: VimConfig = { keymaps: [{ modes: ['n'], lhs: 'H', rhs: '^', remap: false }], options: {}, errors: [] };
+      // Two synchronous commits: the on-effect runs and starts the import, then the off-effect runs before
+      // the import's continuation can — no await point between them for a microtask to slip through.
+      act(() => render({ on: true, config }));
+      act(() => render(null));
+      await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+      expect(applied).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
