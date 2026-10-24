@@ -85,6 +85,19 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
   // A note just created opens once the board's payload holds it.
   const [opening, setOpening] = useState<ObNote | null>(null);
   // Whether the open editor holds changes that are not saved.
+  /**
+   * How many times the body has changed shape — the map railing or taking the centre back.
+   * Switching between notes while already reading is not a reshape, so the map keeps its framing.
+   */
+  const [reshapes, setReshapes] = useState(0);
+  const wasReading = useRef(false);
+  useEffect(() => {
+    const isReading = reading !== null;
+    if (isReading === wasReading.current) return;
+    wasReading.current = isReading;
+    setReshapes((n) => n + 1);
+  }, [reading]);
+
   const dirty = useRef(false);
   const onDirtyChange = useCallback((d: boolean) => {
     dirty.current = d;
@@ -220,8 +233,19 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
       ) : (
         <div className="ob-body">
           <TreeRail payload={data} selectedId={reading} onSelect={guardedOpen} collapsed={railCollapsed} onToggle={() => setRailCollapsed((c) => !c)} query={query} />
-          <section className="map ob-map" aria-label="Concept map">
-            <ConceptMap entries={entries} hits={hits} hot={null} searching={q.length > 0} loading={false} selected={selected} onSelect={guardedSelect} onOpenNote={guardedOpen} fitRequest={fitRequest} />
+          <section className={reading ? 'map ob-map is-rail' : 'map ob-map'} aria-label="Concept map" data-refit={reshapes}>
+            <ConceptMap
+              entries={entries}
+              hits={hits}
+              hot={null}
+              searching={q.length > 0}
+              loading={false}
+              selected={selected}
+              onSelect={guardedSelect}
+              onOpenNote={guardedOpen}
+              fitRequest={fitRequest}
+              refitRequest={reshapes}
+            />
           </section>
           <ReaderDrawer
             payload={data}
@@ -229,6 +253,7 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
             resolveImage={resolveImage}
             onOpenNote={guardedOpen}
             onClose={guardedClose}
+            centre
             actions={(note) =>
               canWrite && editing !== note.id ? (
                 <button type="button" className="btn btn-sm ob-edit" onClick={() => setEditing(note.id)}>
