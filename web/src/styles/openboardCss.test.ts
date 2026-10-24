@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { cssSelectors } from './cssRules';
+import { cssRules, cssSelectors } from './cssRules';
 
 // Resolved from this file, not the cwd. (A `?raw` import comes back empty: vitest stubs CSS.)
 const styles = import.meta.dirname;
@@ -70,5 +70,31 @@ describe('the openboard sheets cover the openboard markup', () => {
   it('gives the owner control the app sheet its cards, swatches and action rows come from', () => {
     const have = defined(sheetsOf('openboard/editor/main.tsx'));
     for (const c of BORROWED) expect(have.has(c), c).toBe(true);
+  });
+});
+
+// "Stabilize the UI": nothing on these pages may move because a label, a count or a mode changed.
+describe('the openboard UI holds still', () => {
+  const ob = (sel: string) => cssRules(read(join(styles, 'openboard.css')), sel).join('');
+  const obe = (sel: string) => cssRules(read(join(styles, 'openboard-editor.css')), sel).join('');
+
+  it('gives a draft one height whether it is typed or previewed, so Edit | View does not move the drawer', () => {
+    expect(ob('.ob-editor')).toMatch(/--draft:320px;/);
+    expect(ob('.ob-editor-body')).toMatch(/min-height:var\(--draft\);/);
+    expect(ob('.md.ob-editor-preview')).toMatch(/min-height:var\(--draft\);/);
+  });
+
+  it('drops the reading sheet’s own column from the preview, which already sits in the editor’s', () => {
+    expect(ob('.md.ob-editor-preview')).toMatch(/max-width:none;/);
+    expect(ob('.md.ob-editor-preview')).toMatch(/padding:0;/);
+  });
+
+  it('keeps Copy from pushing Edit and Delete aside when its label grows to "Copied"', () => {
+    expect(obe('.obe-copy')).toMatch(/min-width:\d+px;/);
+  });
+
+  it('sets every count in tabular figures', () => {
+    expect(ob('.ob-row-count')).toMatch(/font-variant-numeric:tabular-nums;/);
+    for (const sel of ['.obe-side-count', '.obe-views']) expect(obe(sel), sel).toMatch(/font-variant-numeric:tabular-nums;/);
   });
 });

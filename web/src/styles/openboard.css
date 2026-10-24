@@ -21,7 +21,8 @@ body,
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  min-height: 52px;
+  /* The search bar's height plus the bar's own padding, rather than a 52px nobody can check. */
+  min-height: calc(var(--control-lg) + 2 * var(--sp-2));
   padding: var(--sp-2) var(--sp-4);
   background: var(--side);
   border-bottom: 1px solid var(--side-border);
@@ -210,6 +211,10 @@ body,
   white-space: nowrap;
   font-size: 11px;
   color: var(--muted-3);
+}
+/* A count that changes must not shift the name beside it. */
+.ob-row-count {
+  font-variant-numeric: tabular-nums;
 }
 .ob-row-sub {
   max-width: 45%;
@@ -422,9 +427,34 @@ body,
     width: min(300px, 86vw);
     box-shadow: 16px 0 40px -20px rgba(0, 0, 0, 0.8);
   }
-  /* The address bar must not hide the bottom of the board. */
+  /* The address bar must not hide the bottom of the board, and the slim bars grow to a touch size so the
+     44px buttons phone.css puts in them (Edit, the close and toggle icons) still fit. */
   .ob {
+    --bar: 48px;
     height: 100dvh;
+  }
+  /* 44px targets, as phone.css gives the app's tree rows. */
+  .ob-row {
+    height: auto;
+    min-height: 44px;
+  }
+  /* The bars' icon buttons are drawn at a finger's size instead of growing a hit area that would reach
+     into the row below (the same rule phone.css applies to the app's topbar). */
+  .ob-rail-head .ibtn,
+  .ob-drawer-bar .ibtn {
+    width: 44px;
+    height: 44px;
+  }
+  .ob-rail-head .ibtn::after,
+  .ob-drawer-bar .ibtn::after {
+    content: none;
+  }
+  .ob-rail[data-collapsed='true'] {
+    flex-basis: 44px;
+  }
+  /* phone.css raises every .input to 16px against iOS's zoom; the title keeps its own step above that. */
+  .ob-editor > .ob-editor-title {
+    font-size: 20px;
   }
   .map.ob-map {
     padding: var(--sp-2);
@@ -447,5 +477,12 @@ body,
   .ob-reader-empty {
     padding-left: var(--sp-4);
     padding-right: var(--sp-4);
+  }
+  /* The drawer covers the screen here, so its tail clears the home indicator (as phone.css does for .md). */
+  .md.ob-md {
+    padding-bottom: calc(var(--sp-12) + env(safe-area-inset-bottom));
+  }
+  .ob-editor {
+    padding-bottom: calc(var(--sp-8) + env(safe-area-inset-bottom));
   }
 }

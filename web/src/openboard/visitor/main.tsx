@@ -13,6 +13,8 @@ import '../../styles/home.css';
 import '../../styles/map.css';
 import '../../styles/note.css';
 import '../../styles/openboard.css';
+// Last, so the touch sizes and safe areas win ties, exactly as in the notes app's entry.
+import '../../styles/phone.css';
 import { VisitorPage } from './VisitorPage';
 
 // The visitor board. Deliberately imports no store, auth or crypto code (see scripts/check-openboard-bundle.mjs).

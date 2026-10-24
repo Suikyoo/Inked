@@ -92,3 +92,44 @@ describe('phone.css', () => {
     expect(rules('.cmap-ghost')).toMatch(/display:none;/);
   });
 });
+
+// The openboard pages are their own entries. They were built without this sheet, so their buttons, fields
+// and rows kept desktop sizes on a phone and iOS zoomed the page on every focus.
+describe('phone.css on the openboard pages', () => {
+  const ENTRIES = ['openboard/visitor/main.tsx', 'openboard/editor/main.tsx'];
+  const sheetsOf = (entry: string) => [...readFileSync(join(import.meta.dirname, '..', entry), 'utf8').matchAll(/styles\/([\w-]+\.css)/g)].map((m) => m[1]!);
+
+  it('is the last sheet each openboard entry imports, so it wins ties as it does in the app', () => {
+    for (const entry of ENTRIES) {
+      expect(sheetsOf(entry), entry).toContain('phone.css');
+      expect(sheetsOf(entry).at(-1), entry).toBe('phone.css');
+    }
+  });
+
+  const ob = (sel: string) => cssRules(read('openboard.css'), sel).join('');
+  const obe = (sel: string) => cssRules(read('openboard-editor.css'), sel).join('');
+
+  it('gives the board rows, its bars and the tabs a 44px target', () => {
+    expect(ob('.ob-row')).toMatch(/min-height:44px;/);
+    expect(ob('.ob')).toMatch(/--bar:48px;/);
+    expect(ob('.ob-rail[data-collapsed=\'true\']')).toMatch(/flex-basis:44px;/);
+    expect(obe('.obe-tabs')).toMatch(/height:44px;/);
+  });
+
+  it('draws the bars’ icon buttons bigger instead of growing a hit area into the row below', () => {
+    expect(ob('.ob-rail-head .ibtn, .ob-drawer-bar .ibtn')).toMatch(/width:44px;height:44px;/);
+    expect(ob('.ob-rail-head .ibtn::after, .ob-drawer-bar .ibtn::after')).toMatch(/content:none;/);
+    expect(obe('.obe-unpublish, .obe-add')).toMatch(/height:36px;/);
+  });
+
+  it('keeps the fields their own class sizes smaller at 16px, so iOS does not zoom', () => {
+    expect(obe('.obe-url')).toMatch(/font-size:16px;/);
+    expect(ob('.ob-editor > .ob-editor-title')).toMatch(/font-size:20px;/);
+  });
+
+  it('clears the home indicator at the bottom of a page and of the full-screen drawer', () => {
+    expect(obe('.obe-page')).toMatch(/env\(safe-area-inset-bottom\)/);
+    expect(ob('.md.ob-md')).toMatch(/env\(safe-area-inset-bottom\)/);
+    expect(ob('.ob-editor')).toMatch(/env\(safe-area-inset-bottom\)/);
+  });
+});

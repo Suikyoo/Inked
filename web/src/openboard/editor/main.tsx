@@ -16,6 +16,8 @@ import '../../styles/note.css';
 import '../../styles/settings.css';
 import '../../styles/openboard.css';
 import '../../styles/openboard-editor.css';
+// Last, so the touch sizes and safe areas win ties, exactly as in the notes app's entry.
+import '../../styles/phone.css';
 import { EditorPage } from './EditorPage';
 
 // The owner's openboard editor. Deliberately imports no store, crypto or vault keys

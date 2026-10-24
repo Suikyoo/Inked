@@ -14,9 +14,6 @@
   color: inherit;
   text-decoration: none;
 }
-.obe-brand .wordmark {
-  font-size: 18px;
-}
 .obe-brand-sub {
   font-size: 12px;
   font-weight: 500;
@@ -64,7 +61,7 @@
 }
 .obe-tab:focus-visible {
   outline: 2px solid var(--ink-light);
-  outline-offset: -6px;
+  outline-offset: -4px;
   border-radius: var(--radius);
 }
 
@@ -233,10 +230,14 @@
   align-items: center;
   gap: var(--sp-1-5);
 }
+/* "Copy" becomes "Copied" with a different icon: a floor on the width keeps Edit and Delete still. */
+.obe-copy {
+  min-width: 80px;
+}
 .obe-copy-status {
   position: absolute;
   right: 0;
-  top: calc(100% + 4px);
+  top: calc(100% + var(--sp-1));
   font-size: 11px;
   white-space: nowrap;
   color: var(--muted-2);
@@ -274,14 +275,15 @@
   color: var(--text);
 }
 
-/* Gives way to the note title first when the tree is narrow. */
+/* Gives way to the note title first when the tree is narrow. 11px is the type floor: DESIGN.md allows
+   four places below it and this is not one of them. */
 .obe-visitor-tag {
   flex: 0 4 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-light);
 }
 .obe-perm-option {
@@ -366,6 +368,8 @@
 .obe-side-count {
   font-size: 11px;
   color: var(--muted-3);
+  /* Unpublishing changes these numbers; tabular figures keep the line from jittering. */
+  font-variant-numeric: tabular-nums;
 }
 .obe-side-body {
   flex: 1 1 auto;
@@ -513,17 +517,28 @@
   .obe-tabs {
     order: 2;
     flex: 1 1 100%;
-    height: 38px;
+    /* The page's main navigation: a touch target, not 38px. */
+    height: 44px;
   }
   .obe-tab {
     flex: 1 1 0;
     justify-content: center;
   }
   .obe-page {
-    padding: var(--sp-4) var(--sp-3) var(--sp-8);
+    padding: var(--sp-4) var(--sp-3) calc(var(--sp-8) + env(safe-area-inset-bottom));
   }
   .obe-head {
     align-items: flex-start;
+  }
+  /* 16px or iOS zooms the page when the address takes focus (the copy fallback selects it). Its own class
+     beats the type selector phone.css uses, so it is named here. */
+  .obe-url {
+    font-size: 16px;
+  }
+  /* The tree's row actions are drawn larger rather than growing a hit area into the next row. */
+  .obe-unpublish,
+  .obe-add {
+    height: 36px;
   }
   .obe-link {
     flex-direction: column;
