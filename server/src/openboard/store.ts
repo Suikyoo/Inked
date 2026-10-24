@@ -11,11 +11,27 @@ import type { ObFolder, ObLink, ObNote, ObPayload, ObPermission, ObVault, Publis
 /** A publish that would replace existing content without `overwrite`; maps to 409 with the PublishConflict body. */
 export class PublishConflictError extends ApiError {
   constructor(readonly conflict: PublishConflict) {
-    super(409, 'conflict', undefined, { target: conflict.target, removes: conflict.removes, visitorEdits: conflict.visitorEdits });
+    super(409, 'conflict', undefined, {
+      target: conflict.target,
+      removes: conflict.removes,
+      visitorEdits: conflict.visitorEdits,
+      ownerEdits: conflict.ownerEdits,
+    });
   }
 }
 
 const invalid = (message: string) => new ApiError(400, 'invalid_request', message);
+
+/**
+ * Whether the user holds an openboard-native vault of this name. Publishing cannot go near one: its notes
+ * exist nowhere else, so a name collision is refused instead of resolved by deleting them.
+ */
+export function nativeVaultNamed(db: Db, userId: string, name: string): boolean {
+  return !!db.prepare("SELECT 1 FROM ob_vaults WHERE user_id = ? AND name = ? AND origin = 'native'").get(userId, name);
+}
+
+const nameTaken = (name: string) =>
+  new ApiError(409, 'name_taken', `"${name}" is a vault you made in Openboard. Rename one of the two before publishing.`);
 
 /** Image ids (same charset as private image ids) referenced as `inked://<id>`, in first-seen order. */
 const IMAGE_REF_RE = new RegExp(`inked://(${UUID_RE.slice(1, -1)})(?![0-9A-Za-z-])`, 'g');
@@ -102,8 +118,9 @@ export function publish(
   const folders = orderedFolders(req);
   return transaction(db, () => {
     const now = nowIso();
+    if (nativeVaultNamed(db, userId, req.vaultName)) throw nameTaken(req.vaultName);
     const vaults = db
-      .prepare('SELECT * FROM ob_vaults WHERE user_id = ? AND name = ? ORDER BY created_at, rowid')
+      .prepare("SELECT * FROM ob_vaults WHERE user_id = ? AND name = ? AND origin = 'published' ORDER BY created_at, rowid")
       .all(userId, req.vaultName) as unknown as ObVaultRow[];
 
     let vaultId: string;
@@ -121,7 +138,7 @@ export function publish(
             target: { kind: 'vault', name: req.rootName, path: [] },
             removes: { folders: count('ob_folders'), notes: count('ob_notes') },
             visitorEdits: count('ob_notes', ' AND visitor_edited_at IS NOT NULL'),
-            ownerEdits: 0,
+            ownerEdits: count('ob_notes', ' AND owner_edited_at IS NOT NULL'),
           });
         }
         const [keep, ...dups] = vaults;
@@ -186,12 +203,19 @@ export function publish(
         };
         if (removes.folders > 0) {
           if (!req.overwrite) {
-            const visitorEdits = (
-              db
-                .prepare(`${subtreeCte} SELECT COUNT(*) AS n FROM ob_notes WHERE folder_id IN (SELECT id FROM sub) AND visitor_edited_at IS NOT NULL`)
-                .get(...args) as { n: number }
-            ).n;
-            throw new PublishConflictError({ error: 'conflict', target, removes, visitorEdits, ownerEdits: 0 });
+            const edited = (column: 'visitor_edited_at' | 'owner_edited_at') =>
+              (
+                db
+                  .prepare(`${subtreeCte} SELECT COUNT(*) AS n FROM ob_notes WHERE folder_id IN (SELECT id FROM sub) AND ${column} IS NOT NULL`)
+                  .get(...args) as { n: number }
+              ).n;
+            throw new PublishConflictError({
+              error: 'conflict',
+              target,
+              removes,
+              visitorEdits: edited('visitor_edited_at'),
+              ownerEdits: edited('owner_edited_at'),
+            });
           }
           // Subfolders and their notes go with it via ON DELETE CASCADE.
           db.prepare('DELETE FROM ob_folders WHERE vault_id = ? AND parent_id IS ? AND name = ?').run(...args);
@@ -207,11 +231,14 @@ export function publish(
         // The target is the note under that title, or the one the owner published under it that a visitor renamed.
         const args = [vaultId, parentId, req.rootName, req.rootName];
         const where = 'vault_id = ? AND folder_id IS ? AND (title = ? OR published_title = ?)';
-        const { notes, visitorEdits } = db
-          .prepare(`SELECT COUNT(*) AS notes, COUNT(visitor_edited_at) AS visitorEdits FROM ob_notes WHERE ${where}`)
-          .get(...args) as { notes: number; visitorEdits: number };
+        const { notes, visitorEdits, ownerEdits } = db
+          .prepare(
+            `SELECT COUNT(*) AS notes, COUNT(visitor_edited_at) AS visitorEdits, COUNT(owner_edited_at) AS ownerEdits FROM ob_notes WHERE ${where}`,
+          )
+          .get(...args) as { notes: number; visitorEdits: number; ownerEdits: number };
         if (notes > 0) {
-          if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes: { folders: 0, notes }, visitorEdits, ownerEdits: 0 });
+          if (!req.overwrite)
+            throw new PublishConflictError({ error: 'conflict', target, removes: { folders: 0, notes }, visitorEdits, ownerEdits });
           db.prepare(`DELETE FROM ob_notes WHERE ${where}`).run(...args);
         }
         rootFolderId = parentId;

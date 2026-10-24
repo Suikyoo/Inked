@@ -141,6 +141,7 @@ describe('openboard publish', () => {
       target: { kind: 'vault', name: 'Research', path: [] },
       removes: { folders: 1, notes: 2 },
       visitorEdits: 0,
+      ownerEdits: 0,
     });
     expect(await content(alice)).toEqual(before);
   });
@@ -177,6 +178,7 @@ describe('openboard publish', () => {
       target: { kind: 'folder', name: 'A', path: ['V'] },
       removes: { folders: 1, notes: 2 },
       visitorEdits: 0,
+      ownerEdits: 0,
     });
 
     const res = await publish(alice, folderReq('V', [], 'A', [{ folderKey: null, title: 'two', body: 'two v2' }], { overwrite: true }));
@@ -203,6 +205,7 @@ describe('openboard publish', () => {
       target: { kind: 'note', name: 'Solo', path: ['V', 'Topics'] },
       removes: { folders: 0, notes: 1 },
       visitorEdits: 0,
+      ownerEdits: 0,
     });
     expect(bodies(vaultId)).toContain('Solo:v1');
 
@@ -468,5 +471,92 @@ describe('republishing over visitor edits', () => {
     markVisitorEdited('First');
     expect((await publish(alice, vaultReq('Research', { overwrite: true }))).statusCode).toBe(201);
     expect((await content(alice)).notes.map((n) => (n as { visitorEdited?: boolean }).visitorEdited)).toEqual([false, false]);
+  });
+});
+
+/**
+ * Publishing against openboard-native content. A native vault's notes exist nowhere else, so a name
+ * collision is refused rather than resolved by deleting them (the design's ruling 2).
+ */
+describe('openboard publish vs native vaults', () => {
+  /** Inserts a native vault with one note, the way the owner control will. */
+  function nativeVault(name: string, userId: string): { vaultId: string; noteId: string } {
+    const db = t.app.db;
+    {
+      const vaultId = randomUUID();
+      const noteId = randomUUID();
+      const now = new Date().toISOString();
+      db.prepare('INSERT INTO ob_vaults (id, user_id, name, color, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        vaultId,
+        userId,
+        name,
+        COLOR,
+        now,
+        now,
+        'native',
+      );
+      db.prepare('INSERT INTO ob_notes (id, vault_id, folder_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        noteId,
+        vaultId,
+        null,
+        'Only copy',
+        'written in openboard',
+        now,
+        now,
+      );
+      return { vaultId, noteId };
+    }
+  }
+
+  const noteOf = (id: string) =>
+    t.app.db.prepare('SELECT title, body FROM ob_notes WHERE id = ?').get(id) as { title: string; body: string } | undefined;
+
+  it('refuses to publish onto a native vault name, even with overwrite, and leaves its notes alone', async () => {
+    const { noteId } = nativeVault('Scratch', alice.userId);
+
+    const first = await publish(alice, noteReq('Scratch', [], 'Hi', 'hello'));
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error).toBe('name_taken');
+
+    const forced = await publish(alice, noteReq('Scratch', [], 'Hi', 'hello', { overwrite: true }));
+    expect(forced.statusCode).toBe(409);
+    expect(forced.json().error).toBe('name_taken');
+
+    expect(noteOf(noteId)).toEqual({ title: 'Only copy', body: 'written in openboard' });
+  });
+
+  it("leaves another user's native vault of the same name out of it", async () => {
+    const carol = await inviteUser(t.app, alice, 'carol');
+    nativeVault('Scratch', carol.userId);
+    expect((await publish(alice, noteReq('Scratch', [], 'Hi', 'hello'))).statusCode).toBe(201);
+  });
+
+  it("counts the owner's edits when republishing a folder", async () => {
+    const { vaultId } = (await publish(alice, vaultReq('V', { folders: [], notes: [] }))).json();
+    expect((await publish(alice, folderReq('V', [], 'A', [{ folderKey: null, title: 'one', body: 'b' }]))).statusCode).toBe(201);
+    t.app.db.prepare('UPDATE ob_notes SET owner_edited_at = ? WHERE vault_id = ?').run(new Date().toISOString(), vaultId);
+
+    const conflict = await publish(alice, folderReq('V', [], 'A', [{ folderKey: null, title: 'one', body: 'b2' }]));
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json().ownerEdits).toBe(1);
+  });
+
+  it("counts the owner's edits when republishing a single note", async () => {
+    const { vaultId } = (await publish(alice, vaultReq('V'))).json();
+    expect((await publish(alice, noteReq('V', ['Topics'], 'Solo', 'v1'))).statusCode).toBe(201);
+    t.app.db.prepare("UPDATE ob_notes SET owner_edited_at = ? WHERE vault_id = ? AND title = 'Solo'").run(new Date().toISOString(), vaultId);
+
+    const conflict = await publish(alice, noteReq('V', ['Topics'], 'Solo', 'v2'));
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json().ownerEdits).toBe(1);
+  });
+
+  it("counts the owner's edits in the overwrite conflict", async () => {
+    const res = await publish(alice, noteReq('Docs', [], 'Hi', 'hello'));
+    expect(res.statusCode).toBe(201);
+    t.app.db.prepare('UPDATE ob_notes SET owner_edited_at = ? WHERE vault_id = ?').run(new Date().toISOString(), res.json().vaultId);
+    const again = await publish(alice, { ...noteReq('Docs', [], 'Hi', 'hello'), kind: 'vault', rootName: 'Docs' });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().ownerEdits).toBe(1);
   });
 });
