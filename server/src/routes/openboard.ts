@@ -10,6 +10,7 @@ import {
   deleteLink,
   deleteNote,
   deleteVault,
+  editNoteAsOwner,
   getImage,
   listContent,
   listLinks,
@@ -21,6 +22,7 @@ import {
   updateLink,
 } from '../openboard/store.js';
 import type { ObPermission, PublishRequest } from '../openboard/types.js';
+import { OB_WRITE_TITLE_MAX } from '../openboard/write.js';
 import { idParams, imageParams, uuid } from '../schemas.js';
 
 /** Largest published note body, in characters. */
@@ -31,6 +33,22 @@ export const OB_MAX_FOLDERS = 2000;
 export const OB_PUBLISH_BODY_LIMIT = 64 * 1024 * 1024;
 
 const name = { type: 'string', minLength: 1, maxLength: 1000 } as const;
+
+/** An owner-set note title: one line, not only whitespace, as the visitor routes require. */
+const noteTitle = { type: 'string', minLength: 1, maxLength: OB_WRITE_TITLE_MAX, pattern: '^[^\\r\\n]*\\S[^\\r\\n]*$' } as const;
+
+/** Body length is checked in the store, so an over-long body is 413 rather than a schema 400. */
+const editNoteSchema = {
+  params: idParams,
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['baseUpdatedAt'],
+    anyOf: [{ required: ['title'] }, { required: ['body'] }],
+    properties: { baseUpdatedAt: { type: 'string', maxLength: 40 }, title: noteTitle, body: { type: 'string' } },
+  },
+} as const;
+
 const key = { type: 'string', minLength: 1, maxLength: 200 } as const;
 const nullableKey = { type: ['string', 'null'], minLength: 1, maxLength: 200 } as const;
 
@@ -118,6 +136,12 @@ export function openboardRoutes(app: FastifyInstance, ctx: AppContext): void {
   );
 
   app.get('/api/openboard/content', auth, async (request) => listContent(db, currentUser(request).id));
+
+  app.patch<IdParams & { Body: { baseUpdatedAt: string; title?: string; body?: string } }>(
+    '/api/openboard/notes/:id',
+    { ...auth, schema: editNoteSchema },
+    async (request) => editNoteAsOwner(db, currentUser(request).id, request.params.id, request.body),
+  );
 
   app.delete<IdParams>('/api/openboard/vaults/:id', { ...auth, schema: { params: idParams } }, async (request, reply) => {
     deleteVault(db, currentUser(request).id, request.params.id);

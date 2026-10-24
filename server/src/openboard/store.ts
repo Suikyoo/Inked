@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { bumpTimestamp, type Db, type ObFolderRow, type ObNoteRow, type ObVaultRow, nowIso, transaction } from '../db.js';
 import { ApiError, notFound } from '../errors.js';
+import { checkBody, checkVaultText, cleanTitle, INDEX_TITLE, invalid, textDelta } from './write.js';
 import { UUID_RE } from '../schemas.js';
 import { generateLinkToken } from './token.js';
 import type { ObFolder, ObLink, ObNote, ObPayload, ObPermission, ObVault, PublishConflict, PublishRequest, PublishResult } from './types.js';
@@ -19,8 +20,6 @@ export class PublishConflictError extends ApiError {
     });
   }
 }
-
-const invalid = (message: string) => new ApiError(400, 'invalid_request', message);
 
 /**
  * Whether the user holds an openboard-native vault of this name. Publishing cannot go near one: its notes
@@ -276,6 +275,7 @@ export const noteJson = (n: ObNoteRow): ObNote => ({
   createdAt: n.created_at,
   updatedAt: n.updated_at,
   visitorEdited: n.visitor_edited_at !== null,
+  ownerEdited: n.owner_edited_at !== null,
 });
 
 /** Everything the user has published, with note bodies left out (`body: ''`). */
@@ -549,6 +549,41 @@ function bodiesReferencing(db: Db, vaultId: string, imageId: string): string[] {
     .prepare('SELECT body FROM ob_notes WHERE vault_id = ? AND instr(body, ?) > 0')
     .all(vaultId, `inked://${imageId}`) as { body: string }[];
   return rows.map((r) => r.body);
+}
+
+/**
+ * The owner's edit of a published note's title and/or body, straight into the published copy.
+ *
+ * This deliberately diverges from the private note — nothing copies openboard content back — so the edit is
+ * marked with `owner_edited_at` and the next republish of that target warns before discarding it. 404 unless
+ * the note is in one of the user's vaults; 409 `stale` when `baseUpdatedAt` is not the current value.
+ */
+export function editNoteAsOwner(
+  db: Db,
+  userId: string,
+  noteId: string,
+  req: { baseUpdatedAt: string; title?: string; body?: string },
+): ObNote {
+  return transaction(db, () => {
+    const row = db
+      .prepare('SELECT n.* FROM ob_notes n JOIN ob_vaults v ON v.id = n.vault_id WHERE n.id = ? AND v.user_id = ?')
+      .get(noteId, userId) as ObNoteRow | undefined;
+    if (!row) throw notFound();
+    if (row.updated_at !== req.baseUpdatedAt) throw new ApiError(409, 'stale', 'The note changed since it was loaded');
+    const title = req.title === undefined ? row.title : cleanTitle(req.title);
+    if ((row.title === INDEX_TITLE) !== (title === INDEX_TITLE)) {
+      throw invalid('An Index note keeps its title, and no other note can take it');
+    }
+    const body = req.body ?? row.body;
+    if (body !== row.body) {
+      checkBody(body);
+      checkVaultText(db, row.vault_id, textDelta(body, row.body));
+    }
+    const now = bumpTimestamp(row.updated_at);
+    db.prepare('UPDATE ob_notes SET title = ?, body = ?, updated_at = ?, owner_edited_at = ? WHERE id = ?').run(title, body, now, now, noteId);
+    touchVault(db, row.vault_id);
+    return noteJson(db.prepare('SELECT * FROM ob_notes WHERE id = ?').get(noteId) as unknown as ObNoteRow);
+  });
 }
 
 /** Unpublishes a vault with all its content, images and link grants. 404 unless it is the user's. */

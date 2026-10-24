@@ -6,45 +6,25 @@ import { bumpTimestamp, type Db, type ObNoteRow, nowIso, transaction } from '../
 import { ApiError, notFound } from '../errors.js';
 import { isVaultGranted, noteJson, touchVault } from './store.js';
 import type { ObNote } from './types.js';
+import {
+  checkBody,
+  checkVaultNotes,
+  checkVaultText,
+  cleanTitle,
+  INDEX_TITLE,
+  invalid,
+  OB_WRITE_BODY_MAX,
+  OB_WRITE_TITLE_MAX,
+  OB_VAULT_NOTES_MAX,
+  OB_VAULT_TEXT_MAX,
+  textDelta,
+} from './write.js';
 
-/** Longest visitor-set note title, in characters. */
-export const OB_VISITOR_TITLE_MAX = 200;
-/** Longest visitor-set note body, in characters. */
-export const OB_VISITOR_BODY_MAX = 100_000;
-/** A vault refuses a visitor's new note once it holds this many notes. */
-export const OB_VISITOR_VAULT_NOTES_MAX = 5000;
-/** A vault refuses a visitor write that would take its note text (UTF-8 bytes) past this. */
-export const OB_VISITOR_VAULT_TEXT_MAX = 32 * 1024 * 1024;
-
-/** A folder's hub note. Visitors cannot add, remove or rename one (they can edit its body). */
-const INDEX_TITLE = 'Index';
-
-const invalid = (message: string) => new ApiError(400, 'invalid_request', message);
-
-/** Control characters, line and paragraph separators, and bidi overrides and isolates. */
-const BAD_TITLE_CHARS = /[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/u;
-
-/** The title as stored: trimmed, with no control or bidi characters (else 400). */
-function cleanTitle(title: string): string {
-  const t = title.trim();
-  if (!t || BAD_TITLE_CHARS.test(t)) throw invalid('Titles are one line of plain text');
-  return t;
-}
-
-function checkBody(body: string): void {
-  if (body.length > OB_VISITOR_BODY_MAX) throw new ApiError(413, 'too_large', 'Note is too large');
-}
-
-const bytes = (text: string) => Buffer.byteLength(text, 'utf8');
-
-/** Refuses a write that would take the vault past its note-text cap; `delta` is the change in UTF-8 bytes. */
-function checkVaultText(db: Db, vaultId: string, delta: number): void {
-  if (delta <= 0) return;
-  const { n } = db.prepare('SELECT COALESCE(SUM(length(CAST(body AS BLOB))), 0) AS n FROM ob_notes WHERE vault_id = ?').get(vaultId) as {
-    n: number;
-  };
-  if (n + delta > OB_VISITOR_VAULT_TEXT_MAX) throw new ApiError(413, 'vault_full', 'This vault is full');
-}
+// The caps are the same for every writer; these names are what the routes and the web client already use.
+export const OB_VISITOR_TITLE_MAX = OB_WRITE_TITLE_MAX;
+export const OB_VISITOR_BODY_MAX = OB_WRITE_BODY_MAX;
+export const OB_VISITOR_VAULT_NOTES_MAX = OB_VAULT_NOTES_MAX;
+export const OB_VISITOR_VAULT_TEXT_MAX = OB_VAULT_TEXT_MAX;
 
 /**
  * A visitor's edit of a published note's title and/or body. 404 unless the note is in a vault the link
@@ -66,7 +46,7 @@ export function editNoteAsVisitor(
     // An unchanged body is not re-checked, so a visitor can retitle an owner note longer than the visitor limit.
     if (body !== row.body) {
       checkBody(body);
-      checkVaultText(db, row.vault_id, bytes(body) - bytes(row.body));
+      checkVaultText(db, row.vault_id, textDelta(body, row.body));
     }
     const now = bumpTimestamp(row.updated_at);
     db.prepare('UPDATE ob_notes SET title = ?, body = ?, updated_at = ?, visitor_edited_at = ? WHERE id = ?').run(title, body, now, now, noteId);
@@ -89,9 +69,8 @@ export function createNoteAsVisitor(
     const title = cleanTitle(req.title);
     if (title === INDEX_TITLE) throw invalid('Index is reserved for folder hubs');
     checkBody(req.body);
-    const { n } = db.prepare('SELECT COUNT(*) AS n FROM ob_notes WHERE vault_id = ?').get(req.vaultId) as { n: number };
-    if (n >= OB_VISITOR_VAULT_NOTES_MAX) throw new ApiError(413, 'vault_full', 'This vault is full');
-    checkVaultText(db, req.vaultId, bytes(req.body));
+    checkVaultNotes(db, req.vaultId);
+    checkVaultText(db, req.vaultId, textDelta(req.body, ''));
     const id = randomUUID();
     const now = nowIso();
     db.prepare(
