@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { imageFilesToDrop, imageFilesToPaste, insertAt } from './imagePaste';
+import { caretOf, imageFilesToDrop, imageFilesToPaste, insertAt } from './imagePaste';
+import type { EditorHandle } from '../editor/CodeEditor';
 
 const file = (type: string, name = 'f') => new File(['x'], name, { type });
 const dt = (files: File[], text = '') =>
@@ -34,5 +35,19 @@ describe('insertAt', () => {
   });
   it('clamps a stale selection to the current text', () => {
     expect(insertAt('ab', 50, 60, 'Z')).toEqual({ body: 'abZ', caret: 3 });
+  });
+});
+
+describe('caretOf', () => {
+  it('inserts at the handle selection, not the end', () => {
+    const handle = { selection: () => ({ start: 2, end: 2 }) } as EditorHandle;
+    expect(caretOf(handle, 'abcd')).toEqual({ start: 2, end: 2 });
+  });
+  it('keeps a selected range, so a paste replaces it', () => {
+    const handle = { selection: () => ({ start: 1, end: 3 }) } as EditorHandle;
+    expect(caretOf(handle, 'abcd')).toEqual({ start: 1, end: 3 });
+  });
+  it('falls back to the end of the body when there is no handle', () => {
+    expect(caretOf(null, 'abcd')).toEqual({ start: 4, end: 4 });
   });
 });
