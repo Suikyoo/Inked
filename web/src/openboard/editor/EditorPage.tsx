@@ -3,13 +3,15 @@ import type { ObLink, ObPayload } from 'inked-core';
 import { ObApiError, checkSession, errorText, listContent, listLinks } from '../api';
 import { ContentTab } from './ContentTab';
 import { LinksTab } from './LinksTab';
+import { SettingsTab } from './SettingsTab';
 
 type Phase = { kind: 'loading' } | { kind: 'signedOut' } | { kind: 'failed'; message: string } | { kind: 'ready' };
-type Tab = 'links' | 'content';
+type Tab = 'links' | 'content' | 'settings';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'links', label: 'Links' },
   { id: 'content', label: 'Published content' },
+  { id: 'settings', label: 'Settings' },
 ];
 
 /**
@@ -145,11 +147,9 @@ export function EditorPage() {
         </p>
       )}
       <div className="obe-panel" role="tabpanel" id={`obe-panel-${tab}`} aria-labelledby={`obe-tab-${tab}`}>
-        {tab === 'links' ? (
-          <LinksTab links={links} vaults={content.vaults} onLinksChange={setLinks} onAuthLost={onAuthLost} />
-        ) : (
-          <ContentTab content={content} links={links} onChanged={refresh} onAuthLost={onAuthLost} />
-        )}
+        {tab === 'links' && <LinksTab links={links} vaults={content.vaults} onLinksChange={setLinks} onAuthLost={onAuthLost} />}
+        {tab === 'content' && <ContentTab content={content} links={links} onChanged={refresh} onAuthLost={onAuthLost} />}
+        {tab === 'settings' && <SettingsTab content={content} onChanged={refresh} onAuthLost={onAuthLost} />}
       </div>
     </div>
   );

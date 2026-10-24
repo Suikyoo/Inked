@@ -97,6 +97,18 @@ function route(url: string, init: RequestInit = {}): Response {
     server.content = { ...server.content, notes: [...server.content.notes, note] };
     return json(201, note);
   }
+  const patchVault = u.pathname.match(/^\/api\/openboard\/vaults\/([^/]+)$/);
+  if (patchVault && method === 'PATCH') {
+    if (server.me !== 200) return json(401, { error: 'unauthorized' });
+    const body = JSON.parse(String(init.body)) as { name?: string; color?: string };
+    const id = patchVault[1];
+    if (body.name !== undefined && server.content.vaults.some((v) => v.id !== id && v.name === body.name)) {
+      return json(409, { error: 'name_taken' });
+    }
+    const next = { ...server.content.vaults.find((v) => v.id === id)!, ...body };
+    server.content = { ...server.content, vaults: server.content.vaults.map((v) => (v.id === id ? next : v)) };
+    return json(200, next);
+  }
   const patchNote = u.pathname.match(/^\/api\/openboard\/notes\/([^/]+)$/);
   if (patchNote && method === 'PATCH') {
     const body = JSON.parse(String(init.body)) as { title?: string; body?: string; baseUpdatedAt: string };
@@ -547,5 +559,93 @@ describe('authoring in the openboard control', () => {
     await content();
     await click(button('Unpublish', q('.obe-side')!));
     expect(openDialog().textContent).toContain('Your notes in Inked don’t change.');
+  });
+});
+
+describe('the openboard Settings tab', () => {
+  const nativeVault = (id: string, name: string, color = '#45a89e') => ({ id, name, color, updatedAt: at, origin: 'native' as const });
+
+  async function settings(payload: ObPayload) {
+    server.content = payload;
+    await render();
+    await click(button('Settings'));
+  }
+
+  const cards = () => qa('.obe-vault-settings');
+  const cardFor = (name: string) => cards().find((c) => c.querySelector<HTMLInputElement>('input[type="text"]')?.value === name)!;
+  const nameFieldIn = (card: Element) => card.querySelector<HTMLInputElement>('input[type="text"]')!;
+  const patches = () => calls((url, m) => m === 'PATCH' && /^\/api\/openboard\/vaults\//.test(url));
+  const bodyOf = (call: unknown[]) => JSON.parse(String((call[1] as RequestInit).body));
+
+  it('is reachable as a third tab, and arrow keys still cycle every tab', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    expect(qa('[role="tab"]').map((t) => t.textContent)).toEqual(['Links', 'Published content', 'Settings']);
+    expect(qa('[role="tab"]').find((t) => t.getAttribute('aria-selected') === 'true')?.textContent).toBe('Settings');
+  });
+
+  it('lists the vaults authored in openboard and no others', async () => {
+    await settings({
+      vaults: [nativeVault('vn', 'Scratch'), { id: V1, name: 'Research', color: '#7452e0', updatedAt: at, origin: 'published' }],
+      folders: [],
+      notes: [],
+    });
+    expect(cards()).toHaveLength(1);
+    expect(nameFieldIn(cards()[0]!).value).toBe('Scratch');
+  });
+
+  it('says why published vaults are not here', async () => {
+    await settings({ vaults: [{ id: V1, name: 'Research', color: '#7452e0', updatedAt: at, origin: 'published' }], folders: [], notes: [] });
+    expect(q('.obe-settings')!.textContent).toMatch(/published from Inked/i);
+  });
+
+  it('shows an empty state when nothing was authored here', async () => {
+    await settings({ vaults: [], folders: [], notes: [] });
+    expect(cards()).toHaveLength(0);
+    expect(q('.obe-settings')!.textContent).toMatch(/Published content/i);
+  });
+
+  it('renames a vault and sends only the name', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    const card = cardFor('Scratch');
+    type(nameFieldIn(card), 'Notes');
+    await click(button('Save', card));
+    expect(patches()).toHaveLength(1);
+    expect(bodyOf(patches()[0]!)).toEqual({ name: 'Notes' });
+  });
+
+  it('recolours a vault and sends only the colour', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    const card = cardFor('Scratch');
+    const swatch = card.querySelectorAll<HTMLButtonElement>('.swatches .swatch[role="radio"]')[1]!;
+    const picked = swatch.getAttribute('aria-label')!;
+    await click(swatch);
+    await click(button('Save', card));
+    expect(bodyOf(patches()[0]!)).toEqual({ color: picked });
+  });
+
+  it('keeps Save disabled until something changes', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    const card = cardFor('Scratch');
+    expect(button('Save', card).disabled).toBe(true);
+    type(nameFieldIn(card), 'Notes');
+    expect(button('Save', card).disabled).toBe(false);
+  });
+
+  it('shows a name clash inline and keeps what was typed', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch'), nativeVault('vm', 'Drafts')], folders: [], notes: [] });
+    const card = cardFor('Scratch');
+    type(nameFieldIn(card), 'Drafts');
+    await click(button('Save', card));
+    expect(card.querySelector('.form-error')?.textContent).toMatch(/already/i);
+    expect(nameFieldIn(card).value).toBe('Drafts');
+  });
+
+  it('signs out when the session has gone', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    server.me = 401;
+    const card = cardFor('Scratch');
+    type(nameFieldIn(card), 'Notes');
+    await click(button('Save', card));
+    expect(host!.textContent).toMatch(/Sign in to Inked/i);
   });
 });
