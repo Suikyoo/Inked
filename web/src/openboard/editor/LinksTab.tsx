@@ -139,7 +139,7 @@ function LinkRow({ link, vaults, onEdit, onDelete }: { link: ObLink; vaults: ObV
         </div>
       </div>
       <div className="obe-actions">
-        <button type="button" className="btn btn-sm" onClick={() => void onCopy()}>
+        <button type="button" className="btn btn-sm obe-copy" onClick={() => void onCopy()}>
           {copy === 'copied' ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
           {copy === 'copied' ? 'Copied' : 'Copy'}
         </button>

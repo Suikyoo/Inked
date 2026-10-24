@@ -133,6 +133,63 @@ kbd {
   gap: 8px;
 }
 
+/* ---- Vault icon (brand/VaultIcon.tsx) ----------------------------------------------------
+   The hexagon mark itself lives here, not in shell.css, because three surfaces draw it and only one
+   of them loads the app shell: the sidebar row, the concept-map hub, and the openboard boards. Each
+   surface adds its own hover hook (.vault-link, .cmap-hub, .ob-row-vault). */
+.vault-icon {
+  flex: 0 0 auto;
+}
+/* An unlit spoke draws nothing (the dash pattern starts in its gap); lighting it draws it from the core outward. */
+.vault-icon .vi-spoke {
+  stroke-dasharray: 1 1.1;
+  stroke-dashoffset: 1.02;
+  transition: stroke-dashoffset var(--dur-3) var(--ease-out);
+}
+.vault-icon .vi-spoke.is-lit {
+  stroke-dashoffset: 0;
+}
+.vault-icon .vi-core {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.vault-icon .vi-core.is-pulse {
+  animation: vi-pulse 420ms var(--ease-out) 160ms;
+}
+@keyframes vi-pulse {
+  40% {
+    transform: scale(1.4);
+  }
+}
+/* Hover: the outline turns 60deg like a dial. A hexagon looks the same after 60deg, so it lands where it began. */
+.vault-icon .vi-out {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+  transition: transform var(--dur-3) var(--ease-std);
+}
+/* Click: the unlit spokes rush in and draw back to the real level. */
+.vault-icon .vi-rush .vi-spoke:not(.is-lit) {
+  animation: vi-rush 760ms var(--ease-std);
+}
+@keyframes vi-rush {
+  35%,
+  55% {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vault-icon .vi-spoke {
+    transition: none;
+  }
+  .vault-icon .vi-core.is-pulse,
+  .vault-icon .vi-rush .vi-spoke:not(.is-lit) {
+    animation: none;
+  }
+  .vault-icon .vi-out {
+    transition: none;
+  }
+}
+
 /* ---- Buttons ----------------------------------------------------------------------------- */
 .btn {
   height: var(--control);

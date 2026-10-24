@@ -102,7 +102,9 @@ CREATE TABLE IF NOT EXISTS ob_vaults (
   name       TEXT NOT NULL,
   color      TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  -- 'published' has a private original behind it; 'native' was authored here and exists nowhere else.
+  origin     TEXT NOT NULL DEFAULT 'published' CHECK (origin IN ('published', 'native'))
 );
 CREATE INDEX IF NOT EXISTS ob_vaults_user ON ob_vaults(user_id, name);
 
@@ -124,6 +126,7 @@ CREATE TABLE IF NOT EXISTS ob_notes (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   visitor_edited_at TEXT,      -- set when a visitor changed or added the note through a write link
+  owner_edited_at TEXT,        -- set when the owner changed the published copy, which republishing discards
   published_title TEXT         -- the title the owner published it under; null for a note a visitor added
 );
 CREATE INDEX IF NOT EXISTS ob_notes_vault ON ob_notes(vault_id);
@@ -187,6 +190,8 @@ export function openDb(file: string): Db {
 const ADDED_COLUMNS: { table: string; column: string; definition: string; backfill?: string }[] = [
   { table: 'ob_links', column: 'permission', definition: "TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write'))" },
   { table: 'ob_notes', column: 'visitor_edited_at', definition: 'TEXT' },
+  { table: 'ob_vaults', column: 'origin', definition: "TEXT NOT NULL DEFAULT 'published' CHECK (origin IN ('published', 'native'))" },
+  { table: 'ob_notes', column: 'owner_edited_at', definition: 'TEXT' },
   {
     table: 'ob_notes',
     column: 'published_title',
@@ -296,6 +301,7 @@ export interface ObVaultRow {
   color: string;
   created_at: string;
   updated_at: string;
+  origin: 'published' | 'native';
 }
 
 export interface ObFolderRow {
@@ -314,6 +320,7 @@ export interface ObNoteRow {
   created_at: string;
   updated_at: string;
   visitor_edited_at: string | null;
+  owner_edited_at: string | null;
   published_title: string | null;
 }
 

@@ -255,6 +255,13 @@ export function PublishDialog({
                 Overwriting discards those changes.
               </p>
             )}
+            {/* The owner's own edits to the published copy are discarded just the same. */}
+            {conflict.ownerEdits > 0 && (
+              <p>
+                {plural(conflict.ownerEdits, 'note')} there {conflict.ownerEdits === 1 ? 'was' : 'were'} changed by you in Openboard.
+                Overwriting discards those changes.
+              </p>
+            )}
             {step.skipped > 0 && (
               <p>
                 {unreadableText(step.skipped)}, and {step.skipped === 1 ? 'its published copy' : 'their published copies'} will be

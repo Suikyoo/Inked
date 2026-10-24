@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { INDEX_TITLE, indexNoteOf } from 'inked-core/indexNote';
 import type { ObFolder, ObNote, ObPayload } from 'inked-core';
-import { VaultIcon } from '../brand/VaultIcon';
+import { VaultIcon, inkLevelLabel } from '../brand/VaultIcon';
 import { ChevronRight, IndexIcon, MenuIcon } from '../components/Icons';
+import { notesInkLevel } from '../state/vaultStats';
 
 /**
  * The slim left rail of a board: vaults > folders > notes, read-only. A folder's Index is its first row.
@@ -21,7 +22,6 @@ export interface TreeRailProps {
   query?: string;
 }
 
-const WEEK_MS = 7 * 24 * 3600 * 1000;
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
 const byTitle = (a: ObNote, b: ObNote) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
 
@@ -74,6 +74,8 @@ export function TreeRail({ payload, selectedId, onSelect, collapsed, onToggle, q
   const folderById = useMemo(() => new Map(payload.folders.map((f) => [f.id, f])), [payload]);
   // Vaults and folders the visitor closed; everything starts open.
   const [shut, setShut] = useState<ReadonlySet<string>>(() => new Set());
+  // Ink rush: a click on a vault flashes its icon's spokes, as it does in the app's sidebar.
+  const [rush, setRush] = useState({ vaultId: '', seq: 0 });
 
   // Reading a note opens the folders above it, so its row is in view.
   useEffect(() => {
@@ -173,11 +175,20 @@ export function TreeRail({ payload, selectedId, onSelect, collapsed, onToggle, q
               const t = trees.get(v.id)!;
               const isOpen = !shut.has(v.id);
               const notes = payload.notes.filter((n) => n.vaultId === v.id);
-              const active = notes.filter((n) => now - Date.parse(n.updatedAt) < WEEK_MS).length;
+              const ink = notesInkLevel(notes, now);
               return (
                 <section key={v.id} className="ob-vault">
-                  <button type="button" className="ob-row ob-row-vault" aria-expanded={isOpen} onClick={() => setShut((s) => flip(s, v.id))}>
-                    <VaultIcon color={v.color} level={active / Math.max(notes.length, 1)} size={14} />
+                  <button
+                    type="button"
+                    className="ob-row ob-row-vault"
+                    aria-expanded={isOpen}
+                    title={`${v.name} · ${inkLevelLabel(ink)}`}
+                    onClick={() => {
+                      setShut((s) => flip(s, v.id));
+                      setRush((r) => ({ vaultId: v.id, seq: r.seq + 1 }));
+                    }}
+                  >
+                    <VaultIcon color={v.color} level={ink} size={14} rush={rush.vaultId === v.id ? rush.seq : 0} />
                     <span className="ob-row-label ob-vault-name">{v.name}</span>
                     <span className="ob-row-count">{notes.length}</span>
                   </button>

@@ -4,18 +4,15 @@
 /* ---- Top bar and tabs ---------------------------------------------------------------------- */
 .obe-top {
   min-height: 48px;
-  padding: 0 16px;
+  padding: 0 var(--sp-4);
 }
 .obe-brand {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--sp-2);
   min-width: 0;
   color: inherit;
   text-decoration: none;
-}
-.obe-brand .wordmark {
-  font-size: 18px;
 }
 .obe-brand-sub {
   font-size: 12px;
@@ -26,13 +23,13 @@
   flex: 0 0 auto;
   align-self: stretch;
   display: flex;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 .obe-tab {
   position: relative;
   display: inline-flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 var(--sp-3);
   border: 0;
   background: transparent;
   font-size: 13px;
@@ -44,8 +41,8 @@
 .obe-tab::after {
   content: '';
   position: absolute;
-  left: 10px;
-  right: 10px;
+  left: var(--sp-2);
+  right: var(--sp-2);
   bottom: -1px;
   height: 2px;
   border-radius: 2px;
@@ -64,7 +61,7 @@
 }
 .obe-tab:focus-visible {
   outline: 2px solid var(--ink-light);
-  outline-offset: -6px;
+  outline-offset: -4px;
   border-radius: var(--radius);
 }
 
@@ -78,7 +75,7 @@
   margin: 0;
 }
 .obe-banner {
-  padding: 8px 16px;
+  padding: var(--sp-2) var(--sp-4);
   border-bottom: 1px solid var(--side-border);
 }
 
@@ -87,11 +84,15 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 24px 16px 48px;
+  padding: var(--sp-6) var(--sp-4) var(--sp-12);
 }
+/* Every block of a tab's page sits in the same centred column, whichever tab it belongs to. */
 .obe-head,
 .obe-links,
-.obe-page > .obe-empty {
+.obe-page > .obe-empty,
+.obe-settings-head,
+.obe-vault-list,
+.obe-settings-note {
   max-width: 880px;
   margin-left: auto;
   margin-right: auto;
@@ -100,8 +101,8 @@
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
 }
 .obe-title {
   margin: 0;
@@ -111,13 +112,13 @@
   color: var(--text-strong);
 }
 .obe-lead {
-  margin: 4px 0 0;
+  margin: var(--sp-1) 0 0;
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--muted-2);
 }
 .obe-empty {
-  padding: 32px 16px;
+  padding: var(--sp-8) var(--sp-4);
   border: 1px dashed var(--line);
   border-radius: var(--radius-md);
   text-align: center;
@@ -139,8 +140,8 @@
 .obe-link {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 14px;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
 }
 .obe-link + .obe-link {
   border-top: 1px solid var(--line);
@@ -150,7 +151,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 .obe-link-label {
   margin: 0;
@@ -179,7 +180,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 12px;
+  gap: var(--sp-1-5) var(--sp-3);
 }
 .obe-chips {
   list-style: none;
@@ -187,7 +188,7 @@
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 .obe-chips.is-none {
   font-size: 11.5px;
@@ -196,9 +197,9 @@
 .obe-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--sp-1-5);
   height: 20px;
-  padding: 0 8px;
+  padding: 0 var(--sp-2);
   border-radius: 999px;
   background: var(--panel);
   font-size: 11.5px;
@@ -227,12 +228,16 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1-5);
+}
+/* "Copy" becomes "Copied" with a different icon: a floor on the width keeps Edit and Delete still. */
+.obe-copy {
+  min-width: 80px;
 }
 .obe-copy-status {
   position: absolute;
   right: 0;
-  top: calc(100% + 4px);
+  top: calc(100% + var(--sp-1));
   font-size: 11px;
   white-space: nowrap;
   color: var(--muted-2);
@@ -243,22 +248,22 @@
   width: 100%;
 }
 .obe-checklist {
-  margin: 4px 0 0;
+  margin: var(--sp-1) 0 0;
   padding: 0;
   border: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0-5);
 }
 .obe-checklist legend {
   padding: 0;
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-1);
 }
 .obe-check {
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: var(--row);
-  padding: 0 6px;
+  padding: 0 var(--sp-1-5);
   border-radius: var(--radius);
   cursor: pointer;
 }
@@ -270,28 +275,64 @@
   color: var(--text);
 }
 
-/* Gives way to the note title first when the tree is narrow. */
+/* Gives way to the note title first when the tree is narrow. 11px is the type floor: DESIGN.md allows
+   four places below it and this is not one of them. */
 .obe-visitor-tag {
   flex: 0 4 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-light);
 }
 .obe-perm-option {
   align-items: flex-start;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: var(--sp-1-5);
+  padding-bottom: var(--sp-1-5);
 }
 .obe-perm-option input {
-  margin-top: 2px;
+  margin-top: var(--sp-0-5);
 }
 .obe-perm-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0-5);
+}
+
+/* ---- Settings tab ---------------------------------------------------------------------------
+   The same page chrome as the Links tab (.obe-page carries the scroll and the gutters), so the two
+   read as two tabs of one control rather than two pages. */
+.obe-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.obe-settings-head {
+  display: flex;
+  flex-direction: column;
+}
+.obe-vault-list {
+  list-style: none;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.obe-settings-note {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+/* One card per vault. A label sits 6px above its own field (DESIGN.md, Inputs / Fields), so the card's
+   rhythm is the label gap and the groups after the name field add one more step. */
+.obe-vault-settings {
+  gap: var(--sp-1-5);
+}
+.obe-vault-settings .swatches,
+.obe-vault-settings .row-actions {
+  margin-top: var(--sp-1-5);
 }
 
 /* ---- Published content tab ----------------------------------------------------------------- */
@@ -308,14 +349,15 @@
   background: var(--side);
   border-right: 1px solid var(--side-border);
 }
+/* The visitor rail's head (.ob-rail-head) and this one are the same bar; they are aligned the same way. */
 .obe-side-head {
   flex: 0 0 auto;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  height: 40px;
-  padding: 12px 12px 0;
+  gap: var(--sp-2);
+  height: var(--bar);
+  padding: 0 var(--sp-2);
 }
 .obe-side-title {
   margin: 0;
@@ -326,17 +368,19 @@
 .obe-side-count {
   font-size: 11px;
   color: var(--muted-3);
+  /* Unpublishing changes these numbers; tabular figures keep the line from jittering. */
+  font-variant-numeric: tabular-nums;
 }
 .obe-side-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 8px 16px;
+  padding: 0 var(--sp-2) var(--sp-4);
 }
 .obe-tree-row {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--sp-0-5);
   border-radius: var(--radius);
 }
 .obe-tree-row > .ob-row {
@@ -347,39 +391,83 @@
   background: var(--row-selected);
   color: var(--text-strong);
 }
-.obe-unpublish {
+/* Row actions: Unpublish / Delete, and New folder / New note inside a vault authored here. One shape for
+   all of them, revealed by hovering or focusing the row, as the notes app's tree actions are. */
+.obe-unpublish,
+.obe-add {
   flex: 0 0 auto;
   height: 22px;
-  padding: 0 6px;
+  padding: 0 var(--sp-1-5);
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   font-size: 11px;
   font-weight: 500;
-  color: var(--error);
+  color: var(--muted-2);
+  white-space: nowrap;
   cursor: pointer;
   opacity: 0;
   transition:
     opacity var(--dur-1),
-    background-color var(--dur-1);
+    background-color var(--dur-1),
+    color var(--dur-1);
+}
+.obe-unpublish {
+  color: var(--error);
 }
 .obe-tree-row:hover .obe-unpublish,
 .obe-tree-row:focus-within .obe-unpublish,
-.obe-unpublish:focus-visible {
+.obe-unpublish:focus-visible,
+.obe-tree-row:hover .obe-add,
+.obe-tree-row:focus-within .obe-add,
+.obe-add:focus-visible {
   opacity: 1;
 }
 .obe-unpublish:hover {
   background: var(--error-bg);
 }
-.obe-unpublish:focus-visible {
+.obe-add:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.obe-unpublish:focus-visible,
+.obe-add:focus-visible {
   outline: 2px solid var(--ink-light);
   outline-offset: -1px;
 }
-/* No hover on touch screens: keep the action visible. */
+/* No hover on touch screens: keep the actions visible. */
 @media (hover: none) {
-  .obe-unpublish {
+  .obe-unpublish,
+  .obe-add {
     opacity: 1;
   }
+}
+
+/* Says a vault's notes live only here, under its row and indented about to its name. */
+.obe-native-tag {
+  margin: 0 0 var(--sp-1);
+  padding: 0 var(--sp-1-5) 0 var(--sp-6);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--muted-3);
+}
+/* The vault-root create actions: a button pair, always shown, since a new vault's tree is empty. */
+.obe-vault-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-3);
+}
+/* "New Openboard vault", last in the tree column and set off from it by a rule. */
+.obe-new-vault {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1-5);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
 }
 
 .obe-stage {
@@ -394,8 +482,8 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 10px;
-  padding: 10px 16px 0;
+  gap: var(--sp-1-5) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4) 0;
 }
 .obe-select {
   width: auto;
@@ -407,7 +495,7 @@
   color: var(--muted-3);
 }
 .obe-stage > .obe-error {
-  padding: 6px 16px 0;
+  padding: var(--sp-1-5) var(--sp-4) 0;
 }
 .obe-stage-body {
   position: relative;
@@ -420,28 +508,42 @@
 @media (max-width: 760px) {
   .obe-top {
     flex-wrap: wrap;
-    gap: 0 8px;
-    padding: 6px 12px 0;
+    gap: 0 var(--sp-2);
+    padding: var(--sp-1-5) var(--sp-3) 0;
   }
   .obe-tabs {
     order: 2;
     flex: 1 1 100%;
-    height: 38px;
+    /* The page's main navigation: a touch target, not 38px. */
+    height: 44px;
   }
   .obe-tab {
     flex: 1 1 0;
     justify-content: center;
   }
   .obe-page {
-    padding: 16px 12px 40px;
+    padding: var(--sp-4) var(--sp-3) calc(var(--sp-8) + env(safe-area-inset-bottom));
   }
   .obe-head {
     align-items: flex-start;
   }
+  /* 16px or iOS zooms the page when the address takes focus (the copy fallback selects it). */
+  .obe-url {
+    font-size: 16px;
+  }
+  /* A dialog checkbox row is a target too; .obe-check sets its own height, so it is raised here. */
+  .obe-check {
+    min-height: 44px;
+  }
+  /* The tree's row actions are drawn larger rather than growing a hit area into the next row. */
+  .obe-unpublish,
+  .obe-add {
+    height: 36px;
+  }
   .obe-link {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: var(--sp-3);
   }
   .obe-actions {
     flex-wrap: wrap;
@@ -462,7 +564,7 @@
     height: 62dvh;
   }
   .obe-stage-bar {
-    padding: 8px 12px 0;
+    padding: var(--sp-2) var(--sp-3) 0;
   }
   .obe-select {
     flex: 1 1 0;

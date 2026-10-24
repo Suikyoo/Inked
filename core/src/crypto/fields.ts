@@ -96,16 +96,26 @@ export interface LlmSettings {
   model: string;
   apiKey: string;
 }
+/** Vim mode in the note editor: whether it is on, and the owner's keymap config as written. */
+export interface VimSettings {
+  on: boolean;
+  config: string;
+}
 /** Synced per-account settings, encrypted with userKey. A missing `semantic` means off. */
 export interface AccountSettings {
   semantic?: boolean;
   llm?: LlmSettings;
+  vim?: VimSettings;
 }
 
 const isLlm = (v: unknown): v is LlmSettings =>
   isObj(v) && typeof v.baseUrl === 'string' && typeof v.model === 'string' && typeof v.apiKey === 'string';
+const isVim = (v: unknown): v is VimSettings => isObj(v) && typeof v.on === 'boolean' && typeof v.config === 'string';
 export const isAccountSettings = (v: unknown): v is AccountSettings =>
-  isObj(v) && (v.semantic === undefined || typeof v.semantic === 'boolean') && (v.llm === undefined || isLlm(v.llm));
+  isObj(v) &&
+  (v.semantic === undefined || typeof v.semantic === 'boolean') &&
+  (v.llm === undefined || isLlm(v.llm)) &&
+  (v.vim === undefined || isVim(v.vim));
 
 export const encryptAccountSettings = (key: CryptoKey, userId: string, s: AccountSettings) =>
   encryptJSON(
@@ -113,6 +123,7 @@ export const encryptAccountSettings = (key: CryptoKey, userId: string, s: Accoun
     {
       ...(s.semantic !== undefined ? { semantic: s.semantic } : {}),
       ...(s.llm ? { llm: { baseUrl: s.llm.baseUrl, model: s.llm.model, apiKey: s.llm.apiKey } } : {}),
+      ...(s.vim ? { vim: { on: s.vim.on, config: s.vim.config } } : {}),
     },
     aad.accountSettings(userId),
   );

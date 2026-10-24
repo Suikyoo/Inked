@@ -14,8 +14,8 @@ const V2 = '22222222-2222-4222-8222-222222222222';
 function full(): ObPayload {
   return {
     vaults: [
-      { id: V1, name: 'Research', color: '#7452e0', updatedAt: at },
-      { id: V2, name: 'Recipes', color: '#45a89e', updatedAt: at },
+      { id: V1, name: 'Research', color: '#7452e0', updatedAt: at , origin: 'published' },
+      { id: V2, name: 'Recipes', color: '#45a89e', updatedAt: at , origin: 'published' },
     ],
     folders: [{ id: 'f1', vaultId: V1, parentId: null, name: 'Ops' }],
     notes: [
@@ -77,6 +77,45 @@ function route(url: string, init: RequestInit = {}): Response {
     if (!linkId) return json(200, server.content);
     const link = server.links.find((l) => l.id === linkId)!;
     return json(200, { ...server.content, ...onlyVault(server.content, link.vaultIds[0]!) });
+  }
+  if (u.pathname === '/api/openboard/vaults' && method === 'POST') {
+    const body = JSON.parse(String(init.body)) as { name: string; color: string };
+    if (server.content.vaults.some((v) => v.name === body.name)) return json(409, { error: 'name_taken' });
+    const vault = { id: 'vn', name: body.name, color: body.color, updatedAt: at, origin: 'native' as const };
+    server.content = { ...server.content, vaults: [...server.content.vaults, vault] };
+    return json(201, vault);
+  }
+  if (u.pathname === '/api/openboard/folders' && method === 'POST') {
+    const body = JSON.parse(String(init.body)) as { vaultId: string; parentId: string | null; name: string };
+    const folder = { id: 'fn', ...body };
+    server.content = { ...server.content, folders: [...server.content.folders, folder] };
+    return json(201, folder);
+  }
+  if (u.pathname === '/api/openboard/notes' && method === 'POST') {
+    const body = JSON.parse(String(init.body)) as { vaultId: string; folderId: string | null; title: string; body: string };
+    const note = { id: 'nn', ...body, createdAt: at, updatedAt: at };
+    server.content = { ...server.content, notes: [...server.content.notes, note] };
+    return json(201, note);
+  }
+  const patchVault = u.pathname.match(/^\/api\/openboard\/vaults\/([^/]+)$/);
+  if (patchVault && method === 'PATCH') {
+    if (server.me !== 200) return json(401, { error: 'unauthorized' });
+    const body = JSON.parse(String(init.body)) as { name?: string; color?: string };
+    const id = patchVault[1];
+    if (body.name !== undefined && server.content.vaults.some((v) => v.id !== id && v.name === body.name)) {
+      return json(409, { error: 'name_taken' });
+    }
+    const next = { ...server.content.vaults.find((v) => v.id === id)!, ...body };
+    server.content = { ...server.content, vaults: server.content.vaults.map((v) => (v.id === id ? next : v)) };
+    return json(200, next);
+  }
+  const patchNote = u.pathname.match(/^\/api\/openboard\/notes\/([^/]+)$/);
+  if (patchNote && method === 'PATCH') {
+    const body = JSON.parse(String(init.body)) as { title?: string; body?: string; baseUpdatedAt: string };
+    const old = server.content.notes.find((n) => n.id === patchNote[1])!;
+    const next = { ...old, ...(body.title === undefined ? {} : { title: body.title }), ...(body.body === undefined ? {} : { body: body.body }), updatedAt: '2026-10-25T10:00:00.000Z', ownerEdited: true };
+    server.content = { ...server.content, notes: server.content.notes.map((n) => (n.id === next.id ? next : n)) };
+    return json(200, next);
   }
   const del = u.pathname.match(/^\/api\/openboard\/(vaults|folders|notes)\/([^/]+)$/);
   if (del && method === 'DELETE') {
@@ -346,5 +385,290 @@ describe('EditorPage', () => {
     server.contentStatus = 500;
     await render();
     expect(q('[role="alert"]')).not.toBeNull();
+  });
+});
+
+describe('authoring in the openboard control', () => {
+  /** Opens the Content tab with the given payload already published. */
+  async function content(payload = full()) {
+    server.content = payload;
+    await render();
+    await click(button('Published content'));
+  }
+
+  const nativePayload = (): ObPayload => ({
+    vaults: [{ id: 'vn', name: 'Scratch', color: '#45a89e', updatedAt: at, origin: 'native' }],
+    folders: [],
+    notes: [{ id: 'nn', vaultId: 'vn', folderId: null, title: 'Only copy', body: 'written here', createdAt: at, updatedAt: at }],
+  });
+
+  it('edits a published note through the owner route', async () => {
+    await content();
+    await click(q('.obe-side .ob-row-note')!);
+    await click(button('Edit', q('.ob-drawer')!));
+
+    const body = q<HTMLTextAreaElement>('.ob-editor-body')!;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      set.call(body, 'fixed in openboard');
+      body.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click(button('Save', q('.ob-editor')!));
+
+    expect(calls((url, m) => m === 'PATCH' && url.startsWith('/api/openboard/notes/'))).toHaveLength(1);
+  });
+
+  it('asks before dropping an unsaved edit, and keeps it when refused', async () => {
+    await content();
+    await click(q('.obe-side .ob-row-note')!);
+    await click(button('Edit', q('.ob-drawer')!));
+
+    const body = q<HTMLTextAreaElement>('.ob-editor-body')!;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      set.call(body, 'unsaved work');
+      body.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      await click(q('.ob-drawer .ibtn')!);
+      expect(confirmSpy).toHaveBeenCalled();
+      // Refused: the editor and the draft are still there.
+      expect(q<HTMLTextAreaElement>('.ob-editor-body')?.value).toBe('unsaved work');
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it('drops the edit when the owner agrees', async () => {
+    await content();
+    await click(q('.obe-side .ob-row-note')!);
+    await click(button('Edit', q('.ob-drawer')!));
+    const body = q<HTMLTextAreaElement>('.ob-editor-body')!;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      set.call(body, 'unsaved work');
+      body.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      await click(q('.ob-drawer .ibtn')!);
+      expect(q('.ob-editor')).toBeNull();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it('creates a native vault, and says its content is unencrypted', async () => {
+    await content({ vaults: [], folders: [], notes: [] });
+    const form = q('.obe-new-vault')!;
+    expect(form.textContent?.toLowerCase()).toContain('unencrypted');
+
+    type(form.querySelector('input')!, 'Scratch');
+    await click(button('Create vault', form));
+    expect(calls((url, m) => m === 'POST' && url === '/api/openboard/vaults')).toHaveLength(1);
+  });
+
+  it('shows the name_taken refusal when the name is already in use', async () => {
+    await content();
+    const form = q('.obe-new-vault')!;
+    type(form.querySelector('input')!, 'Research');
+    await click(button('Create vault', form));
+    expect(q('.obe-new-vault .form-error')?.textContent).toMatch(/already/i);
+  });
+
+  it('draws the vault icon at the share of notes edited this week, not a bare hexagon', async () => {
+    const now = Date.now();
+    const fresh = new Date(now - 3_600_000).toISOString();
+    const stale = new Date(now - 60 * 86_400_000).toISOString();
+    await content({
+      vaults: [{ id: V1, name: 'Research', color: '#7452e0', updatedAt: fresh, origin: 'published' }],
+      folders: [],
+      notes: [1, 2, 3, 4].map((k) => ({ id: `n${k}`, vaultId: V1, folderId: null, title: `Note ${k}`, body: '', createdAt: stale, updatedAt: k <= 2 ? fresh : stale })),
+    });
+    // Two of four edited this week: level 0.5, which is three of the six spokes.
+    const icon = q('.obe-side .ob-row-vault .vault-icon')!;
+    expect(icon.querySelectorAll('.vi-spoke.is-lit')).toHaveLength(3);
+    expect(icon.querySelector('title')!.textContent).toBe('50% of notes edited this week');
+  });
+
+  it('rushes ink through the clicked vault’s icon, as the sidebar does', async () => {
+    await content();
+    const row = q('.obe-side .ob-row-vault')!;
+    expect(row.querySelector('.vi-rush')).toBeNull();
+    await click(row);
+    expect(row.querySelector('.vi-rush')).not.toBeNull();
+  });
+
+  it('badges a native vault in the tree', async () => {
+    await content(nativePayload());
+    expect(q('.obe-side')!.textContent).toContain('Openboard-only');
+  });
+
+  it('offers New folder and New note only inside a native vault', async () => {
+    await content();
+    expect(button('New note', q('.obe-side')!)).toBeUndefined();
+    await content(nativePayload());
+    expect(button('New note', q('.obe-side')!)).toBeDefined();
+    expect(button('New folder', q('.obe-side')!)).toBeDefined();
+  });
+
+  it('creates a native vault in the colour the owner picked', async () => {
+    await content({ vaults: [], folders: [], notes: [] });
+    const form = q('.obe-new-vault')!;
+    type(form.querySelector('input')!, 'Scratch');
+    // Pick the third swatch rather than whatever the form defaulted to.
+    const swatch = form.querySelectorAll<HTMLButtonElement>('.swatches .swatch[role="radio"]')[2]!;
+    const picked = swatch.getAttribute('aria-label')!;
+    await click(swatch);
+    await click(button('Create vault', form));
+    const call = calls((url, m) => m === 'POST' && url === '/api/openboard/vaults')[0]!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ name: 'Scratch', color: picked });
+  });
+
+  it('creates a folder inside another folder, not only at the vault root', async () => {
+    await content({
+      vaults: [{ id: 'vn', name: 'Scratch', color: '#45a89e', updatedAt: at, origin: 'native' }],
+      folders: [{ id: 'f9', vaultId: 'vn', parentId: null, name: 'Ideas' }],
+      notes: [],
+    });
+    const row = qa('.obe-tree-row').find((r) => r.textContent?.includes('Ideas'))!;
+    await click(button('New folder', row));
+    type(openDialog().querySelector('input')!, 'Nested');
+    await click(button('Create', openDialog()));
+    const call = calls((url, m) => m === 'POST' && url === '/api/openboard/folders')[0]!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ vaultId: 'vn', parentId: 'f9', name: 'Nested' });
+  });
+
+  it('creates a note inside a folder', async () => {
+    await content({
+      vaults: [{ id: 'vn', name: 'Scratch', color: '#45a89e', updatedAt: at, origin: 'native' }],
+      folders: [{ id: 'f9', vaultId: 'vn', parentId: null, name: 'Ideas' }],
+      notes: [],
+    });
+    const row = qa('.obe-tree-row').find((r) => r.textContent?.includes('Ideas'))!;
+    await click(button('New note', row));
+    type(openDialog().querySelector('input')!, 'Inside');
+    await click(button('Create', openDialog()));
+    const call = calls((url, m) => m === 'POST' && url === '/api/openboard/notes')[0]!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ vaultId: 'vn', folderId: 'f9', title: 'Inside', body: '' });
+  });
+
+  it('offers no folder-level create buttons in a published vault', async () => {
+    await content();
+    const row = qa('.obe-tree-row').find((r) => r.textContent?.includes('Ops'))!;
+    expect(button('New folder', row)).toBeUndefined();
+    expect(button('New note', row)).toBeUndefined();
+  });
+
+  it('creates a note in a native vault', async () => {
+    await content(nativePayload());
+    await click(button('New note', q('.obe-side')!));
+    type(openDialog().querySelector('input')!, 'Second');
+    await click(button('Create', openDialog()));
+    expect(calls((url, m) => m === 'POST' && url === '/api/openboard/notes')).toHaveLength(1);
+  });
+
+  it('warns that deleting a native vault destroys the only copy', async () => {
+    await content(nativePayload());
+    await click(button('Delete', q('.obe-side')!));
+    expect(openDialog().textContent).toMatch(/only copy|for good/i);
+    expect(openDialog().textContent).not.toContain('Your notes in Inked don’t change.');
+  });
+
+  it('keeps the unpublish wording for a published vault', async () => {
+    await content();
+    await click(button('Unpublish', q('.obe-side')!));
+    expect(openDialog().textContent).toContain('Your notes in Inked don’t change.');
+  });
+});
+
+describe('the openboard Settings tab', () => {
+  const nativeVault = (id: string, name: string, color = '#45a89e') => ({ id, name, color, updatedAt: at, origin: 'native' as const });
+
+  async function settings(payload: ObPayload) {
+    server.content = payload;
+    await render();
+    await click(button('Settings'));
+  }
+
+  const cards = () => qa('.obe-vault-settings');
+  const cardFor = (name: string) => cards().find((c) => c.querySelector<HTMLInputElement>('input[type="text"]')?.value === name)!;
+  const nameFieldIn = (card: Element) => card.querySelector<HTMLInputElement>('input[type="text"]')!;
+  const patches = () => calls((url, m) => m === 'PATCH' && /^\/api\/openboard\/vaults\//.test(url));
+  const bodyOf = (call: unknown[]) => JSON.parse(String((call[1] as RequestInit).body));
+
+  it('is reachable as a third tab, and arrow keys still cycle every tab', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    expect(qa('[role="tab"]').map((t) => t.textContent)).toEqual(['Links', 'Published content', 'Settings']);
+    expect(qa('[role="tab"]').find((t) => t.getAttribute('aria-selected') === 'true')?.textContent).toBe('Settings');
+  });
+
+  it('lists the vaults authored in openboard and no others', async () => {
+    await settings({
+      vaults: [nativeVault('vn', 'Scratch'), { id: V1, name: 'Research', color: '#7452e0', updatedAt: at, origin: 'published' }],
+      folders: [],
+      notes: [],
+    });
+    expect(cards()).toHaveLength(1);
+    expect(nameFieldIn(cards()[0]!).value).toBe('Scratch');
+  });
+
+  it('says why published vaults are not here', async () => {
+    await settings({ vaults: [{ id: V1, name: 'Research', color: '#7452e0', updatedAt: at, origin: 'published' }], folders: [], notes: [] });
+    expect(q('.obe-settings')!.textContent).toMatch(/published from Inked/i);
+  });
+
+  it('shows an empty state when nothing was authored here', async () => {
+    await settings({ vaults: [], folders: [], notes: [] });
+    expect(cards()).toHaveLength(0);
+    expect(q('.obe-settings')!.textContent).toMatch(/Published content/i);
+  });
+
+  it('renames a vault and sends only the name', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    const card = cardFor('Scratch');
+    type(nameFieldIn(card), 'Notes');
+    await click(button('Save', card));
+    expect(patches()).toHaveLength(1);
+    expect(bodyOf(patches()[0]!)).toEqual({ name: 'Notes' });
+  });
+
+  it('recolours a vault and sends only the colour', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    const card = cardFor('Scratch');
+    const swatch = card.querySelectorAll<HTMLButtonElement>('.swatches .swatch[role="radio"]')[1]!;
+    const picked = swatch.getAttribute('aria-label')!;
+    await click(swatch);
+    await click(button('Save', card));
+    expect(bodyOf(patches()[0]!)).toEqual({ color: picked });
+  });
+
+  it('keeps Save disabled until something changes', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    const card = cardFor('Scratch');
+    expect(button('Save', card).disabled).toBe(true);
+    type(nameFieldIn(card), 'Notes');
+    expect(button('Save', card).disabled).toBe(false);
+  });
+
+  it('shows a name clash inline and keeps what was typed', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch'), nativeVault('vm', 'Drafts')], folders: [], notes: [] });
+    const card = cardFor('Scratch');
+    type(nameFieldIn(card), 'Drafts');
+    await click(button('Save', card));
+    expect(card.querySelector('.form-error')?.textContent).toMatch(/already/i);
+    expect(nameFieldIn(card).value).toBe('Drafts');
+  });
+
+  it('signs out when the session has gone', async () => {
+    await settings({ vaults: [nativeVault('vn', 'Scratch')], folders: [], notes: [] });
+    server.me = 401;
+    const card = cardFor('Scratch');
+    type(nameFieldIn(card), 'Notes');
+    await click(button('Save', card));
+    expect(host!.textContent).toMatch(/Sign in to Inked/i);
   });
 });

@@ -66,6 +66,19 @@
   --font-serif: 'Spectral', Georgia, serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
 
+  /* Spacing: one ladder on a 4px base, named for its multiple of it (--sp-4 is 16px). It covers the
+     4/6/8/12/16/24 rhythm DESIGN.md describes under Layout, with 2px for the hairline gaps between rows
+     and 32/48px for page tails. Gaps, margins and padding pick a step; nothing sits between two. */
+  --sp-0-5: 2px;
+  --sp-1: 4px;
+  --sp-1-5: 6px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+
   /* Geometry */
   --row: 28px;
   --row-sm: 26px;
@@ -76,6 +89,8 @@
   --radius-md: 7px;
   --radius-lg: 8px;
   --side-width: 240px;
+  /* Tree indentation per level (DESIGN.md, Navigation): not a spacing step, a fixed structural offset. */
+  --indent: 14px;
   --dur-1: 200ms;
   --dur-2: 320ms;
   --dur-3: 450ms;

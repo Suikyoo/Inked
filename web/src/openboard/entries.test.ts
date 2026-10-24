@@ -9,8 +9,8 @@ const RECENT = '2026-10-21T00:00:00.000Z';
 function payload(): ObPayload {
   return {
     vaults: [
-      { id: 'v1', name: 'Research', color: '#9d7cf2', updatedAt: RECENT },
-      { id: 'v2', name: 'Empty', color: '#55aa88', updatedAt: OLD },
+      { id: 'v1', name: 'Research', color: '#9d7cf2', updatedAt: RECENT , origin: 'published' },
+      { id: 'v2', name: 'Empty', color: '#55aa88', updatedAt: OLD , origin: 'published' },
     ],
     folders: [
       { id: 'f1', vaultId: 'v1', parentId: null, name: 'Ops' },
@@ -69,7 +69,7 @@ describe('openboardEntries', () => {
 
   it('duplicate sibling names and non-ASCII names stay distinct nodes', () => {
     const p: ObPayload = {
-      vaults: [{ id: 'v1', name: 'Ünïcode 日本', color: '#9d7cf2', updatedAt: OLD }],
+      vaults: [{ id: 'v1', name: 'Ünïcode 日本', color: '#9d7cf2', updatedAt: OLD , origin: 'published' }],
       folders: [
         { id: 'f1', vaultId: 'v1', parentId: null, name: 'Same' },
         { id: 'f2', vaultId: 'v1', parentId: null, name: 'Same' },

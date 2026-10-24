@@ -12,8 +12,12 @@ import '../../styles/base.css';
 import '../../styles/home.css';
 import '../../styles/map.css';
 import '../../styles/note.css';
+// The control reuses the app's cards, colour swatches and action rows (ColorPicker, the vault forms).
+import '../../styles/settings.css';
 import '../../styles/openboard.css';
 import '../../styles/openboard-editor.css';
+// Last, so the touch sizes and safe areas win ties, exactly as in the notes app's entry.
+import '../../styles/phone.css';
 import { EditorPage } from './EditorPage';
 
 // The owner's openboard editor. Deliberately imports no store, crypto or vault keys

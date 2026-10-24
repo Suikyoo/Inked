@@ -14,7 +14,7 @@ function payload(permission: ObPublicResponse['permission'] = 'read'): ObPublicR
   return {
     label: 'Reading group',
     permission,
-    vaults: [{ id: 'v1', name: 'Research', color: '#7452e0', updatedAt: later }],
+    vaults: [{ id: 'v1', name: 'Research', color: '#7452e0', updatedAt: later , origin: 'published' }],
     folders: [{ id: 'f1', vaultId: 'v1', parentId: null, name: 'Ops' }],
     notes: [
       { id: 'n1', vaultId: 'v1', folderId: null, title: 'Alpha', body: '## Alpha heading\n\nSee [[Beta]].', createdAt: at, updatedAt: later },
@@ -215,6 +215,15 @@ describe('VisitorPage', () => {
     expect(q('svg.cmap-svg')).toBeNull();
   });
 
+  it('rushes ink through the clicked vault’s icon, as the sidebar does', async () => {
+    respond(200, payload());
+    await render();
+    const row = q('.ob-rail .ob-row-vault')!;
+    expect(row.querySelector('.vi-rush')).toBeNull();
+    act(() => (row as HTMLButtonElement).click());
+    expect(row.querySelector('.vi-rush')).not.toBeNull();
+  });
+
   it('starts with the rail collapsed under 900px wide', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
     respond(200, payload());
@@ -230,6 +239,25 @@ describe('VisitorPage on a write link', () => {
   const editor = () => drawer()!.querySelector<HTMLFormElement>('form.ob-editor');
   const titleInput = () => editor()!.querySelector<HTMLInputElement>('input.ob-editor-title')!;
   const bodyInput = () => editor()!.querySelector<HTMLTextAreaElement>('textarea.ob-editor-body')!;
+
+  it('lets a visitor see their draft rendered before saving it', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    const body = bodyInput();
+    act(() => {
+      set.call(body, '# Draft heading');
+      body.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await press(buttonIn(editor()!, 'View'));
+    expect(editor()!.querySelector('.ob-editor-preview')?.querySelector('h1')?.textContent).toBe('Draft heading');
+    // The draft is not saved by previewing it.
+    expect(writes()).toHaveLength(0);
+  });
 
   it('a read link offers no Edit and no New note', async () => {
     writeServer(payload('read'));

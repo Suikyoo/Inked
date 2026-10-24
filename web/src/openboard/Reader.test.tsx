@@ -50,7 +50,7 @@ describe('Reader', () => {
       '<a href="javascript:alert(1)">raw</a>',
     ].join('\n\n');
     const n = mk('n1', 'Evil', body);
-    render(n, { vaults: [{ id: 'v1', name: 'V', color: '#7452e0', updatedAt: at }], folders: [], notes: [n] });
+    render(n, { vaults: [{ id: 'v1', name: 'V', color: '#7452e0', updatedAt: at , origin: 'published' }], folders: [], notes: [n] });
     const article = host!.querySelector('article')!;
     expect(article).not.toBeNull();
     expect(host!.querySelector('script')).toBeNull();
@@ -61,7 +61,7 @@ describe('Reader', () => {
 
   it('turns inked:// images into public image urls for the note’s vault', () => {
     const n = mk('n1', 'Pic', `![x](inked://${IMG})`, null, 'vault-9');
-    render(n, { vaults: [{ id: 'vault-9', name: 'V', color: '#7452e0', updatedAt: at }], folders: [], notes: [n] });
+    render(n, { vaults: [{ id: 'vault-9', name: 'V', color: '#7452e0', updatedAt: at , origin: 'published' }], folders: [], notes: [n] });
     const img = host!.querySelector('article img')!;
     expect(img).not.toBeNull();
     expect(img.getAttribute('src')).toBe(`/api/ob/tok/images/vault-9/${IMG}`);
@@ -71,7 +71,7 @@ describe('Reader', () => {
   it('[[Title]] to a published note is a button that opens it; an unknown title is plain text', () => {
     const a = mk('n1', 'Alpha', 'See [[Beta]] and [[Nowhere]].');
     const b = mk('n2', 'Beta', 'B');
-    const open = render(a, { vaults: [{ id: 'v1', name: 'V', color: '#7452e0', updatedAt: at }], folders: [], notes: [a, b] });
+    const open = render(a, { vaults: [{ id: 'v1', name: 'V', color: '#7452e0', updatedAt: at , origin: 'published' }], folders: [], notes: [a, b] });
     const btn = host!.querySelector<HTMLButtonElement>('article button.wl')!;
     expect(btn).not.toBeNull();
     expect(btn.textContent).toBe('Beta');
@@ -103,7 +103,7 @@ describe('Reader', () => {
 
   it('shows the note title above the body', () => {
     const n = mk('n1', 'Alpha', 'Body text');
-    render(n, { vaults: [{ id: 'v1', name: 'V', color: '#7452e0', updatedAt: at }], folders: [], notes: [n] });
+    render(n, { vaults: [{ id: 'v1', name: 'V', color: '#7452e0', updatedAt: at , origin: 'published' }], folders: [], notes: [n] });
     expect(host!.querySelector('h1')!.textContent).toBe('Alpha');
     expect(host!.querySelector('article')!.textContent).toContain('Body text');
   });
