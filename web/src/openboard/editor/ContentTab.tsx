@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { indexNoteOf } from 'inked-core/indexNote';
+import { nextVaultColor } from 'inked-core/vaultColors';
 import type { ObFolder, ObLink, ObNote, ObPayload } from 'inked-core';
 import { VaultIcon } from '../../brand/VaultIcon';
+import { ColorPicker } from '../../components/ColorPicker';
 import { ConfirmDialog, PromptDialog } from '../../components/Dialog';
 import { ChevronRight, IndexIcon } from '../../components/Icons';
 import { ConceptMap } from '../../map/ConceptMap';
@@ -30,8 +32,6 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /** The server's limits for an interactive write (server/src/openboard/write.ts). */
 const OB_TITLE_MAX = 200;
 const OB_BODY_MAX = 100_000;
-/** The colour a new native vault gets; the owner can change it afterwards. */
-const NEW_VAULT_COLOR = '#45a89e';
 
 export interface ContentTabProps {
   /** Everything published (no bodies): the tree. */
@@ -59,7 +59,7 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
   /** The note being edited in the drawer, by id. */
   const [editing, setEditing] = useState<string | null>(null);
   /** A pending "New folder" / "New note" prompt, by vault. */
-  const [creating, setCreating] = useState<{ kind: 'folder' | 'note'; vaultId: string } | null>(null);
+  const [creating, setCreating] = useState<{ kind: 'folder' | 'note'; vaultId: string; parentId: string | null } | null>(null);
   const dirty = useRef(false);
   const onDirtyChange = useCallback((d: boolean) => {
     dirty.current = d;
@@ -146,9 +146,9 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
           if (n.id === reading || mayLeave()) openFromTree(n);
         }}
         onUnpublish={setTarget}
-        onNewFolder={(vaultId) => setCreating({ kind: 'folder', vaultId })}
-        onNewNote={(vaultId) => setCreating({ kind: 'note', vaultId })}
-        newVault={<NewVaultForm onCreated={onChanged} fail={fail} />}
+        onNewFolder={(vaultId, parentId) => setCreating({ kind: 'folder', vaultId, parentId })}
+        onNewNote={(vaultId, parentId) => setCreating({ kind: 'note', vaultId, parentId })}
+        newVault={<NewVaultForm used={content.vaults.map((v) => v.color)} onCreated={onChanged} fail={fail} />}
       />
 
       <section className="obe-stage" aria-label="Map preview">
@@ -248,8 +248,8 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
         onSubmit={async (value) => {
           if (!creating) return;
           try {
-            if (creating.kind === 'folder') await createOwnerFolder(creating.vaultId, null, value);
-            else await createOwnerNote(creating.vaultId, null, value, '');
+            if (creating.kind === 'folder') await createOwnerFolder(creating.vaultId, creating.parentId, value);
+            else await createOwnerNote(creating.vaultId, creating.parentId, value, '');
           } catch (e) {
             throw new Error(fail(e));
           }
@@ -283,8 +283,9 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
  * nowhere else, which the form says plainly: this is the one place the product's "plaintext never touches
  * disk" promise is deliberately set aside.
  */
-function NewVaultForm({ onCreated, fail }: { onCreated: () => Promise<void>; fail: (e: unknown) => string }) {
+function NewVaultForm({ used, onCreated, fail }: { used: string[]; onCreated: () => Promise<void>; fail: (e: unknown) => string }) {
   const [name, setName] = useState('');
+  const [color, setColor] = useState(() => nextVaultColor(used));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -294,7 +295,7 @@ function NewVaultForm({ onCreated, fail }: { onCreated: () => Promise<void>; fai
     setBusy(true);
     setError(null);
     try {
-      await createOwnerVault(name.trim(), NEW_VAULT_COLOR);
+      await createOwnerVault(name.trim(), color);
       setName('');
       await onCreated();
     } catch (err) {
@@ -319,6 +320,7 @@ function NewVaultForm({ onCreated, fail }: { onCreated: () => Promise<void>; fai
         spellCheck={false}
         disabled={busy}
       />
+      <ColorPicker value={color} onChange={setColor} label="New vault colour" />
       <p className="field-hint">
         Written here, not published from Inked. Its notes are stored <strong>unencrypted</strong> on the server and exist nowhere else, so
         deleting the vault destroys them.
@@ -410,8 +412,8 @@ function ContentTree({
   reading: string | null;
   onOpen: (n: ObNote) => void;
   onUnpublish: (t: Target) => void;
-  onNewFolder: (vaultId: string) => void;
-  onNewNote: (vaultId: string) => void;
+  onNewFolder: (vaultId: string, parentId: string | null) => void;
+  onNewNote: (vaultId: string, parentId: string | null) => void;
   newVault: ReactElement;
 }) {
   const nativeVaults = useMemo(() => new Set(content.vaults.filter((v) => v.origin === 'native').map((v) => v.id)), [content.vaults]);
@@ -471,6 +473,16 @@ function ContentTree({
               </span>
               <span className="ob-row-label">{f.name}</span>
             </button>
+            {nativeVaults.has(f.vaultId) && (
+              <>
+                <button type="button" className="obe-add" onClick={() => onNewFolder(f.vaultId, f.id)} aria-label={`New folder in “${f.name}”`}>
+                  New folder
+                </button>
+                <button type="button" className="obe-add" onClick={() => onNewNote(f.vaultId, f.id)} aria-label={`New note in “${f.name}”`}>
+                  New note
+                </button>
+              </>
+            )}
             {unpublishBtn(f.vaultId, { kind: 'folder', id: f.id, name: f.name, notes: t.counts.get(f.id) ?? 0 })}
           </div>
           {open && <ul className="ob-group">{level(t, f.id)}</ul>}
@@ -515,10 +527,10 @@ function ContentTree({
                 {open && <ul className="ob-tree">{level(t, null)}</ul>}
                 {open && nativeVaults.has(v.id) && (
                   <div className="obe-vault-actions">
-                    <button type="button" className="btn btn-sm" onClick={() => onNewFolder(v.id)}>
+                    <button type="button" className="btn btn-sm" onClick={() => onNewFolder(v.id, null)}>
                       New folder
                     </button>
-                    <button type="button" className="btn btn-sm" onClick={() => onNewNote(v.id)}>
+                    <button type="button" className="btn btn-sm" onClick={() => onNewNote(v.id, null)}>
                       New note
                     </button>
                   </div>

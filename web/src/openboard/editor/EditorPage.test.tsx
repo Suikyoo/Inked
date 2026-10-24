@@ -480,6 +480,54 @@ describe('authoring in the openboard control', () => {
     expect(button('New folder', q('.obe-side')!)).toBeDefined();
   });
 
+  it('creates a native vault in the colour the owner picked', async () => {
+    await content({ vaults: [], folders: [], notes: [] });
+    const form = q('.obe-new-vault')!;
+    type(form.querySelector('input')!, 'Scratch');
+    // Pick the third swatch rather than whatever the form defaulted to.
+    const swatch = form.querySelectorAll<HTMLButtonElement>('.swatches .swatch[role="radio"]')[2]!;
+    const picked = swatch.getAttribute('aria-label')!;
+    await click(swatch);
+    await click(button('Create vault', form));
+    const call = calls((url, m) => m === 'POST' && url === '/api/openboard/vaults')[0]!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ name: 'Scratch', color: picked });
+  });
+
+  it('creates a folder inside another folder, not only at the vault root', async () => {
+    await content({
+      vaults: [{ id: 'vn', name: 'Scratch', color: '#45a89e', updatedAt: at, origin: 'native' }],
+      folders: [{ id: 'f9', vaultId: 'vn', parentId: null, name: 'Ideas' }],
+      notes: [],
+    });
+    const row = qa('.obe-tree-row').find((r) => r.textContent?.includes('Ideas'))!;
+    await click(button('New folder', row));
+    type(openDialog().querySelector('input')!, 'Nested');
+    await click(button('Create', openDialog()));
+    const call = calls((url, m) => m === 'POST' && url === '/api/openboard/folders')[0]!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ vaultId: 'vn', parentId: 'f9', name: 'Nested' });
+  });
+
+  it('creates a note inside a folder', async () => {
+    await content({
+      vaults: [{ id: 'vn', name: 'Scratch', color: '#45a89e', updatedAt: at, origin: 'native' }],
+      folders: [{ id: 'f9', vaultId: 'vn', parentId: null, name: 'Ideas' }],
+      notes: [],
+    });
+    const row = qa('.obe-tree-row').find((r) => r.textContent?.includes('Ideas'))!;
+    await click(button('New note', row));
+    type(openDialog().querySelector('input')!, 'Inside');
+    await click(button('Create', openDialog()));
+    const call = calls((url, m) => m === 'POST' && url === '/api/openboard/notes')[0]!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ vaultId: 'vn', folderId: 'f9', title: 'Inside', body: '' });
+  });
+
+  it('offers no folder-level create buttons in a published vault', async () => {
+    await content();
+    const row = qa('.obe-tree-row').find((r) => r.textContent?.includes('Ops'))!;
+    expect(button('New folder', row)).toBeUndefined();
+    expect(button('New note', row)).toBeUndefined();
+  });
+
   it('creates a note in a native vault', async () => {
     await content(nativePayload());
     await click(button('New note', q('.obe-side')!));
