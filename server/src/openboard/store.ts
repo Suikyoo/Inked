@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { bumpTimestamp, type Db, type ObFolderRow, type ObNoteRow, type ObVaultRow, nowIso, transaction } from '../db.js';
 import { ApiError, notFound } from '../errors.js';
-import { checkBody, checkVaultText, cleanTitle, INDEX_TITLE, invalid, textDelta } from './write.js';
+import { checkBody, checkVaultNotes, checkVaultText, cleanTitle, INDEX_TITLE, invalid, textDelta } from './write.js';
 import { UUID_RE } from '../schemas.js';
 import { generateLinkToken } from './token.js';
 import type { ObFolder, ObLink, ObNote, ObPayload, ObPermission, ObVault, PublishConflict, PublishRequest, PublishResult } from './types.js';
@@ -28,6 +28,8 @@ export class PublishConflictError extends ApiError {
 export function nativeVaultNamed(db: Db, userId: string, name: string): boolean {
   return !!db.prepare("SELECT 1 FROM ob_vaults WHERE user_id = ? AND name = ? AND origin = 'native'").get(userId, name);
 }
+
+const nameInUse = (name: string) => new ApiError(409, 'name_taken', `You already have an Openboard vault called "${name}".`);
 
 const nameTaken = (name: string) =>
   new ApiError(409, 'name_taken', `"${name}" is a vault you made in Openboard. Rename one of the two before publishing.`);
@@ -583,6 +585,134 @@ export function editNoteAsOwner(
     db.prepare('UPDATE ob_notes SET title = ?, body = ?, updated_at = ?, owner_edited_at = ? WHERE id = ?').run(title, body, now, now, noteId);
     touchVault(db, row.vault_id);
     return noteJson(db.prepare('SELECT * FROM ob_notes WHERE id = ?').get(noteId) as unknown as ObNoteRow);
+  });
+}
+
+
+// ---- Authoring in openboard --------------------------------------------------------------------------------
+
+/** The user's vault of this name, whatever its origin, or undefined. Names are unique per user per origin. */
+function vaultNamed(db: Db, userId: string, name: string): ObVaultRow | undefined {
+  return db.prepare('SELECT * FROM ob_vaults WHERE user_id = ? AND name = ? ORDER BY created_at, rowid').get(userId, name) as
+    | ObVaultRow
+    | undefined;
+}
+
+/** The user's vault by id, or 404. */
+function ownedVaultRow(db: Db, userId: string, id: string): ObVaultRow {
+  const row = db.prepare('SELECT * FROM ob_vaults WHERE id = ? AND user_id = ?').get(id, userId) as ObVaultRow | undefined;
+  if (!row) throw notFound();
+  return row;
+}
+
+/**
+ * The user's vault by id, refused unless it was authored here.
+ *
+ * Adding structure to a *published* vault is refused because republishing replaces that vault wholesale and
+ * would delete the addition without ever matching it (the design's ruling 9). Editing a note is different:
+ * that divergence is contained and the republish warning covers it.
+ */
+function nativeVaultRow(db: Db, userId: string, id: string): ObVaultRow {
+  const row = ownedVaultRow(db, userId, id);
+  if (row.origin !== 'native') throw new ApiError(400, 'not_native', 'This vault was published from Inked; edit it there and publish again');
+  return row;
+}
+
+/** A vault authored in openboard. Its content lives only here, so nothing may later overwrite it by name. */
+export function createNativeVault(db: Db, userId: string, req: { name: string; color: string }): ObVault {
+  return transaction(db, () => {
+    const name = cleanTitle(req.name);
+    if (vaultNamed(db, userId, name)) throw nameInUse(name);
+    const id = randomUUID();
+    const now = nowIso();
+    db.prepare("INSERT INTO ob_vaults (id, user_id, name, color, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, 'native')").run(
+      id,
+      userId,
+      name,
+      req.color,
+      now,
+      now,
+    );
+    return vaultJson(ownedVaultRow(db, userId, id));
+  });
+}
+
+/** Renames or recolours a native vault. */
+export function updateNativeVault(db: Db, userId: string, id: string, patch: { name?: string; color?: string }): ObVault {
+  return transaction(db, () => {
+    const row = nativeVaultRow(db, userId, id);
+    const name = patch.name === undefined ? row.name : cleanTitle(patch.name);
+    if (name !== row.name && vaultNamed(db, userId, name)) throw nameInUse(name);
+    db.prepare('UPDATE ob_vaults SET name = ?, color = ?, updated_at = ? WHERE id = ?').run(
+      name,
+      patch.color ?? row.color,
+      bumpTimestamp(row.updated_at),
+      id,
+    );
+    return vaultJson(ownedVaultRow(db, userId, id));
+  });
+}
+
+/** A folder in a native vault, at its root or under one of its folders. */
+export function createOwnerFolder(db: Db, userId: string, req: { vaultId: string; parentId: string | null; name: string }): ObFolder {
+  return transaction(db, () => {
+    nativeVaultRow(db, userId, req.vaultId);
+    if (req.parentId !== null && !db.prepare('SELECT 1 FROM ob_folders WHERE id = ? AND vault_id = ?').get(req.parentId, req.vaultId)) {
+      throw invalid('The parent folder is not in that vault');
+    }
+    const id = randomUUID();
+    db.prepare('INSERT INTO ob_folders (id, vault_id, parent_id, name) VALUES (?, ?, ?, ?)').run(id, req.vaultId, req.parentId, cleanTitle(req.name));
+    touchVault(db, req.vaultId);
+    return folderJson(db.prepare('SELECT * FROM ob_folders WHERE id = ?').get(id) as unknown as ObFolderRow);
+  });
+}
+
+/** Renames a folder in a native vault. */
+export function renameOwnerFolder(db: Db, userId: string, id: string, name: string): ObFolder {
+  return transaction(db, () => {
+    const row = db.prepare('SELECT * FROM ob_folders WHERE id = ?').get(id) as ObFolderRow | undefined;
+    if (!row) throw notFound();
+    nativeVaultRow(db, userId, row.vault_id);
+    db.prepare('UPDATE ob_folders SET name = ? WHERE id = ?').run(cleanTitle(name), id);
+    touchVault(db, row.vault_id);
+    return folderJson(db.prepare('SELECT * FROM ob_folders WHERE id = ?').get(id) as unknown as ObFolderRow);
+  });
+}
+
+/**
+ * A note in a native vault. `published_title` stays null, as it does for a note a visitor added: this note was
+ * never published from anywhere, so a republish has nothing to match it against.
+ */
+export function createOwnerNote(
+  db: Db,
+  userId: string,
+  req: { vaultId: string; folderId: string | null; title: string; body: string },
+): ObNote {
+  return transaction(db, () => {
+    nativeVaultRow(db, userId, req.vaultId);
+    if (req.folderId !== null && !db.prepare('SELECT 1 FROM ob_folders WHERE id = ? AND vault_id = ?').get(req.folderId, req.vaultId)) {
+      throw invalid('The folder is not in that vault');
+    }
+    const title = cleanTitle(req.title);
+    if (title === INDEX_TITLE) throw invalid('Index is reserved for folder hubs');
+    checkBody(req.body);
+    checkVaultNotes(db, req.vaultId);
+    checkVaultText(db, req.vaultId, textDelta(req.body, ''));
+    const id = randomUUID();
+    const now = nowIso();
+    // owner_edited_at stays null: it marks a *published* copy the owner changed, which republishing would
+    // discard. A note authored here was never published from anywhere, so there is nothing to warn about.
+    db.prepare('INSERT INTO ob_notes (id, vault_id, folder_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      id,
+      req.vaultId,
+      req.folderId,
+      title,
+      req.body,
+      now,
+      now,
+    );
+    touchVault(db, req.vaultId);
+    return noteJson(db.prepare('SELECT * FROM ob_notes WHERE id = ?').get(id) as unknown as ObNoteRow);
   });
 }
 

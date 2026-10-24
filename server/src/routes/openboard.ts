@@ -6,6 +6,9 @@ import { ApiError, notFound } from '../errors.js';
 import { imageHeadersOnSend } from '../openboard/imageHeaders.js';
 import {
   createLink,
+  createNativeVault,
+  createOwnerFolder,
+  createOwnerNote,
   deleteFolder,
   deleteLink,
   deleteNote,
@@ -19,11 +22,13 @@ import {
   previewContent,
   publish,
   putImage,
+  renameOwnerFolder,
+  updateNativeVault,
   updateLink,
 } from '../openboard/store.js';
 import type { ObPermission, PublishRequest } from '../openboard/types.js';
 import { OB_WRITE_TITLE_MAX } from '../openboard/write.js';
-import { idParams, imageParams, uuid } from '../schemas.js';
+import { idParams, imageParams, nullableUuid, uuid } from '../schemas.js';
 
 /** Largest published note body, in characters. */
 export const OB_NOTE_BODY_MAX = 1024 * 1024;
@@ -36,6 +41,50 @@ const name = { type: 'string', minLength: 1, maxLength: 1000 } as const;
 
 /** An owner-set note title: one line, not only whitespace, as the visitor routes require. */
 const noteTitle = { type: 'string', minLength: 1, maxLength: OB_WRITE_TITLE_MAX, pattern: '^[^\\r\\n]*\\S[^\\r\\n]*$' } as const;
+
+const color = { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' } as const;
+
+const newVaultSchema = {
+  body: { type: 'object', additionalProperties: false, required: ['name', 'color'], properties: { name: noteTitle, color } },
+} as const;
+
+const patchVaultSchema = {
+  params: idParams,
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    anyOf: [{ required: ['name'] }, { required: ['color'] }],
+    properties: { name: noteTitle, color },
+  },
+} as const;
+
+const newFolderSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['vaultId', 'parentId', 'name'],
+    properties: { vaultId: uuid, parentId: nullableUuid, name: noteTitle },
+  },
+} as const;
+
+const patchFolderSchema = {
+  params: idParams,
+  body: { type: 'object', additionalProperties: false, required: ['name'], properties: { name: noteTitle } },
+} as const;
+
+const newNoteSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['vaultId', 'folderId', 'title', 'body'],
+    properties: {
+      vaultId: uuid,
+      folderId: nullableUuid,
+      title: noteTitle,
+      body: { type: 'string' },
+    },
+  },
+} as const;
 
 /** Body length is checked in the store, so an over-long body is 413 rather than a schema 400. */
 const editNoteSchema = {
@@ -141,6 +190,33 @@ export function openboardRoutes(app: FastifyInstance, ctx: AppContext): void {
     '/api/openboard/notes/:id',
     { ...auth, schema: editNoteSchema },
     async (request) => editNoteAsOwner(db, currentUser(request).id, request.params.id, request.body),
+  );
+
+  // Authoring in openboard. Creates are native-vault only; a note edit works in any vault the user owns.
+  app.post<{ Body: { name: string; color: string } }>('/api/openboard/vaults', { ...auth, schema: newVaultSchema }, async (request, reply) =>
+    reply.code(201).send(createNativeVault(db, currentUser(request).id, request.body)),
+  );
+
+  app.patch<IdParams & { Body: { name?: string; color?: string } }>(
+    '/api/openboard/vaults/:id',
+    { ...auth, schema: patchVaultSchema },
+    async (request) => updateNativeVault(db, currentUser(request).id, request.params.id, request.body),
+  );
+
+  app.post<{ Body: { vaultId: string; parentId: string | null; name: string } }>(
+    '/api/openboard/folders',
+    { ...auth, schema: newFolderSchema },
+    async (request, reply) => reply.code(201).send(createOwnerFolder(db, currentUser(request).id, request.body)),
+  );
+
+  app.patch<IdParams & { Body: { name: string } }>('/api/openboard/folders/:id', { ...auth, schema: patchFolderSchema }, async (request) =>
+    renameOwnerFolder(db, currentUser(request).id, request.params.id, request.body.name),
+  );
+
+  app.post<{ Body: { vaultId: string; folderId: string | null; title: string; body: string } }>(
+    '/api/openboard/notes',
+    { ...auth, schema: newNoteSchema },
+    async (request, reply) => reply.code(201).send(createOwnerNote(db, currentUser(request).id, request.body)),
   );
 
   app.delete<IdParams>('/api/openboard/vaults/:id', { ...auth, schema: { params: idParams } }, async (request, reply) => {
