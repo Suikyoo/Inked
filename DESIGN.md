@@ -252,6 +252,8 @@ An ordinal one-hue ramp from wet to dry ink, by age of last edit: **Wet** (`ink-
 
 A two-column shell: a sticky 240px sidebar (`side` surface, 12px 10px padding, 14px section gap, 1px rows gap) and a fluid main column. Spacing is a small 4/6/8/12/18/24px rhythm; page gutters are 24px on desktop and 16px on mobile. Rows are 28px (nav) and 26px (tree, ctx); controls are 30px, 36px for fields and the search bar.
 
+**The One Ladder Rule.** The rhythm is a token ladder in `tokens.css`, named for its multiple of 4px (`--sp-4` is 16px): 2, 4, 6, 8, 12, 16, 24, 32, 48. Every gap, margin and padding picks a step; nothing sits between two. A 1px gap is a hairline, a rule's width, not a step, and the tree's 14px indentation per level is structure (`--indent`), not spacing. The openboard sheets are held to the ladder by a test; the rest of the app is still being moved onto it and keeps the 10, 14, 18 and 20px it was drawn with.
+
 - **Home:** padded 18px 24px; a 36px search bar (max 560px, centered) heads the page, then results and the concept map wrap side by side (`flex-wrap`, 20px gap).
 - **Note:** document column (flex-grow, 700px content, 44px top bar with breadcrumbs, save status and an edit/view segmented control) plus a 220px+ context panel (outline, properties, local map) on a `side-border` left rule. At 1080px the panel drops below the document in a row.
 - **Settings / vault overview:** single centered column, 720px / 760px max.
