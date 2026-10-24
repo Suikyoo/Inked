@@ -42,6 +42,22 @@ export interface VimConfig {
 
 const MODES: Record<string, VimMode> = { n: 'n', i: 'i', v: 'v' };
 
+/** The longest config accepted, in characters. Past this it is refused unparsed. */
+export const VIM_CONFIG_MAX = 64_000;
+
+/** Every option the config may set, and the type its value must have. Anything else is an error. */
+const OPTIONS: Record<keyof VimOptions, 'boolean' | 'number'> = {
+  number: 'boolean',
+  relativenumber: 'boolean',
+  wrap: 'boolean',
+  tabstop: 'number',
+  expandtab: 'boolean',
+  ignorecase: 'boolean',
+  smartcase: 'boolean',
+  scrolloff: 'number',
+};
+const OPTION_NAMES = Object.keys(OPTIONS).join(', ');
+
 // ---- Tokens -----------------------------------------------------------------------------------------------
 
 type TokenKind = 'name' | 'str' | 'num' | 'bool' | 'punct' | 'bad';
@@ -142,6 +158,7 @@ class Bad extends Error {
   }
 }
 
+const ONLY = 'this config defines keymaps and options only';
 const UNREADABLE = 'cannot read this line; the config understands vim.keymap.set(...) and vim.o.<option> = ... only';
 
 class Parser {
@@ -241,6 +258,30 @@ function bracedIsOptsTable(p: Parser): boolean {
   return p.is('punct', '{') && p.peek(1)?.kind === 'name' && p.peek(2)?.value === '=';
 }
 
+/** `vim.o.<name> = <literal>` / `vim.opt.<name> = <literal>`, checked against the allowlist. */
+function parseOption(p: Parser, line: number): [keyof VimOptions, boolean | number] {
+  p.eat('punct', '.');
+  const name = p.eat('name').value;
+  p.eat('punct', '=');
+  const value = parseLiteral(p);
+  const want = OPTIONS[name as keyof VimOptions];
+  if (!want) throw new Bad(line, `unknown option \`${name}\`; supported: ${OPTION_NAMES}`);
+  if (want === 'number' && typeof value !== 'number') throw new Bad(line, `\`${name}\` takes a number`);
+  if (want === 'boolean' && typeof value !== 'boolean') throw new Bad(line, `\`${name}\` takes true or false`);
+  return [name as keyof VimOptions, value as boolean | number];
+}
+
+/** The statement heads worth a message of their own, rather than "cannot read this line". */
+const NAMED_REJECTIONS: Record<string, string> = {
+  require: `\`require\` is not supported; ${ONLY}`,
+  if: `control flow is not supported; ${ONLY}`,
+  for: `control flow is not supported; ${ONLY}`,
+  while: `control flow is not supported; ${ONLY}`,
+  repeat: `control flow is not supported; ${ONLY}`,
+  function: `defining functions is not supported; ${ONLY}`,
+  local: `local variables are not supported; ${ONLY}`,
+};
+
 function parseKeymapSet(p: Parser, line: number): VimKeymap {
   p.eat('punct', '(');
   const rawModes = p.is('punct', '{') ? parseStringList(p) : [parseString(p)];
@@ -273,11 +314,16 @@ export function compileVimConfig(text: string): VimConfig {
   const keymaps: VimKeymap[] = [];
   const options: VimOptions = {};
   const errors: VimConfigError[] = [];
+  if (text.length > VIM_CONFIG_MAX) {
+    return { keymaps: [], options: {}, errors: [{ line: 1, message: `this config is too long (over ${VIM_CONFIG_MAX} characters)` }] };
+  }
   const p = new Parser(tokenize(text));
 
   while (!p.done) {
     const line = p.line;
     try {
+      const head = p.peek();
+      if (head?.kind === 'name' && NAMED_REJECTIONS[head.value]) throw new Bad(line, NAMED_REJECTIONS[head.value]);
       p.eat('name', 'vim');
       p.eat('punct', '.');
       const which = p.eat('name').value;
@@ -285,6 +331,9 @@ export function compileVimConfig(text: string): VimConfig {
         p.eat('punct', '.');
         p.eat('name', 'set');
         keymaps.push(parseKeymapSet(p, line));
+      } else if (which === 'o' || which === 'opt') {
+        const [name, value] = parseOption(p, line);
+        (options as Record<string, boolean | number>)[name] = value;
       } else {
         throw new Bad(line, UNREADABLE);
       }

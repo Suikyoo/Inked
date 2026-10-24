@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compileVimConfig } from './vimConfig';
+import { compileVimConfig, VIM_CONFIG_MAX } from './vimConfig';
 
 /** Compiles and asserts the config was clean, returning it for the caller's own assertions. */
 const ok = (t: string) => {
@@ -59,5 +59,41 @@ describe('compileVimConfig: keymaps', () => {
 
   it('rejects an empty lhs', () => {
     expect(compileVimConfig("vim.keymap.set('n', '', 'y')").errors[0].message).toContain('empty');
+  });
+});
+
+describe('compileVimConfig: options and rejections', () => {
+  it('reads vim.o and vim.opt options', () => {
+    expect(ok('vim.o.relativenumber = true\nvim.opt.scrolloff = 4\nvim.o.wrap = false').options).toEqual({
+      relativenumber: true,
+      scrolloff: 4,
+      wrap: false,
+    });
+  });
+
+  it('rejects an unknown option and lists the supported ones', () => {
+    const e = compileVimConfig('vim.o.swapfile = false').errors[0];
+    expect(e.message).toContain('swapfile');
+    expect(e.message).toContain('relativenumber');
+  });
+
+  it('rejects a value of the wrong type', () => {
+    expect(compileVimConfig('vim.o.scrolloff = true').errors[0].message).toContain('number');
+    expect(compileVimConfig('vim.o.wrap = 3').errors[0].message).toContain('true or false');
+  });
+
+  it('rejects require and control flow by name', () => {
+    expect(compileVimConfig("require('lazy')").errors[0].message).toContain('require');
+    expect(compileVimConfig('if true then end').errors[0].message).toContain('control flow');
+    expect(compileVimConfig('for i = 1, 3 do end').errors[0].message).toContain('control flow');
+  });
+
+  it('rejects an unreadable line with its number', () => {
+    expect(compileVimConfig("vim.keymap.set('n','x','y')\nwat?").errors).toEqual([{ line: 2, message: expect.any(String) }]);
+  });
+
+  it('refuses a config past the size cap without parsing it', () => {
+    const c = compileVimConfig('-- x\n'.repeat(VIM_CONFIG_MAX));
+    expect(c.errors).toEqual([{ line: 1, message: expect.stringContaining('too long') }]);
   });
 });
