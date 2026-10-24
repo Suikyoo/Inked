@@ -89,9 +89,13 @@
   overflow-y: auto;
   padding: var(--sp-6) var(--sp-4) var(--sp-12);
 }
+/* Every block of a tab's page sits in the same centred column, whichever tab it belongs to. */
 .obe-head,
 .obe-links,
-.obe-page > .obe-empty {
+.obe-page > .obe-empty,
+.obe-settings-head,
+.obe-vault-list,
+.obe-settings-note {
   max-width: 880px;
   margin-left: auto;
   margin-right: auto;
@@ -294,6 +298,41 @@
   gap: var(--sp-0-5);
 }
 
+/* ---- Settings tab ---------------------------------------------------------------------------
+   The same page chrome as the Links tab (.obe-page carries the scroll and the gutters), so the two
+   read as two tabs of one control rather than two pages. */
+.obe-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.obe-settings-head {
+  display: flex;
+  flex-direction: column;
+}
+.obe-vault-list {
+  list-style: none;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.obe-settings-note {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+/* One card per vault. A label sits 6px above its own field (DESIGN.md, Inputs / Fields), so the card's
+   rhythm is the label gap and the groups after the name field add one more step. */
+.obe-vault-settings {
+  gap: var(--sp-1-5);
+}
+.obe-vault-settings .swatches,
+.obe-vault-settings .row-actions {
+  margin-top: var(--sp-1-5);
+}
+
 /* ---- Published content tab ----------------------------------------------------------------- */
 .obe-content {
   flex: 1 1 auto;
@@ -348,7 +387,10 @@
   background: var(--row-selected);
   color: var(--text-strong);
 }
-.obe-unpublish {
+/* Row actions: Unpublish / Delete, and New folder / New note inside a vault authored here. One shape for
+   all of them, revealed by hovering or focusing the row, as the notes app's tree actions are. */
+.obe-unpublish,
+.obe-add {
   flex: 0 0 auto;
   height: 22px;
   padding: 0 var(--sp-1-5);
@@ -357,30 +399,74 @@
   background: transparent;
   font-size: 11px;
   font-weight: 500;
-  color: var(--error);
+  color: var(--muted-2);
+  white-space: nowrap;
   cursor: pointer;
   opacity: 0;
   transition:
     opacity var(--dur-1),
-    background-color var(--dur-1);
+    background-color var(--dur-1),
+    color var(--dur-1);
+}
+.obe-unpublish {
+  color: var(--error);
 }
 .obe-tree-row:hover .obe-unpublish,
 .obe-tree-row:focus-within .obe-unpublish,
-.obe-unpublish:focus-visible {
+.obe-unpublish:focus-visible,
+.obe-tree-row:hover .obe-add,
+.obe-tree-row:focus-within .obe-add,
+.obe-add:focus-visible {
   opacity: 1;
 }
 .obe-unpublish:hover {
   background: var(--error-bg);
 }
-.obe-unpublish:focus-visible {
+.obe-add:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.obe-unpublish:focus-visible,
+.obe-add:focus-visible {
   outline: 2px solid var(--ink-light);
   outline-offset: -1px;
 }
-/* No hover on touch screens: keep the action visible. */
+/* No hover on touch screens: keep the actions visible. */
 @media (hover: none) {
-  .obe-unpublish {
+  .obe-unpublish,
+  .obe-add {
     opacity: 1;
   }
+}
+
+/* Says a vault's notes live only here, under its row and indented about to its name. */
+.obe-native-tag {
+  margin: 0 0 var(--sp-1);
+  padding: 0 var(--sp-1-5) 0 var(--sp-6);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--muted-3);
+}
+/* The vault-root create actions: a button pair, always shown, since a new vault's tree is empty. */
+.obe-vault-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-3);
+}
+/* "New Openboard vault", last in the tree column and set off from it by a rule. */
+.obe-new-vault {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1-5);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+.obe-new-vault .input {
+  width: 100%;
 }
 
 .obe-stage {

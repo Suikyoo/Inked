@@ -12,6 +12,8 @@ import '../../styles/base.css';
 import '../../styles/home.css';
 import '../../styles/map.css';
 import '../../styles/note.css';
+// The control reuses the app's cards, colour swatches and action rows (ColorPicker, the vault forms).
+import '../../styles/settings.css';
 import '../../styles/openboard.css';
 import '../../styles/openboard-editor.css';
 import { EditorPage } from './EditorPage';

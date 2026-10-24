@@ -265,6 +265,10 @@ body,
 }
 
 /* ---- Reader -------------------------------------------------------------------------------- */
+/* The drawer's bar sits straight above, so the note starts with a line of air of its own. */
+.ob-reader {
+  padding-top: var(--sp-1);
+}
 .ob-reader-head {
   max-width: 700px;
   margin: 0 auto;
@@ -305,8 +309,10 @@ body,
   color: var(--ink-light);
 }
 
-/* ---- Visitor editor (Write links) ---------------------------------------------------------- */
+/* ---- Note editor in the drawer (Write links, and the owner's control) ---------------------- */
 .ob-editor {
+  /* One height for the draft, whether it is being typed or previewed, so Edit | View never moves the page. */
+  --draft: 320px;
   max-width: 700px;
   margin: 0 auto;
   padding: 0 var(--sp-6) var(--sp-8);
@@ -314,14 +320,30 @@ body,
   flex-direction: column;
   gap: var(--sp-2);
 }
+/* Edit | View, on the side its Cancel / Save buttons are on. */
+.ob-editor-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--sp-1);
+}
+/* The page title's step down (DESIGN.md), not a size of its own; the reader shows the same title at 26px. */
 .ob-editor-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
 }
 .ob-editor-body {
-  min-height: 320px;
+  min-height: var(--draft);
   resize: vertical;
   font: 13px/1.6 var(--font-mono);
+}
+/* The draft rendered in place of the textarea. The editor column already sets the width and the gutter,
+   so the reading sheet's own column and padding are dropped here. */
+.md.ob-editor-preview {
+  max-width: none;
+  width: auto;
+  min-height: var(--draft);
+  margin: 0;
+  padding: 0;
 }
 .ob-editor-actions {
   display: flex;

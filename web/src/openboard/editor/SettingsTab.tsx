@@ -26,9 +26,9 @@ export function SettingsTab({ content, onChanged, onAuthLost }: SettingsTabProps
   const published = content.vaults.filter((v) => v.origin !== 'native');
 
   return (
-    <div className="obe-settings">
+    <div className="obe-page obe-settings">
       <header className="obe-settings-head">
-        <h2 className="obe-side-title">Openboard vaults</h2>
+        <h1 className="obe-title">Openboard vaults</h1>
         <p className="obe-lead">
           Vaults you wrote here, rather than published from Inked. Their notes are stored unencrypted and exist nowhere
           else.
@@ -36,9 +36,9 @@ export function SettingsTab({ content, onChanged, onAuthLost }: SettingsTabProps
       </header>
 
       {native.length === 0 ? (
-        <p className="ob-rail-empty">
-          You haven’t made any Openboard vaults yet. Use “New Openboard vault” on the Published content tab.
-        </p>
+        <div className="obe-empty">
+          <p>You haven’t made any Openboard vaults yet. Use “New Openboard vault” on the Published content tab.</p>
+        </div>
       ) : (
         <ul className="obe-vault-list">
           {native.map((v) => (
@@ -50,7 +50,7 @@ export function SettingsTab({ content, onChanged, onAuthLost }: SettingsTabProps
       )}
 
       {published.length > 0 && (
-        <p className="field-hint">
+        <p className="field-hint obe-settings-note">
           {published.length === 1 ? 'One other vault is' : `${published.length} other vaults are`} published from Inked. Their
           names and colours come from your notes, so change them there and publish again.
         </p>
