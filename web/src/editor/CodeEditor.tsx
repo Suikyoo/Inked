@@ -13,6 +13,7 @@ import { search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, drawSelection, highlightSpecialChars, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
 import { applyKeymaps, applyVimOptions, clearKeymaps, loadVim, optionExtensions, type VimApi } from './applyVim';
+import { externalChange } from './pushValue';
 import type { VimConfig } from './vimConfig';
 
 /** How the rest of the app reaches into the editor: strings and character offsets, never DOM. */
@@ -137,7 +138,7 @@ export function CodeEditor({
     const current = view.state.doc.toString();
     if (next === current) return;
     pushing.current = true;
-    view.dispatch({ changes: { from: 0, to: current.length, insert: next } });
+    view.dispatch(externalChange(current.length, next));
     pushing.current = false;
     if (next !== value) live.current.onChange(next);
   }, [value]);
