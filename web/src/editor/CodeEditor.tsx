@@ -98,6 +98,9 @@ export function CodeEditor({
           markdown(),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           search(),
+          // Without this CodeMirror resolves its own base theme's `&light` branches — a dark caret and a
+          // light-grey selection on this app's near-black paper. The app has no light mode to switch to.
+          EditorView.darkTheme.of(true),
           keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
           // Wrapping is on as the textarea's was; `vim.o.wrap = false` is the only thing that turns it off.
           wrapRoom.current.of(EditorView.lineWrapping),

@@ -217,6 +217,68 @@ a.crumb:hover {
   animation: fade-in 180ms var(--ease-out) backwards;
 }
 
+/* ---- The CodeMirror editor ----------------------------------------------------------------- */
+/*
+ * `.editor` above still describes the box — width, centring, min-height — but CodeMirror renders the text in
+ * `.cm-content` inside it, so the type, the padding and the focus ring have to be stated for that element.
+ * Without this the editor falls back to CodeMirror's own defaults, which are light-mode: a dark caret on dark
+ * paper and a light-grey selection. The view also declares `dark: true`, so CodeMirror's own `&dark` branches
+ * resolve; these rules are the brand on top of that.
+ */
+.editor-cm {
+  /* The reading padding moves inside, onto the content; keeping it here too would stack the two. */
+  padding: 0;
+  display: flex;
+}
+.editor-cm .cm-editor {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+}
+/* CodeMirror puts the focus ring on the wrapper by default, and base.css's global one lands on the
+ * contenteditable, which .editor:focus-visible never covered. Both go: the caret shows the focus. */
+.editor-cm .cm-editor.cm-focused {
+  outline: none;
+}
+.editor-cm .cm-content:focus-visible {
+  outline: none;
+}
+.editor-cm .cm-scroller {
+  font: 400 13.5px/1.75 var(--font-mono);
+}
+.editor-cm .cm-content {
+  padding: 36px 28px 56px;
+  color: var(--text-2);
+  tab-size: 2;
+}
+/* CodeMirror's own line padding would shift the first column away from the gutter-free edge. */
+.editor-cm .cm-line {
+  padding: 0;
+}
+.editor-cm .cm-cursor,
+.editor-cm .cm-dropCursor {
+  border-left-color: var(--ink-light);
+  border-left-width: 2px;
+}
+/* What CodeMirror draws (drawSelection is on, and vim hides the native one). */
+.editor-cm .cm-selectionBackground {
+  background: var(--selection);
+}
+/* The native selection, for the moments CodeMirror is not drawing its own. */
+.editor-cm .cm-content ::selection {
+  background: var(--selection);
+}
+/* Vim's normal-mode block cursor: ink block, paper-coloured glyph, so it reads as a cursor. */
+.editor-cm .cm-fat-cursor {
+  background: var(--ink-light);
+  color: var(--ground);
+  outline: none;
+}
+.editor-cm .cm-placeholder {
+  color: var(--placeholder);
+}
+
 /* ---- Context panel --------------------------------------------------------------------- */
 .ctx-section {
   display: flex;
