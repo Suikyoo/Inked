@@ -78,6 +78,33 @@ function route(url: string, init: RequestInit = {}): Response {
     const link = server.links.find((l) => l.id === linkId)!;
     return json(200, { ...server.content, ...onlyVault(server.content, link.vaultIds[0]!) });
   }
+  if (u.pathname === '/api/openboard/vaults' && method === 'POST') {
+    const body = JSON.parse(String(init.body)) as { name: string; color: string };
+    if (server.content.vaults.some((v) => v.name === body.name)) return json(409, { error: 'name_taken' });
+    const vault = { id: 'vn', name: body.name, color: body.color, updatedAt: at, origin: 'native' as const };
+    server.content = { ...server.content, vaults: [...server.content.vaults, vault] };
+    return json(201, vault);
+  }
+  if (u.pathname === '/api/openboard/folders' && method === 'POST') {
+    const body = JSON.parse(String(init.body)) as { vaultId: string; parentId: string | null; name: string };
+    const folder = { id: 'fn', ...body };
+    server.content = { ...server.content, folders: [...server.content.folders, folder] };
+    return json(201, folder);
+  }
+  if (u.pathname === '/api/openboard/notes' && method === 'POST') {
+    const body = JSON.parse(String(init.body)) as { vaultId: string; folderId: string | null; title: string; body: string };
+    const note = { id: 'nn', ...body, createdAt: at, updatedAt: at };
+    server.content = { ...server.content, notes: [...server.content.notes, note] };
+    return json(201, note);
+  }
+  const patchNote = u.pathname.match(/^\/api\/openboard\/notes\/([^/]+)$/);
+  if (patchNote && method === 'PATCH') {
+    const body = JSON.parse(String(init.body)) as { title?: string; body?: string; baseUpdatedAt: string };
+    const old = server.content.notes.find((n) => n.id === patchNote[1])!;
+    const next = { ...old, ...(body.title === undefined ? {} : { title: body.title }), ...(body.body === undefined ? {} : { body: body.body }), updatedAt: '2026-10-25T10:00:00.000Z', ownerEdited: true };
+    server.content = { ...server.content, notes: server.content.notes.map((n) => (n.id === next.id ? next : n)) };
+    return json(200, next);
+  }
   const del = u.pathname.match(/^\/api\/openboard\/(vaults|folders|notes)\/([^/]+)$/);
   if (del && method === 'DELETE') {
     const id = del[2];
@@ -346,5 +373,88 @@ describe('EditorPage', () => {
     server.contentStatus = 500;
     await render();
     expect(q('[role="alert"]')).not.toBeNull();
+  });
+});
+
+describe('authoring in the openboard control', () => {
+  /** Opens the Content tab with the given payload already published. */
+  async function content(payload = full()) {
+    server.content = payload;
+    await render();
+    await click(button('Published content'));
+  }
+
+  const nativePayload = (): ObPayload => ({
+    vaults: [{ id: 'vn', name: 'Scratch', color: '#45a89e', updatedAt: at, origin: 'native' }],
+    folders: [],
+    notes: [{ id: 'nn', vaultId: 'vn', folderId: null, title: 'Only copy', body: 'written here', createdAt: at, updatedAt: at }],
+  });
+
+  it('edits a published note through the owner route', async () => {
+    await content();
+    await click(q('.obe-side .ob-row-note')!);
+    await click(button('Edit', q('.ob-drawer')!));
+
+    const body = q<HTMLTextAreaElement>('.ob-editor-body')!;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      set.call(body, 'fixed in openboard');
+      body.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click(button('Save', q('.ob-editor')!));
+
+    expect(calls((url, m) => m === 'PATCH' && url.startsWith('/api/openboard/notes/'))).toHaveLength(1);
+  });
+
+  it('creates a native vault, and says its content is unencrypted', async () => {
+    await content({ vaults: [], folders: [], notes: [] });
+    const form = q('.obe-new-vault')!;
+    expect(form.textContent?.toLowerCase()).toContain('unencrypted');
+
+    type(form.querySelector('input')!, 'Scratch');
+    await click(button('Create vault', form));
+    expect(calls((url, m) => m === 'POST' && url === '/api/openboard/vaults')).toHaveLength(1);
+  });
+
+  it('shows the name_taken refusal when the name is already in use', async () => {
+    await content();
+    const form = q('.obe-new-vault')!;
+    type(form.querySelector('input')!, 'Research');
+    await click(button('Create vault', form));
+    expect(q('.obe-new-vault .form-error')?.textContent).toMatch(/already/i);
+  });
+
+  it('badges a native vault in the tree', async () => {
+    await content(nativePayload());
+    expect(q('.obe-side')!.textContent).toContain('Openboard-only');
+  });
+
+  it('offers New folder and New note only inside a native vault', async () => {
+    await content();
+    expect(button('New note', q('.obe-side')!)).toBeUndefined();
+    await content(nativePayload());
+    expect(button('New note', q('.obe-side')!)).toBeDefined();
+    expect(button('New folder', q('.obe-side')!)).toBeDefined();
+  });
+
+  it('creates a note in a native vault', async () => {
+    await content(nativePayload());
+    await click(button('New note', q('.obe-side')!));
+    type(openDialog().querySelector('input')!, 'Second');
+    await click(button('Create', openDialog()));
+    expect(calls((url, m) => m === 'POST' && url === '/api/openboard/notes')).toHaveLength(1);
+  });
+
+  it('warns that deleting a native vault destroys the only copy', async () => {
+    await content(nativePayload());
+    await click(button('Delete', q('.obe-side')!));
+    expect(openDialog().textContent).toMatch(/only copy|for good/i);
+    expect(openDialog().textContent).not.toContain('Your notes in Inked don’t change.');
+  });
+
+  it('keeps the unpublish wording for a published vault', async () => {
+    await content();
+    await click(button('Unpublish', q('.obe-side')!));
+    expect(openDialog().textContent).toContain('Your notes in Inked don’t change.');
   });
 });

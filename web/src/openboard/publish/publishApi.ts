@@ -45,7 +45,7 @@ export async function publishUnit(unit: PublishUnit, destPath: string[], vaultNa
     return { status: 'conflict', conflict: data as PublishConflict };
   }
   if (!res.ok || !data || typeof (data as PublishResult).vaultId !== 'string' || !Array.isArray((data as PublishResult).imageRefs)) {
-    throw new ObApiError(res.status);
+    throw new ObApiError(res.status, (data as { error?: string } | null)?.error);
   }
   return { status: 'ok', result: data as PublishResult };
 }

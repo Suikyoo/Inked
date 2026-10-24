@@ -109,7 +109,12 @@ async function owner<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: strin
   } catch {
     throw new ObApiError(0);
   }
-  if (!res.ok) throw new ObApiError(res.status);
+  if (!res.ok) {
+    // The server's `error` code travels with the failure, so callers can tell a name clash from a 500.
+    const failure: unknown = await res.json().catch(() => null);
+    const code = failure && typeof failure === 'object' ? (failure as { error?: unknown }).error : undefined;
+    throw new ObApiError(res.status, typeof code === 'string' ? code : undefined);
+  }
   if (res.status === 204) return undefined as T;
   try {
     return (await res.json()) as T;
@@ -155,7 +160,7 @@ export const unpublish = (kind: 'vault' | 'folder' | 'note', id: string): Promis
  * purpose: nothing copies openboard content back, and the next republish of that target warns before
  * discarding the edit.
  */
-export const saveOwnerNote = (noteId: string, patch: { title?: string; body: string; baseUpdatedAt: string }): Promise<ObNote> =>
+export const saveOwnerNote = (noteId: string, patch: { title?: string; body?: string; baseUpdatedAt: string }): Promise<ObNote> =>
   owner('PATCH', `/api/openboard/notes/${seg(noteId)}`, patch);
 
 /** A vault authored here. Its content is stored unencrypted and exists nowhere else. */
@@ -184,6 +189,7 @@ export function errorText(e: unknown): string {
     if (e.status === 401) return 'Your session ended. Sign in again.';
     if (e.status === 404) return 'That item no longer exists. Reload to see the latest.';
     if (e.status === 429) return 'Too many requests. Wait a moment and try again.';
+    if (e.code === 'name_taken') return 'You already have an Openboard vault with that name. Rename one of the two first.';
     return `That didn’t work (error ${e.status}). Try again.`;
   }
   return 'That didn’t work. Try again.';

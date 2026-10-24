@@ -316,6 +316,25 @@ describe('PublishDialog', () => {
     expect(text()).toContain('1 note there was changed by visitors through Write links. Overwriting discards those changes.');
   });
 
+  it('warns that overwriting discards the owner’s own openboard edits', async () => {
+    publishAnswers = [{ status: 409, body: { ...conflict, visitorEdits: 0, ownerEdits: 2 } }];
+    await publishIntoPapers();
+    expect(text()).toContain('2 notes there were changed by you in Openboard. Overwriting discards those changes.');
+  });
+
+  it('counts visitor edits and owner edits separately', async () => {
+    publishAnswers = [{ status: 409, body: { ...conflict, visitorEdits: 1, ownerEdits: 1 } }];
+    await publishIntoPapers();
+    expect(text()).toContain('changed by visitors through Write links');
+    expect(text()).toContain('changed by you in Openboard');
+  });
+
+  it('explains a publish refused because a native vault holds the name', async () => {
+    publishAnswers = [{ status: 409, body: { error: 'name_taken' } }];
+    await publishIntoPapers();
+    expect(text()).toMatch(/already have an Openboard vault with that name/i);
+  });
+
   it('Overwrite resends the same publish with overwrite: true, then uploads the images', async () => {
     publishAnswers = [
       { status: 409, body: conflict },
