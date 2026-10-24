@@ -527,10 +527,13 @@
   .obe-head {
     align-items: flex-start;
   }
-  /* 16px or iOS zooms the page when the address takes focus (the copy fallback selects it). Its own class
-     beats the type selector phone.css uses, so it is named here. */
+  /* 16px or iOS zooms the page when the address takes focus (the copy fallback selects it). */
   .obe-url {
     font-size: 16px;
+  }
+  /* A dialog checkbox row is a target too; .obe-check sets its own height, so it is raised here. */
+  .obe-check {
+    min-height: 44px;
   }
   /* The tree's row actions are drawn larger rather than growing a hit area into the next row. */
   .obe-unpublish,

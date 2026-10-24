@@ -452,7 +452,12 @@ body,
   .ob-rail[data-collapsed='true'] {
     flex-basis: 44px;
   }
-  /* phone.css raises every .input to 16px against iOS's zoom; the title keeps its own step above that. */
+  /* 16px or iOS zooms the page when a field takes focus. phone.css names the shared field classes, but
+     which sheet wins a tie is decided by the bundler's CSS chunking, not by the import order, so the
+     openboard fields that set a size of their own say it here rather than relying on the cascade. */
+  .ob-editor-body {
+    font-size: 16px;
+  }
   .ob-editor > .ob-editor-title {
     font-size: 20px;
   }

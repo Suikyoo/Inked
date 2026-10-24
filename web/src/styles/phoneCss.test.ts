@@ -99,7 +99,7 @@ describe('phone.css on the openboard pages', () => {
   const ENTRIES = ['openboard/visitor/main.tsx', 'openboard/editor/main.tsx'];
   const sheetsOf = (entry: string) => [...readFileSync(join(import.meta.dirname, '..', entry), 'utf8').matchAll(/styles\/([\w-]+\.css)/g)].map((m) => m[1]!);
 
-  it('is the last sheet each openboard entry imports, so it wins ties as it does in the app', () => {
+  it('is the last sheet each openboard entry imports, as in the app', () => {
     for (const entry of ENTRIES) {
       expect(sheetsOf(entry), entry).toContain('phone.css');
       expect(sheetsOf(entry).at(-1), entry).toBe('phone.css');
@@ -122,9 +122,16 @@ describe('phone.css on the openboard pages', () => {
     expect(obe('.obe-unpublish, .obe-add')).toMatch(/height:36px;/);
   });
 
+  // Which sheet wins a tie is the bundler's CSS chunking, not the import order: in the built visitor page
+  // openboard.css lands after phone.css. Every openboard field that sets its own size says so itself.
   it('keeps the fields their own class sizes smaller at 16px, so iOS does not zoom', () => {
     expect(obe('.obe-url')).toMatch(/font-size:16px;/);
+    expect(ob('.ob-editor-body')).toMatch(/font-size:16px;/);
     expect(ob('.ob-editor > .ob-editor-title')).toMatch(/font-size:20px;/);
+  });
+
+  it('raises the openboard rows that carry a height of their own to a target', () => {
+    expect(obe('.obe-check')).toMatch(/min-height:44px;/);
   });
 
   it('clears the home indicator at the bottom of a page and of the full-screen drawer', () => {
