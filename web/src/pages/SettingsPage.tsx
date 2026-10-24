@@ -16,6 +16,7 @@ import { copyText, describeError, formatDateTime, MIN_PASSWORD, nextVaultColor, 
 import { useSemantic, useSemanticStore } from '../semantic/SemanticContext';
 import { useAppState, useStore, vaultStats } from '../state/StoreContext';
 import type { PreparedRecoveryKey, VaultView } from '../state/store';
+import { VimSettings } from './SettingsVim';
 
 export function SettingsPage() {
   const state = useAppState();
@@ -49,6 +50,7 @@ export function SettingsPage() {
       </section>
 
       <Editing />
+      <VimSettings />
       <SemanticSearch />
       <DiagramSettings />
       <AskSettings />
