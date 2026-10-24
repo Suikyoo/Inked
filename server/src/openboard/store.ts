@@ -121,6 +121,7 @@ export function publish(
             target: { kind: 'vault', name: req.rootName, path: [] },
             removes: { folders: count('ob_folders'), notes: count('ob_notes') },
             visitorEdits: count('ob_notes', ' AND visitor_edited_at IS NOT NULL'),
+            ownerEdits: 0,
           });
         }
         const [keep, ...dups] = vaults;
@@ -190,7 +191,7 @@ export function publish(
                 .prepare(`${subtreeCte} SELECT COUNT(*) AS n FROM ob_notes WHERE folder_id IN (SELECT id FROM sub) AND visitor_edited_at IS NOT NULL`)
                 .get(...args) as { n: number }
             ).n;
-            throw new PublishConflictError({ error: 'conflict', target, removes, visitorEdits });
+            throw new PublishConflictError({ error: 'conflict', target, removes, visitorEdits, ownerEdits: 0 });
           }
           // Subfolders and their notes go with it via ON DELETE CASCADE.
           db.prepare('DELETE FROM ob_folders WHERE vault_id = ? AND parent_id IS ? AND name = ?').run(...args);
@@ -210,7 +211,7 @@ export function publish(
           .prepare(`SELECT COUNT(*) AS notes, COUNT(visitor_edited_at) AS visitorEdits FROM ob_notes WHERE ${where}`)
           .get(...args) as { notes: number; visitorEdits: number };
         if (notes > 0) {
-          if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes: { folders: 0, notes }, visitorEdits });
+          if (!req.overwrite) throw new PublishConflictError({ error: 'conflict', target, removes: { folders: 0, notes }, visitorEdits, ownerEdits: 0 });
           db.prepare(`DELETE FROM ob_notes WHERE ${where}`).run(...args);
         }
         rootFolderId = parentId;
@@ -237,7 +238,7 @@ export function publish(
   });
 }
 
-const vaultJson = (v: ObVaultRow): ObVault => ({ id: v.id, name: v.name, color: v.color, updatedAt: v.updated_at });
+const vaultJson = (v: ObVaultRow): ObVault => ({ id: v.id, name: v.name, color: v.color, updatedAt: v.updated_at, origin: v.origin });
 const folderJson = (f: ObFolderRow): ObFolder => ({ id: f.id, vaultId: f.vault_id, parentId: f.parent_id, name: f.name });
 export const noteJson = (n: ObNoteRow): ObNote => ({
   id: n.id,

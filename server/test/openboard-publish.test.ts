@@ -217,7 +217,7 @@ describe('openboard publish', () => {
     const res = await publish(alice, noteReq('Fresh', [], 'Hi', 'hello'));
     expect(res.statusCode).toBe(201);
     const c = await content(alice);
-    expect(c.vaults).toEqual([{ id: res.json().vaultId, name: 'Fresh', color: COLOR, updatedAt: expect.any(String) }]);
+    expect(c.vaults).toEqual([{ id: res.json().vaultId, name: 'Fresh', color: COLOR, updatedAt: expect.any(String), origin: 'published' }]);
     expect(c.notes.map((n) => [n.title, n.folderId])).toEqual([['Hi', null]]);
   });
 

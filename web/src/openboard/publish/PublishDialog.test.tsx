@@ -39,7 +39,7 @@ let loadNote: CollectStore['loadNote'];
 
 /** What openboard already holds: vault Research with folder Papers. */
 const content: ObPayload = {
-  vaults: [{ id: OB_VAULT, name: 'Research', color: '#7452e0', updatedAt: '2026-10-01T00:00:00.000Z' }],
+  vaults: [{ id: OB_VAULT, name: 'Research', color: '#7452e0', updatedAt: '2026-10-01T00:00:00.000Z' , origin: 'published' }],
   folders: [{ id: '22222222-2222-4222-8222-222222222222', vaultId: OB_VAULT, parentId: null, name: 'Papers' }],
   notes: [],
 };
@@ -48,7 +48,7 @@ const conflict: PublishConflict = {
   error: 'conflict',
   target: { kind: 'folder', name: 'Deep', path: ['Research', 'Papers'] },
   removes: { folders: 2, notes: 5 },
-  visitorEdits: 0,
+  visitorEdits: 0, ownerEdits: 0,
 };
 
 interface Call {
@@ -188,7 +188,7 @@ describe('PublishDialog', () => {
   });
 
   it('a default new-vault name equal to a published vault selects that vault and says it will be added to it', async () => {
-    listed = { ...content, vaults: [...content.vaults, { id: OB_VAULT2, name: 'Notes', color: '#45A89E', updatedAt: '2026-10-01T00:00:00.000Z' }] };
+    listed = { ...content, vaults: [...content.vaults, { id: OB_VAULT2, name: 'Notes', color: '#45A89E', updatedAt: '2026-10-01T00:00:00.000Z' , origin: 'published' }] };
     await toPicker();
     expect(radio('Notes')?.checked).toBe(true);
     expect(radio('+ New vault on openboard')?.checked).toBe(false);
@@ -305,13 +305,13 @@ describe('PublishDialog', () => {
   });
 
   it('warns that overwriting discards visitor edits, with their count', async () => {
-    publishAnswers = [{ status: 409, body: { ...conflict, visitorEdits: 2 } }];
+    publishAnswers = [{ status: 409, body: { ...conflict, visitorEdits: 2, ownerEdits: 0 } }];
     await publishIntoPapers();
     expect(text()).toContain('2 notes there were changed by visitors through Write links. Overwriting discards those changes.');
   });
 
   it('words a single visitor edit in the singular', async () => {
-    publishAnswers = [{ status: 409, body: { ...conflict, visitorEdits: 1 } }];
+    publishAnswers = [{ status: 409, body: { ...conflict, visitorEdits: 1, ownerEdits: 0 } }];
     await publishIntoPapers();
     expect(text()).toContain('1 note there was changed by visitors through Write links. Overwriting discards those changes.');
   });

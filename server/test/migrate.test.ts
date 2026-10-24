@@ -50,11 +50,33 @@ describe('openDb migrations', () => {
     }
   });
 
+  it('adds the openboard authoring columns to an existing database, with safe defaults', () => {
+    const file = path.join(dir, 'authoring.db');
+    const old = new DatabaseSync(file);
+    old.exec(OLD_OPENBOARD);
+    old.close();
+
+    openDb(file).close();
+    const db = openDb(file);
+    try {
+      expect(columns(db, 'ob_vaults')).toContain('origin');
+      expect(columns(db, 'ob_notes')).toContain('owner_edited_at');
+      // An existing vault is a published one: it has a private original behind it.
+      expect(db.prepare('SELECT origin FROM ob_vaults WHERE id = ?').get('v1')).toEqual({ origin: 'published' });
+      expect(db.prepare('SELECT owner_edited_at FROM ob_notes WHERE id = ?').get('n1')).toEqual({ owner_edited_at: null });
+      expect(() => db.prepare("UPDATE ob_vaults SET origin = 'borrowed' WHERE id = 'v1'").run()).toThrow(/CHECK/);
+    } finally {
+      db.close();
+    }
+  });
+
   it('creates both columns on a fresh database', () => {
     const db = openDb(path.join(dir, 'fresh.db'));
     try {
       expect(columns(db, 'ob_links')).toContain('permission');
       expect(columns(db, 'ob_notes')).toContain('visitor_edited_at');
+      expect(columns(db, 'ob_vaults')).toContain('origin');
+      expect(columns(db, 'ob_notes')).toContain('owner_edited_at');
     } finally {
       db.close();
     }

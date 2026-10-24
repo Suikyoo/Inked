@@ -14,7 +14,7 @@ function payload(permission: ObPublicResponse['permission'] = 'read'): ObPublicR
   return {
     label: 'Reading group',
     permission,
-    vaults: [{ id: 'v1', name: 'Research', color: '#7452e0', updatedAt: later }],
+    vaults: [{ id: 'v1', name: 'Research', color: '#7452e0', updatedAt: later , origin: 'published' }],
     folders: [{ id: 'f1', vaultId: 'v1', parentId: null, name: 'Ops' }],
     notes: [
       { id: 'n1', vaultId: 'v1', folderId: null, title: 'Alpha', body: '## Alpha heading\n\nSee [[Beta]].', createdAt: at, updatedAt: later },

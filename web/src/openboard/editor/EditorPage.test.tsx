@@ -14,8 +14,8 @@ const V2 = '22222222-2222-4222-8222-222222222222';
 function full(): ObPayload {
   return {
     vaults: [
-      { id: V1, name: 'Research', color: '#7452e0', updatedAt: at },
-      { id: V2, name: 'Recipes', color: '#45a89e', updatedAt: at },
+      { id: V1, name: 'Research', color: '#7452e0', updatedAt: at , origin: 'published' },
+      { id: V2, name: 'Recipes', color: '#45a89e', updatedAt: at , origin: 'published' },
     ],
     folders: [{ id: 'f1', vaultId: V1, parentId: null, name: 'Ops' }],
     notes: [
