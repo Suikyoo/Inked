@@ -1,9 +1,9 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { randomBytes } from 'node:crypto';
-import Fastify, { type FastifyError, type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from 'fastify';
 import { DEFAULT_IMAGE_QUOTA_MB } from './config.js';
 import { type AppContext, deleteExpiredSessions } from './context.js';
 import { loadServerSecret } from './crypto.js';
@@ -45,11 +45,24 @@ declare module 'fastify' {
   }
 }
 
-function securityHeaders(llmOrigins: readonly string[]): Record<string, string> {
+/**
+ * `style-src` carries a per-request nonce because CodeMirror injects its own stylesheet at runtime, and
+ * `'self'` alone blocks it — leaving the editor with no base theme (an unpositioned caret, no selection
+ * layer). The nonce admits that one stylesheet and nothing else; inline styles stay blocked everywhere.
+ */
+declare module 'fastify' {
+  interface FastifyRequest {
+    /** Per-request nonce in `style-src`, handed to the page so CodeMirror's stylesheet is admitted. */
+    cspNonce: string;
+  }
+}
+
+function securityHeaders(llmOrigins: readonly string[], nonce: string): Record<string, string> {
   const connect = ["'self'", ...llmOrigins].join(' ');
   return {
     'content-security-policy':
-      "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; " +
+      "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; " +
+      `style-src 'self' 'nonce-${nonce}'; ` +
       `img-src 'self' data: blob:; font-src 'self'; connect-src ${connect}; object-src 'none'; base-uri 'none'; ` +
       "frame-ancestors 'none'; form-action 'self'",
     'x-content-type-options': 'nosniff',
@@ -72,6 +85,9 @@ function frameHeaders(base: Record<string, string>): Record<string, string> {
     'access-control-allow-origin': '*',
   };
 }
+
+/** What the built HTML carries where the nonce goes; see web/index.html. */
+const NONCE_TOKEN = '__CSP_NONCE__';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD']);
 const isApiPath = (url: string) => /^\/api(\/|\?|$)/.test(url);
@@ -128,8 +144,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const serverSecret = loadServerSecret(opts.dataDir);
   const db = openDb(path.join(opts.dataDir, 'inked.db'));
   const llmOrigins = opts.llmOrigins ?? [];
-  const headers = securityHeaders(llmOrigins);
-  const frameHdrs = frameHeaders(headers);
+  const headersFor = (nonce: string) => securityHeaders(llmOrigins, nonce);
+  // The frame replaces `content-security-policy` wholesale, so the nonce it is built from never ships.
+  const frameHdrs = frameHeaders(headersFor(''));
 
   const app = Fastify({
     bodyLimit: BODY_LIMIT,
@@ -187,13 +204,14 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // CSRF: every state-changing request must carry the custom header (SameSite=Strict does the rest).
   app.addHook('onRequest', async (request) => {
+    request.cspNonce = randomBytes(16).toString('base64url');
     if (!SAFE_METHODS.has(request.method) && request.headers['x-inked'] !== '1') {
       throw new ApiError(403, 'csrf', 'Missing X-Inked header');
     }
   });
 
   app.addHook('onSend', async (request, reply, payload) => {
-    reply.headers(isFramePath(request.url) ? frameHdrs : headers);
+    reply.headers(isFramePath(request.url) ? frameHdrs : headersFor(request.cspNonce));
     if (isApiPath(request.url) && !reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
     if (isOpenboardPublicPath(request.url)) reply.header('x-robots-tag', 'noindex, nofollow');
     return payload;
@@ -257,14 +275,37 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     });
   }
 
+  /**
+   * The app shell, with this request's nonce in its `csp-nonce` meta tag, and never cached — the nonce in
+   * the body has to match the one in the header.
+   *
+   * Read from disk per request, as `sendFile` did. Caching it at boot looks tempting and is a trap: a
+   * rebuilt frontend writes new content-hashed asset names, so a stale shell points at files that no longer
+   * exist. These are a few kB and only fetched on a page load.
+   */
+  const sendShell = (reply: FastifyReply, request: FastifyRequest, file: string) => {
+    const html = readFileSync(path.join(opts.webDist, file), 'utf8');
+    return reply
+      .type('text/html; charset=utf-8')
+      .header('cache-control', 'no-store')
+      .send(html.replaceAll(NONCE_TOKEN, request.cspNonce));
+  };
+
+  if (hasWeb) {
+    app.get('/', (request, reply) => sendShell(reply, request, 'index.html'));
+    app.get('/index.html', (request, reply) => sendShell(reply, request, 'index.html'));
+    if (hasVisitorPage) app.get('/openboard.html', (request, reply) => sendShell(reply, request, 'openboard.html'));
+    if (hasEditorPage) app.get('/openboard-editor.html', (request, reply) => sendShell(reply, request, 'openboard-editor.html'));
+  }
+
   app.setNotFoundHandler((request, reply) => {
     // A missing model or frame file is a plain 404, never the SPA shell.
     if (isModelsPath(request.url) || isFramePath(request.url)) return reply.code(404).send({ error: 'not_found' });
     if (hasWeb && SAFE_METHODS.has(request.method) && !isApiPath(request.url)) {
       const p = routedPathname(request.url);
-      if (hasVisitorPage && (p === '/ob' || p.startsWith('/ob/'))) return reply.sendFile('openboard.html');
-      if (hasEditorPage && (p === '/openboard' || p.startsWith('/openboard/'))) return reply.sendFile('openboard-editor.html');
-      return reply.sendFile('index.html');
+      if (hasVisitorPage && (p === '/ob' || p.startsWith('/ob/'))) return sendShell(reply, request, 'openboard.html');
+      if (hasEditorPage && (p === '/openboard' || p.startsWith('/openboard/'))) return sendShell(reply, request, 'openboard-editor.html');
+      return sendShell(reply, request, 'index.html');
     }
     return reply.code(404).send({ error: 'not_found' });
   });

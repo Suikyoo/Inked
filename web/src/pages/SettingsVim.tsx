@@ -71,13 +71,15 @@ export function VimSettings() {
             maxLength={VIM_CONFIG_MAX}
             spellCheck={false}
             rows={8}
-            placeholder={"vim.keymap.set('i', 'jk', '<Esc>')\nvim.o.relativenumber = true"}
+            placeholder={"vim.g.mapleader = ' '\nvim.keymap.set('i', 'jk', '<Esc>')\nvim.keymap.set('n', '<leader>w', ':w<CR>')"}
             disabled={busy}
           />
           <p className="field-hint">
-            A small slice of Lua: <code>vim.keymap.set(mode, keys, action)</code> and <code>vim.o.&lt;option&gt; = value</code>,
+            A small slice of Lua: <code>vim.keymap.set(mode, keys, action)</code>, <code>vim.o.&lt;option&gt; = value</code> and{' '}
+            <code>vim.g.mapleader</code>,
             nothing else. It is read, never run, so <code>require</code>, <code>if</code> and functions are not available.
-            One error means none of your keymaps apply, and vim&rsquo;s own defaults are used.
+            One error means none of your keymaps apply, and vim&rsquo;s own defaults are used. Set <code>mapleader</code> above the
+            mappings that use <code>&lt;leader&gt;</code>, as vim expands it where the mapping is written.
           </p>
           {compiled.errors.length > 0 && (
             <ul className="vim-errors">

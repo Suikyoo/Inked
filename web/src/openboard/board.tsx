@@ -117,6 +117,7 @@ export function ReaderDrawer({
   onClose,
   actions,
   body,
+  centre = false,
 }: {
   payload: ObPayload;
   reading: string | null;
@@ -125,6 +126,8 @@ export function ReaderDrawer({
   onClose: () => void;
   actions?: (note: ObNote) => ReactNode;
   body?: (note: ObNote) => ReactNode;
+  /** True on the visitor page: the note takes the centre at reading width instead of a side drawer. */
+  centre?: boolean;
 }) {
   const noteById = useMemo(() => new Map(payload.notes.map((n) => [n.id, n])), [payload]);
   useEffect(() => {
@@ -146,7 +149,7 @@ export function ReaderDrawer({
 
   if (!drawer.mounted || !shownNote) return null;
   return (
-    <aside className="ob-drawer" ref={drawer.ref} data-state={drawer.state} aria-label="Reader">
+    <aside className={centre ? 'ob-drawer is-centre' : 'ob-drawer'} ref={drawer.ref} data-state={drawer.state} aria-label="Reader">
       <div className="ob-drawer-bar">
         {actions?.(shownNote)}
         <button type="button" className="ibtn" aria-label="Close reader" onClick={onClose}>

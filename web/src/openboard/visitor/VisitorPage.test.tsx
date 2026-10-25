@@ -235,6 +235,48 @@ describe('VisitorPage', () => {
   });
 });
 
+describe('reading a note in the centre', () => {
+  const map = () => q('.ob-map')!;
+  const pane = () => q('.ob-drawer');
+
+  it('rails the map and centres the note when one is open', async () => {
+    writeServer(payload('read'));
+    await render();
+    expect(map().classList.contains('is-rail')).toBe(false);
+    expect(pane()).toBeNull();
+
+    act(() => railNote('Alpha').click());
+    expect(map().classList.contains('is-rail')).toBe(true);
+    expect(pane()!.classList.contains('is-centre')).toBe(true);
+  });
+
+  it('gives the map the centre back when the note closes', async () => {
+    writeServer(payload('read'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(q<HTMLButtonElement>('.ob-drawer [aria-label="Close reader"]')!);
+    expect(map().classList.contains('is-rail')).toBe(false);
+  });
+
+  it('asks the map to reframe when it changes shape, and not otherwise', async () => {
+    writeServer(payload('read'));
+    await render();
+    const refits = () => Number(map().dataset.refit);
+    const atStart = refits();
+
+    act(() => railNote('Alpha').click());
+    const afterOpen = refits();
+    expect(afterOpen).toBeGreaterThan(atStart);
+
+    // Another note while already reading does not change the layout, so the map keeps its framing.
+    act(() => railNote('Beta').click());
+    expect(refits()).toBe(afterOpen);
+
+    await press(q<HTMLButtonElement>('.ob-drawer [aria-label="Close reader"]')!);
+    expect(refits()).toBeGreaterThan(afterOpen);
+  });
+});
+
 describe('VisitorPage on a write link', () => {
   const editor = () => drawer()!.querySelector<HTMLFormElement>('form.ob-editor');
   const titleInput = () => editor()!.querySelector<HTMLInputElement>('input.ob-editor-title')!;

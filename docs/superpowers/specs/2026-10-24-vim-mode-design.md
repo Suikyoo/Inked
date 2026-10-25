@@ -90,6 +90,10 @@ The one subtlety every controlled CM6 component has: when `value` arrives back f
 
    **Corrected after implementation.** This ruling originally also listed `ignorecase`, `smartcase` and `scrolloff`, to be set through `Vim.setOption`. They were wrong: `@replit/codemirror-vim` defines only `filetype`, `textwidth`, `langmap`, `pcre` and `insertModeEscKeysTimeout` (`defineOption` calls in `@replit/codemirror-vim-core/vim.js`), and its `setOption` accepts any name without storing anything that is ever read — so those three compiled, applied, and did nothing. That is precisely the failure this ruling exists to prevent, so they were removed from the allowlist and are now rejected by name. Implementing them for real would mean a CodeMirror view plugin for `scrolloff` and patching the engine's search for the case options; neither is in this project's scope.
 
+6b. **`vim.g` is allowlisted to the two leaders, and the compiler expands them itself.** `vim.g.mapleader` and `vim.g.maplocalleader` take a non-empty string; any other `vim.g` name is refused with the supported list, for the same reason `vim.o` is. The engine has no leader concept at all, so `<leader>` and `<localleader>` (in any case — `<Leader>` is the spelling real configs use) are substituted into each mapping's `lhs` and `rhs` as it is parsed, which is where vim expands them too. Substitution is not textual: the leader is converted into the engine's key notation per character, so `' '` becomes `<Space>` and `<` becomes `<lt>`, both of which the engine parses (`<Space>` is in its own default keymap; `lt` is its name for `<`). A user mapping is `unshift`ed onto the front of the engine's keymap, so a space leader does override the built-in `<Space>` → `l`. *Why:* the alternative is accepting a leader the engine ignores, which is exactly the failure ruling 6's correction removed. *Cost if wrong:* a leader that is more than one character, or one needing notation we have not mapped, lands verbatim and the mapping silently does not fire.
+
+6c. **Setting a leader after a mapping that used it is an error, not a second leader.** Because expansion happens where the mapping is written, `vim.keymap.set('n', '<leader>w', …)` followed by `vim.g.mapleader = ' '` binds `\w` in real Neovim — the classic footgun. The compiler refuses it, naming the mapping's line and saying to move the leader above it. Tracking is per leader, so a late `maplocalleader` is fine when only `<leader>` was used. *Why:* stricter than vim on purpose; the whole config compiles to nothing on error, so the owner is told rather than left with a mapping on the wrong key. *Cost if wrong:* deliberately using two different leaders in one file is impossible — judged vanishingly rare against a mistake that is common.
+
 7. **A config that does not compile applies no custom keymaps; vim defaults still work.** Settings shows every error with its line number, and the editor runs with built-in vim bindings only. There is no "last known good" config. *Why:* predictable. A half-applied config — some lines in, some rejected — would leave the owner guessing which half. *Cost if wrong:* a one-character typo costs all custom keymaps until it is fixed, which is loud and quickly diagnosed, rather than quiet and lasting.
 
 8. **Ctrl+E and Ctrl+S stay app-level and shadow vim.** The window listener at `NotePane.tsx:154-168` keeps toggling edit/view and flushing the save, so vim's Ctrl+E (scroll down one line) and Ctrl+S are unavailable in this editor. *Why:* both are affordances the owner already uses, and the mode toggle has no other keyboard route. *Cost if wrong:* letting the editor claim them when vim is on means not calling `preventDefault` for those two keys while the view has focus.
@@ -111,6 +115,9 @@ vim.keymap.set({'n', 'v'}, 'H', '^')
 vim.keymap.set({'n', 'v'}, 'L', '$')
 vim.keymap.set('n', '<Space>w', ':w<CR>', { desc = 'save the note' })
 
+vim.g.mapleader = ' '
+vim.keymap.set('n', '<leader>w', ':w<CR>', { desc = 'save the note' })
+
 vim.o.relativenumber = true
 vim.o.expandtab = true
 vim.o.tabstop = 4
@@ -125,6 +132,7 @@ What is rejected, each with its line number:
 | `if vim.fn.has('mac') then ... end` | control flow is not supported; this config defines keymaps and options only |
 | `vim.o.swapfile = false` | unknown option `swapfile`; supported: number, relativenumber, wrap, tabstop, expandtab |
 | `vim.keymap.set('q', 'x', 'y')` | unknown mode `q`; use `n`, `i` or `v` |
+| `vim.g.loaded_netrw = 1` | unknown global `loaded_netrw`; supported: mapleader, maplocalleader |
 
 ## Files
 

@@ -182,6 +182,7 @@ components:
 
 # Design System: Inked
 
+
 ## Overview
 
 **Creative North Star: "The Inkwell Notebook"**
@@ -260,6 +261,20 @@ A two-column shell: a sticky 240px sidebar (`side` surface, 12px 10px padding, 1
 - **Auth:** centered 320px column (440px wide variant) on `ground`.
 - **Small screens (760px):** the sidebar becomes a 300px (max 86vw) off-canvas drawer with a 48px topbar and scrim, row actions always visible, results before the map.
 - Reveal-on-hover actions (tree and vault rows) are always visible on touch.
+
+### Reading on the two openboard surfaces
+
+The public page (`/ob`) reads in the **centre**: opening a note rails the concept map to `--map-rail` (200px) and
+gives the note the free space, where `.md` and `.ob-reader-head` cap themselves at the 700px reading column the
+notes app uses. The map stays clickable as navigation, and `ConceptMap`'s `refitRequest` reframes it on each
+reshape — a plain resize only reframes while the viewer has not panned, so without that the rail would show an
+arbitrary crop. Switching notes while already reading is not a reshape, so the framing survives it. On a phone
+the note is a full-screen overlay already, so the rail does not apply there.
+
+The owner's control (`/openboard`) still reads in a **side drawer** beside its map. The two therefore diverge
+on purpose rather than by oversight: the control's job is managing links and content, where the map preview is
+the point, and the public page's job is reading. If the control ever wants the same treatment, the pieces are
+`ReaderDrawer`'s `centre` prop and `refitRequest`.
 
 ## Elevation & Depth
 

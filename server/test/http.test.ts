@@ -14,8 +14,6 @@ afterEach(async () => {
 });
 
 const EXPECTED_HEADERS = {
-  'content-security-policy':
-    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
   'permissions-policy': 'camera=(), microphone=(), geolocation=()',
@@ -117,10 +115,50 @@ describe('SPA hosting', () => {
   function makeWebDist() {
     const dir = mkdtempSync(path.join(tmpdir(), 'inked-web-'));
     mkdirSync(path.join(dir, 'assets'));
-    writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Inked</title>');
+    writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Inked</title><meta name="csp-nonce" content="__CSP_NONCE__">');
     writeFileSync(path.join(dir, 'assets', 'app-abc123.js'), 'console.log(1)');
     return dir;
   }
+
+  /**
+   * CodeMirror injects its own stylesheet at runtime, which `style-src 'self'` blocks outright — the editor
+   * then renders with no base theme at all (an unpositioned caret, no selection layer). A per-request nonce
+   * lets that one stylesheet through while every other inline style stays blocked.
+   */
+  describe('style nonce', () => {
+    const nonceOf = (csp: string) => /style-src 'self' 'nonce-([A-Za-z0-9_-]+)'/.exec(csp)?.[1] ?? null;
+
+    it('puts a nonce in style-src and the same one in the shell it serves', async () => {
+      webDist = makeWebDist();
+      t = await makeApp({ webDist });
+
+      const res = await t.app.inject({ method: 'GET', url: '/' });
+      const nonce = nonceOf(String(res.headers['content-security-policy']));
+      expect(nonce).toMatch(/^[A-Za-z0-9_-]{16,}$/);
+      expect(res.body).toContain(`content="${nonce}"`);
+      expect(res.body).not.toContain('__CSP_NONCE__');
+    });
+
+    it('never repeats a nonce, and never falls back to unsafe-inline', async () => {
+      webDist = makeWebDist();
+      t = await makeApp({ webDist });
+
+      const seen = new Set<string>();
+      for (let i = 0; i < 4; i++) {
+        const res = await t.app.inject({ method: 'GET', url: '/' });
+        const csp = String(res.headers['content-security-policy']);
+        expect(csp).not.toContain('unsafe-inline');
+        seen.add(nonceOf(csp)!);
+      }
+      expect(seen.size).toBe(4);
+    });
+
+    it('gives API responses a nonce too, so the header is never stale for a page that reloads', async () => {
+      t = await makeApp();
+      const res = await t.app.inject({ method: 'GET', url: '/api/status' });
+      expect(nonceOf(String(res.headers['content-security-policy']))).toMatch(/^[A-Za-z0-9_-]{16,}$/);
+    });
+  });
 
   it('serves files and falls back to index.html for client routes', async () => {
     webDist = makeWebDist();
@@ -129,14 +167,15 @@ describe('SPA hosting', () => {
     const root = await t.app.inject({ method: 'GET', url: '/' });
     expect(root.statusCode).toBe(200);
     expect(root.body).toContain('<title>Inked</title>');
-    expect(root.headers['cache-control']).toBe('no-cache');
+    // The shell now carries a per-request nonce, so it must not be cached.
+    expect(root.headers['cache-control']).toBe('no-store');
     expect(root.headers).toMatchObject(EXPECTED_HEADERS);
 
     const deep = await t.app.inject({ method: 'GET', url: '/v/123/n/456' });
     expect(deep.statusCode).toBe(200);
     expect(deep.headers['content-type']).toMatch(/text\/html/);
     expect(deep.body).toContain('<title>Inked</title>');
-    expect(deep.headers['cache-control']).toBe('no-cache');
+    expect(deep.headers['cache-control']).toBe('no-store');
     expect(deep.headers).toMatchObject(EXPECTED_HEADERS);
 
     const asset = await t.app.inject({ method: 'GET', url: '/assets/app-abc123.js' });
@@ -266,9 +305,10 @@ describe('LLM origins', () => {
     try {
       const r = await call(t.app, 'GET', '/api/status', {});
       expect(r.json().llmOrigins).toEqual([]);
-      expect(r.headers['content-security-policy']).toBe(EXPECTED_HEADERS['content-security-policy']);
+      expect(r.headers['content-security-policy']).toContain("connect-src 'self';");
     } finally {
       await t.close();
     }
   });
 });
+

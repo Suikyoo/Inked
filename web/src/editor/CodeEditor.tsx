@@ -54,6 +54,15 @@ const stateExtensions = (readOnly: boolean, ariaLabel: string, spellCheck: boole
   EditorView.contentAttributes.of({ 'aria-label': ariaLabel, spellcheck: String(spellCheck) }),
 ];
 
+/**
+ * The per-request nonce the server put in `style-src` and in a meta tag.
+ *
+ * CodeMirror injects its own stylesheet at runtime, and `style-src 'self'` refuses it — the editor then has
+ * no base theme at all: the caret is not positioned and there is no selection layer. Passing the nonce is
+ * what admits that one stylesheet. Read once, since it does not change while the page is loaded.
+ */
+const cspNonce = (): string => document.querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')?.content ?? '';
+
 /** A textarea normalises CRLF and CodeMirror does not, so a Windows paste is flattened on the way in. */
 const normalise = (text: string) => text.replace(/\r\n?/g, '\n');
 
@@ -98,6 +107,10 @@ export function CodeEditor({
           markdown(),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           search(),
+          // Without this CodeMirror resolves its own base theme's `&light` branches — a dark caret and a
+          // light-grey selection on this app's near-black paper. The app has no light mode to switch to.
+          EditorView.darkTheme.of(true),
+          EditorView.cspNonce.of(cspNonce()),
           keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
           // Wrapping is on as the textarea's was; `vim.o.wrap = false` is the only thing that turns it off.
           wrapRoom.current.of(EditorView.lineWrapping),

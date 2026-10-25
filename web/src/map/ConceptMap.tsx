@@ -78,6 +78,12 @@ export interface ConceptMapProps {
    * or, for a note, glides it to the centre at the current zoom (the openboard reader).
    */
   fitRequest?: { sel: MapSelection; n: number } | null;
+  /**
+   * Bumped when the container deliberately changes shape (the visitor page railing the map to read a note).
+   * A plain resize only reframes while the viewer has not panned or zoomed; this reframes regardless, so a
+   * narrowed map shows the whole scene rather than an arbitrary crop of wherever they had dragged it.
+   */
+  refitRequest?: number;
   /** Opened from a vault: until the user moves the map, it frames this vault instead of every vault, easing in. */
   focusVault?: string | null;
   /** Notes close in meaning to a note, nearest first. Feeds the lit state (and later the meaning threads). */
@@ -100,7 +106,7 @@ const NO_TICKS: ReadonlyMap<string, { seq: number; delay: number }> = new Map();
 const similarityText = (s: number) => s.toFixed(2).replace(/^0/, '');
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
-export function ConceptMap({ entries, hits, hot, searching: queryActive = false, loading, selected, onSelect, onOpenNote, fitRequest = null, focusVault = null, neighbours = NO_NEIGHBOURS, saves = null, onSavesPlayed, now = Date.now() }: ConceptMapProps) {
+export function ConceptMap({ entries, hits, hot, searching: queryActive = false, loading, selected, onSelect, onOpenNote, fitRequest = null, refitRequest = 0, focusVault = null, neighbours = NO_NEIGHBOURS, saves = null, onSavesPlayed, now = Date.now() }: ConceptMapProps) {
   const uid = 'cm' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const frameRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -429,6 +435,15 @@ export function ConceptMap({ entries, hits, hot, searching: queryActive = false,
     touched.current = true;
     animateTo(fit(b, size));
   };
+
+  // A reshape already pending at mount is not replayed; only a later change reframes.
+  const seenRefit = useRef(refitRequest);
+  useEffect(() => {
+    if (refitRequest === seenRefit.current) return;
+    seenRefit.current = refitRequest;
+    fitAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refitRequest]);
 
   // A request already pending at mount is not replayed; only a later change of `n` fits.
   const seenFit = useRef(fitRequest?.n ?? null);

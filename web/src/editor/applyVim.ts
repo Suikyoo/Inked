@@ -15,10 +15,45 @@ export interface VimApi {
   map(lhs: string, rhs: string, ctx: string): void;
   noremap(lhs: string, rhs: string, ctx: string): void;
   mapclear(ctx?: string): void;
+  /** Removes a binding. Called with no context, since the engine's own bindings carry none. */
+  unmap(lhs: string, ctx?: string): void;
 }
 
 const CONTEXTS = ['normal', 'insert', 'visual'] as const;
 const CONTEXT_OF: Record<VimMode, (typeof CONTEXTS)[number]> = { n: 'normal', i: 'insert', v: 'visual' };
+
+/**
+ * A vim key sequence split into its keys: `<Space>w` is two keys, not seven characters.
+ */
+export function vimKeys(lhs: string): string[] {
+  return lhs.match(/<[^<>]+>|[\s\S]/g) ?? [];
+}
+
+/**
+ * The leading key of every multi-key mapping in a mode where keys are commands.
+ *
+ * The engine binds `<Space>` and `,` — the two usual leaders — as complete commands, and its matcher takes
+ * a full match the moment it has one rather than waiting for a longer sequence. So `<leader>w` never fires
+ * while the bare leader is still bound. A prefix the config maps itself is left alone: that is the owner
+ * saying what the bare key should do.
+ *
+ * Insert mode is skipped: there a bare character is text, not a command, so nothing needs freeing — and
+ * freeing it would be actively harmful, since `unmap` is contextless and an insert-mode `jk` mapping would
+ * take the normal-mode `j` motion with it.
+ */
+function prefixesToFree(keymaps: VimKeymap[]): string[] {
+  const mapped = new Set(keymaps.map((k) => k.lhs));
+  const out: string[] = [];
+  for (const k of keymaps) {
+    if (!k.modes.some((m) => m === 'n' || m === 'v')) continue;
+    const keys = vimKeys(k.lhs);
+    if (keys.length < 2) continue;
+    const prefix = keys[0]!;
+    if (mapped.has(prefix) || out.includes(prefix)) continue;
+    out.push(prefix);
+  }
+  return out;
+}
 
 /** Clears every mapping this module may have set. */
 export function clearKeymaps(api: VimApi): void {
@@ -28,6 +63,8 @@ export function clearKeymaps(api: VimApi): void {
 /** Replaces every mapping in normal, insert and visual with this config's, in file order. */
 export function applyKeymaps(api: VimApi, keymaps: VimKeymap[]): void {
   clearKeymaps(api);
+  // Before mapping, not after: mapclear puts the engine's own bindings back.
+  for (const prefix of prefixesToFree(keymaps)) api.unmap(prefix);
   for (const k of keymaps) {
     for (const mode of k.modes) {
       if (k.remap) api.map(k.lhs, k.rhs, CONTEXT_OF[mode]);
