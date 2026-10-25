@@ -9,8 +9,6 @@ body,
   /* One height for the board's slim bars: the rail head, the drawer bar and the owner tree's head were
      each written as 40px and drifted apart; a phone raises this one value to a touch size. */
   --bar: 40px;
-  /* The map's width once a note takes the centre: a minimap for orientation, not for zooming. */
-  --map-rail: 200px;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -61,6 +59,15 @@ body,
 .ob-body {
   position: relative;
   flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+/* The map's box, and the note's when one is open: the note is laid over the map so the map keeps its
+   framing, and the tree rail beside it stays put. */
+.ob-main {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 0;
   display: flex;
 }
@@ -177,9 +184,6 @@ body,
   transform: rotate(60deg);
 }
 @media (prefers-reduced-motion: reduce) {
-  .ob-map.is-rail {
-    transition: none;
-  }
   .ob-row-vault:is(:hover, :focus-visible) .vault-icon .vi-out {
     transform: none;
   }
@@ -276,20 +280,15 @@ body,
 
 /* ---- Reading in the centre ----------------------------------------------------------------- */
 /*
- * With a note open the map gives up the centre and becomes a rail: the note gets a real reading column
- * (.md and .ob-reader-head already cap themselves at 700px), and the map stays visible as navigation.
- * ConceptMap is told to reframe on each reshape, so the rail shows the whole scene rather than a crop.
+ * A note takes the whole of the map's box, not a column beside a shrunken map. The map stays mounted
+ * underneath, so closing the note returns to exactly the framing it had before; it is made inert in
+ * VisitorPage while covered. On phones the drawer is fixed to the screen and ignores this rule.
  */
-.ob-map.is-rail {
-  flex: 0 0 var(--map-rail);
-  transition: flex-basis var(--dur-3) var(--ease-out);
-}
-/* Four zoom/fit buttons do not fit a rail, and the rail is for orientation and clicking through. */
-.ob-map.is-rail .cmap-tools {
-  display: none;
-}
 .ob-drawer.is-centre {
-  flex: 1 1 auto;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--ground);
 }
 
 /* ---- Reader -------------------------------------------------------------------------------- */
@@ -432,9 +431,6 @@ body,
 
 /* ---- Phone: the rail floats over the map, the drawer covers the screen --------------------- */
 @media (max-width: 760px) {
-  .ob-map.is-rail {
-    flex: 1 1 0;
-  }
   .ob-top {
     flex-wrap: wrap;
     gap: var(--sp-2);
@@ -501,6 +497,12 @@ body,
     z-index: 20;
     flex: none;
     border-left: 0;
+  }
+  /* The centre pane is absolute on the map's box and sits below the rail on wider screens; on a phone it
+     takes the whole screen and must sit above an open rail. */
+  .ob-drawer.is-centre {
+    position: fixed;
+    z-index: 20;
   }
   .ob-reader-head,
   .ob-editor,

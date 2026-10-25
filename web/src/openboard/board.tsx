@@ -11,7 +11,7 @@ import { Reader } from './Reader';
  * drawer reads, and the drawer itself.
  */
 
-/** Runs `fn` after the next layout has settled (two frames), so the map has measured a just-opened drawer. */
+/** Runs `fn` after the next layout has settled (two frames), so the map acts on its current size and scene. */
 function afterLayout(fn: () => void): () => void {
   if (typeof requestAnimationFrame !== 'function') {
     const id = setTimeout(fn, 0);
@@ -51,7 +51,7 @@ export function useReading(payload: ObPayload): Reading {
   const [reading, setReading] = useState<string | null>(null);
   const [fitRequest, setFitRequest] = useState<{ sel: MapSelection; n: number } | null>(null);
 
-  // Re-centre the map on what was chosen once the drawer's width has been taken from it.
+  // Frame the map on what was chosen, so it is where the reader left it when the note closes.
   const cancelCenter = useRef<(() => void) | null>(null);
   const center = useCallback((sel: MapSelection) => {
     cancelCenter.current?.();
@@ -126,7 +126,7 @@ export function ReaderDrawer({
   onClose: () => void;
   actions?: (note: ObNote) => ReactNode;
   body?: (note: ObNote) => ReactNode;
-  /** True on the visitor page: the note takes the centre at reading width instead of a side drawer. */
+  /** True on the visitor page: the note covers the map's box instead of sitting in a side drawer. */
   centre?: boolean;
 }) {
   const noteById = useMemo(() => new Map(payload.notes.map((n) => [n.id, n])), [payload]);

@@ -235,45 +235,46 @@ describe('VisitorPage', () => {
   });
 });
 
-describe('reading a note in the centre', () => {
+describe('reading a note in the map’s place', () => {
   const map = () => q('.ob-map')!;
   const pane = () => q('.ob-drawer');
+  const close = async () => {
+    await press(q<HTMLButtonElement>('.ob-drawer [aria-label="Close reader"]')!);
+    // The drawer animates out; wait out its exit.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+  };
 
-  it('rails the map and centres the note when one is open', async () => {
+  it('gives the note the map’s whole box and keeps the map mounted underneath', async () => {
     writeServer(payload('read'));
     await render();
-    expect(map().classList.contains('is-rail')).toBe(false);
+    const before = map();
     expect(pane()).toBeNull();
+    expect(map().getAttribute('aria-hidden')).toBeNull();
+    expect(map().hasAttribute('inert')).toBe(false);
 
     act(() => railNote('Alpha').click());
-    expect(map().classList.contains('is-rail')).toBe(true);
+    // The note shares the map's box, so it covers it rather than railing it.
+    expect(q('.ob-main')!.contains(map())).toBe(true);
+    expect(q('.ob-main')!.contains(pane())).toBe(true);
     expect(pane()!.classList.contains('is-centre')).toBe(true);
+    // The map stays mounted — keeping its framing for the return — but leaves focus and the screen reader.
+    expect(map()).toBe(before);
+    expect(map().getAttribute('aria-hidden')).toBe('true');
+    expect(map().hasAttribute('inert')).toBe(true);
   });
 
-  it('gives the map the centre back when the note closes', async () => {
+  it('returns to the same map when the note closes', async () => {
     writeServer(payload('read'));
     await render();
+    const before = map();
     act(() => railNote('Alpha').click());
-    await press(q<HTMLButtonElement>('.ob-drawer [aria-label="Close reader"]')!);
-    expect(map().classList.contains('is-rail')).toBe(false);
-  });
-
-  it('asks the map to reframe when it changes shape, and not otherwise', async () => {
-    writeServer(payload('read'));
-    await render();
-    const refits = () => Number(map().dataset.refit);
-    const atStart = refits();
-
-    act(() => railNote('Alpha').click());
-    const afterOpen = refits();
-    expect(afterOpen).toBeGreaterThan(atStart);
-
-    // Another note while already reading does not change the layout, so the map keeps its framing.
-    act(() => railNote('Beta').click());
-    expect(refits()).toBe(afterOpen);
-
-    await press(q<HTMLButtonElement>('.ob-drawer [aria-label="Close reader"]')!);
-    expect(refits()).toBeGreaterThan(afterOpen);
+    await close();
+    expect(pane()).toBeNull();
+    expect(map()).toBe(before);
+    expect(map().getAttribute('aria-hidden')).toBeNull();
+    expect(map().hasAttribute('inert')).toBe(false);
   });
 });
 
