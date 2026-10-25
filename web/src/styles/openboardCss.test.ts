@@ -98,3 +98,28 @@ describe('the openboard UI holds still', () => {
     for (const sel of ['.obe-side-count', '.obe-views']) expect(obe(sel), sel).toMatch(/font-variant-numeric:tabular-nums;/);
   });
 });
+
+// A note takes the concept map's area, not a column beside a shrunken map.
+describe('reading takes the map’s box', () => {
+  const ob = (sel: string) => cssRules(read(join(styles, 'openboard.css')), sel).join('');
+
+  it('anchors the centre pane to the map’s own box', () => {
+    expect(ob('.ob-main')).toMatch(/position:relative;/);
+    expect(ob('.ob-drawer.is-centre')).toMatch(/position:absolute;/);
+    expect(ob('.ob-drawer.is-centre')).toMatch(/inset:0;/);
+    expect(ob('.ob-drawer.is-centre')).toMatch(/background:var\(--ground\);/);
+  });
+
+  it('no longer rails the map', () => {
+    expect(ob('.ob-map.is-rail')).toBe('');
+    expect(ob('.map.ob-map')).toMatch(/flex:1 1 0;/);
+  });
+
+  it('gives a phone the whole screen, above an open rail', () => {
+    const css = read(join(styles, 'openboard.css'));
+    const phone = css.slice(css.lastIndexOf('@media (max-width: 760px)'));
+    const centre = cssRules(phone, '.ob-drawer.is-centre').join('');
+    expect(centre).toMatch(/position:fixed;/);
+    expect(centre).toMatch(/z-index:20;/);
+  });
+});
