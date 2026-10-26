@@ -54,6 +54,13 @@ body,
 .search.ob-search {
   flex: 0 1 480px;
 }
+/* A failed download: one quiet line between the bar and the board, never a dialog over it. */
+.ob-export-error {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--side-border);
+}
 
 /* ---- Body ---------------------------------------------------------------------------------- */
 .ob-body {
@@ -227,6 +234,59 @@ body,
 }
 .ob-row-sub {
   max-width: 45%;
+}
+
+/* A tree row with an export action keeps the button in its last 28px, over the row so the label and
+   count keep their places; it appears on hover or focus, and stays put on a touch screen. */
+.ob-tree-line {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.ob-tree-line > .ob-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ob-tree-line.has-export > .ob-row {
+  padding-right: calc(var(--sp-6) + var(--sp-1));
+}
+.ob-tree-line:hover > .ob-row {
+  background: var(--hover);
+  color: var(--text);
+}
+.ob-export {
+  position: absolute;
+  right: var(--sp-1);
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-1),
+    background-color var(--dur-1),
+    color var(--dur-1);
+}
+.ob-tree-line:hover .ob-export,
+.ob-tree-line:focus-within .ob-export,
+.ob-export:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.ob-export:disabled {
+  opacity: 1;
+  color: var(--muted-3);
+  pointer-events: auto;
+  cursor: default;
+}
+.ob-export:disabled:hover {
+  background: transparent;
+  color: var(--muted-3);
+}
+@media (hover: none) {
+  .ob-export {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 /* ---- Map ----------------------------------------------------------------------------------- */

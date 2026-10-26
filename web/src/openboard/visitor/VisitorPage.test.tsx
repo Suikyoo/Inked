@@ -102,14 +102,28 @@ beforeEach(() => {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
+  downloads = [];
+  lastBlob = null;
+  (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = vi.fn((b: Blob) => {
+    lastBlob = b;
+    return 'blob:export';
+  });
+  (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+    downloads.push({ filename: this.download, blob: lastBlob! });
+  });
 });
 afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
   root = null;
   host = null;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+let downloads: { filename: string; blob: Blob }[] = [];
+let lastBlob: Blob | null = null;
 
 describe('VisitorPage', () => {
   it('fetches the token from the path with no credentials and renders the rail and the map', async () => {
@@ -492,5 +506,57 @@ describe('VisitorPage on a write link', () => {
     type(dlg.querySelector<HTMLInputElement>('input[type="text"]')!, 'Index');
     expect(buttonIn(dlg, 'Create')!.disabled).toBe(true);
     expect(dlg.textContent).toContain('folder pages');
+  });
+
+  it('a read link downloads a vault as a zip from its rail row', async () => {
+    respond(200, payload());
+    await render();
+    const button = qa('.ob-rail .ob-export').find((b) => b.getAttribute('aria-label')?.startsWith('Download vault'))!;
+    expect(button).not.toBeUndefined();
+    const before = fetchMock.mock.calls.length;
+    await press(button);
+    expect(fetchMock.mock.calls.length).toBe(before);
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0]!.filename).toBe('Research.zip');
+    expect(downloads[0]!.blob.type).toBe('application/zip');
+  });
+
+  it('downloads a folder subtree as a zip from its rail row', async () => {
+    respond(200, payload());
+    await render();
+    const button = qa('.ob-rail .ob-export').find((b) => b.getAttribute('aria-label')?.startsWith('Download folder'))!;
+    await press(button);
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0]!.filename).toBe('Ops.zip');
+  });
+
+  it('downloads the note being read as Markdown', async () => {
+    respond(200, payload());
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Download'));
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0]!.filename).toBe('Alpha.md');
+    expect(downloads[0]!.blob.type).toBe('text/markdown;charset=utf-8');
+  });
+
+  it('hides Download while the note is being edited, as the owner control does', async () => {
+    writeServer(payload('write'));
+    await render();
+    act(() => railNote('Alpha').click());
+    await press(buttonIn(drawer()!, 'Edit'));
+    expect(buttonIn(drawer()!, 'Download')).toBeUndefined();
+    expect(buttonIn(drawer()!, 'Save')).not.toBeUndefined();
+  });
+
+  it('says so when an export cannot be made', async () => {
+    respond(200, payload());
+    await render();
+    (URL as unknown as { createObjectURL: () => string }).createObjectURL = vi.fn(() => {
+      throw new Error('blocked');
+    });
+    const button = qa('.ob-rail .ob-export').find((b) => b.getAttribute('aria-label')?.startsWith('Download vault'))!;
+    await press(button);
+    expect(q('[role="alert"]')!.textContent).toContain('Couldn’t make that export');
   });
 });

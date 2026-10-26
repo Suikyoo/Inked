@@ -120,6 +120,13 @@ export const ShareIcon = (p: P) => (
     <path d="M8.5 10.5H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1.5" />
   </Svg>
 );
+/** An arrow down into a tray: take a copy of openboard content. */
+export const DownloadIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 3.5v10M8 10l4 4 4-4" />
+    <path d="M5.5 15.5v2a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2" />
+  </Svg>
+);
 export const CheckIcon = (p: P) => (
   <Svg strokeWidth={2.2} {...p}>
     <path d="M5 12.5l4.5 4.5L19 7.5" />
