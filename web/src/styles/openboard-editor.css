@@ -391,8 +391,8 @@
   background: var(--row-selected);
   color: var(--text-strong);
 }
-/* Row actions: Unpublish / Delete, and New folder / New note inside a vault authored here. One shape for
-   all of them, revealed by hovering or focusing the row, as the notes app's tree actions are. */
+/* Row actions: Download, Unpublish / Delete, and New folder / New note inside a vault authored here. One
+   shape for all of them, revealed by hovering or focusing the row, as the notes app's tree actions are. */
 .obe-unpublish,
 .obe-add {
   flex: 0 0 auto;
@@ -412,6 +412,11 @@
     background-color var(--dur-1),
     color var(--dur-1);
 }
+.obe-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .obe-unpublish {
   color: var(--error);
 }
@@ -429,6 +434,16 @@
 .obe-add:hover {
   background: var(--panel-3);
   color: var(--text);
+}
+/* A Download still being written stays put and reads as busy rather than vanishing under the pointer. */
+.obe-add:disabled {
+  opacity: 1;
+  color: var(--muted-3);
+  cursor: default;
+}
+.obe-add:disabled:hover {
+  background: transparent;
+  color: var(--muted-3);
 }
 .obe-unpublish:focus-visible,
 .obe-add:focus-visible {

@@ -3,6 +3,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ObLink, ObPayload } from 'inked-core';
+import { blobBytes } from '../../state/imageStore';
+import { readZip } from '../../test/zip';
 import { EditorPage } from './EditorPage';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -128,6 +130,8 @@ function route(url: string, init: RequestInit = {}): Response {
 
 let root: Root | null = null;
 let host: HTMLElement | null = null;
+let downloads: { filename: string; blob: Blob }[] = [];
+let lastBlob: Blob | null = null;
 
 async function flush() {
   for (let i = 0; i < 6; i++) await act(async () => {});
@@ -144,6 +148,8 @@ const q = <T extends Element = HTMLElement>(sel: string) => host!.querySelector<
 const qa = <T extends Element = HTMLElement>(sel: string) => Array.from(host!.querySelectorAll<T>(sel));
 const button = (text: string, scope: ParentNode = host!) =>
   Array.from(scope.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.trim() === text)!;
+const treeRow = (name: string) => qa('.obe-tree-row').find((r) => r.querySelector('.ob-row-label')?.textContent?.trim() === name)!;
+const downloadIn = (scope: ParentNode) => scope.querySelector<HTMLButtonElement>('button[aria-label^="Download"]')!;
 const openDialog = () => qa<HTMLDialogElement>('dialog').find((d) => d.hasAttribute('open') && d.querySelector('.dialog-body'))!;
 const rows = () => qa('.obe-link');
 const rowFor = (label: string) => rows().find((r) => r.textContent?.includes(label))!;
@@ -182,12 +188,23 @@ beforeEach(() => {
   server = { me: 200, content: full(), contentStatus: 200, links: links() };
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => route(url, init));
   vi.stubGlobal('fetch', fetchMock);
+  downloads = [];
+  lastBlob = null;
+  (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = vi.fn((b: Blob) => {
+    lastBlob = b;
+    return 'blob:export';
+  });
+  (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+    downloads.push({ filename: this.download, blob: lastBlob! });
+  });
 });
 afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
   root = null;
   host = null;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -345,6 +362,58 @@ describe('EditorPage', () => {
     expect(((del[0]![1] as RequestInit).headers as Record<string, string>)['X-Inked']).toBe('1');
     expect(calls((u) => u === '/api/openboard/content').length).toBeGreaterThan(before);
     expect(qa('.obe-tree-row').some((r) => r.textContent?.includes('Soup'))).toBe(false);
+  });
+
+  it('downloads a published vault with bodies from outside the previewed link', async () => {
+    await render();
+    await click(button('Published content'));
+    // Family shows only Recipes. Research is still in the tree, and its export must carry the bodies
+    // that the bodyless tree payload and the link-scoped preview do not have.
+    await select(q<HTMLSelectElement>('select#obe-preview-as')!, 'l2');
+    const before = calls((u) => u === '/api/openboard/preview').length;
+    await click(downloadIn(treeRow('Research')));
+    const previews = calls((u) => u === '/api/openboard/preview');
+    expect(previews.length).toBe(before + 1);
+    expect(String(previews.at(-1)![0])).toBe('/api/openboard/preview');
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0]!.filename).toBe('Research.zip');
+    expect(downloads[0]!.blob.type).toBe('application/zip');
+    const entries = await readZip(await blobBytes(downloads[0]!.blob));
+    const bodies = new Map(entries.map((e) => [e.path, new TextDecoder().decode(e.data)]));
+    expect(bodies.get('Research/Alpha.md')).toBe('Alpha body\n');
+    expect(bodies.get('Research/Ops/Beta.md')).toBe('Beta body\n');
+  });
+
+  it('downloads a published folder subtree as a zip', async () => {
+    await render();
+    await click(button('Published content'));
+    await click(downloadIn(treeRow('Ops')));
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0]!.filename).toBe('Ops.zip');
+  });
+
+  it('downloads the note in the reader as Markdown', async () => {
+    await render();
+    await click(button('Published content'));
+    const beta = qa('.obe-tree-row').find((r) => r.textContent?.includes('Beta'))!;
+    await click(beta.querySelector('.obe-tree-open')!);
+    await click(button('Download', q('.ob-drawer')!));
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0]!.filename).toBe('Beta.md');
+    expect(downloads[0]!.blob.type).toBe('text/markdown;charset=utf-8');
+    expect(new TextDecoder().decode(await blobBytes(downloads[0]!.blob))).toBe('Beta body\n');
+  });
+
+  it('says so when the owner export cannot be made', async () => {
+    await render();
+    await click(button('Published content'));
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url) === '/api/openboard/preview') return json(500, {});
+      return route(url, init);
+    });
+    await click(downloadIn(treeRow('Research')));
+    expect(q('.obe-error')!.textContent).toContain('Couldn’t make that export');
+    expect(downloads).toHaveLength(0);
   });
 
   it('"Preview as" a link refetches its preview and the map shows only its vaults', async () => {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { INDEX_TITLE, indexNoteOf } from 'inked-core/indexNote';
 import type { ObFolder, ObNote, ObPayload } from 'inked-core';
 import { VaultIcon, inkLevelLabel } from '../brand/VaultIcon';
-import { ChevronRight, IndexIcon, MenuIcon } from '../components/Icons';
+import { ChevronRight, DownloadIcon, IndexIcon, MenuIcon } from '../components/Icons';
 import { notesInkLevel } from '../state/vaultStats';
 
 /**
@@ -20,6 +20,11 @@ export interface TreeRailProps {
   collapsed: boolean;
   onToggle: () => void;
   query?: string;
+  /** Download a vault's or folder's subtree; the row action is drawn only when its handler is given. */
+  onExportVault?: (vaultId: string) => void;
+  onExportFolder?: (folderId: string) => void;
+  /** The export key being written (`vault:<id>` or `folder:<id>`), so its button can show it is busy. */
+  exporting?: string | null;
 }
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
@@ -68,7 +73,17 @@ function buildTrees(payload: ObPayload): Map<string, VaultTree> {
   return trees;
 }
 
-export function TreeRail({ payload, selectedId, onSelect, collapsed, onToggle, query = '' }: TreeRailProps) {
+export function TreeRail({
+  payload,
+  selectedId,
+  onSelect,
+  collapsed,
+  onToggle,
+  query = '',
+  onExportVault,
+  onExportFolder,
+  exporting = null,
+}: TreeRailProps) {
   const trees = useMemo(() => buildTrees(payload), [payload]);
   const noteById = useMemo(() => new Map(payload.notes.map((n) => [n.id, n])), [payload]);
   const folderById = useMemo(() => new Map(payload.folders.map((f) => [f.id, f])), [payload]);
@@ -122,14 +137,30 @@ export function TreeRail({ payload, selectedId, onSelect, collapsed, onToggle, q
     if (ixNote) rows.push(noteRow(ixNote, true));
     for (const f of t.folders.get(folderId) ?? []) {
       const isOpen = !shut.has(f.id);
+      const busy = exporting === `folder:${f.id}`;
       rows.push(
         <li key={f.id}>
-          <button type="button" className="ob-row ob-row-folder" aria-expanded={isOpen} onClick={() => setShut((s) => flip(s, f.id))}>
-            <span className={`ob-row-chev${isOpen ? ' is-open' : ''}`} aria-hidden="true">
-              <ChevronRight size={10} />
-            </span>
-            <span className="ob-row-label">{f.name}</span>
-          </button>
+          <div className={`ob-tree-line${onExportFolder ? ' has-export' : ''}`}>
+            <button type="button" className="ob-row ob-row-folder" aria-expanded={isOpen} onClick={() => setShut((s) => flip(s, f.id))}>
+              <span className={`ob-row-chev${isOpen ? ' is-open' : ''}`} aria-hidden="true">
+                <ChevronRight size={10} />
+              </span>
+              <span className="ob-row-label">{f.name}</span>
+            </button>
+            {onExportFolder && (
+              <button
+                type="button"
+                className="ibtn ibtn-sm ob-export"
+                aria-label={`Download folder “${f.name}” as Markdown`}
+                title="Download folder"
+                aria-busy={busy || undefined}
+                disabled={busy}
+                onClick={() => onExportFolder(f.id)}
+              >
+                <DownloadIcon size={13} />
+              </button>
+            )}
+          </div>
           {isOpen && <ul className="ob-group">{level(t, f.id, now)}</ul>}
         </li>,
       );
@@ -176,22 +207,38 @@ export function TreeRail({ payload, selectedId, onSelect, collapsed, onToggle, q
               const isOpen = !shut.has(v.id);
               const notes = payload.notes.filter((n) => n.vaultId === v.id);
               const ink = notesInkLevel(notes, now);
+              const busy = exporting === `vault:${v.id}`;
               return (
                 <section key={v.id} className="ob-vault">
-                  <button
-                    type="button"
-                    className="ob-row ob-row-vault"
-                    aria-expanded={isOpen}
-                    title={`${v.name} · ${inkLevelLabel(ink)}`}
-                    onClick={() => {
-                      setShut((s) => flip(s, v.id));
-                      setRush((r) => ({ vaultId: v.id, seq: r.seq + 1 }));
-                    }}
-                  >
-                    <VaultIcon color={v.color} level={ink} size={14} rush={rush.vaultId === v.id ? rush.seq : 0} />
-                    <span className="ob-row-label ob-vault-name">{v.name}</span>
-                    <span className="ob-row-count">{notes.length}</span>
-                  </button>
+                  <div className={`ob-tree-line${onExportVault ? ' has-export' : ''}`}>
+                    <button
+                      type="button"
+                      className="ob-row ob-row-vault"
+                      aria-expanded={isOpen}
+                      title={`${v.name} · ${inkLevelLabel(ink)}`}
+                      onClick={() => {
+                        setShut((s) => flip(s, v.id));
+                        setRush((r) => ({ vaultId: v.id, seq: r.seq + 1 }));
+                      }}
+                    >
+                      <VaultIcon color={v.color} level={ink} size={14} rush={rush.vaultId === v.id ? rush.seq : 0} />
+                      <span className="ob-row-label ob-vault-name">{v.name}</span>
+                      <span className="ob-row-count">{notes.length}</span>
+                    </button>
+                    {onExportVault && (
+                      <button
+                        type="button"
+                        className="ibtn ibtn-sm ob-export"
+                        aria-label={`Download vault “${v.name}” as Markdown`}
+                        title="Download vault"
+                        aria-busy={busy || undefined}
+                        disabled={busy}
+                        onClick={() => onExportVault(v.id)}
+                      >
+                        <DownloadIcon size={13} />
+                      </button>
+                    )}
+                  </div>
                   {isOpen && <ul className="ob-tree">{level(t, null, now)}</ul>}
                 </section>
               );

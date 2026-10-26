@@ -5,6 +5,7 @@ import { ConceptMap, type MapSelection } from '../../map/ConceptMap';
 import { ObApiError, fetchPublic, publicImageUrl } from '../api';
 import { ReaderDrawer, useReading } from '../board';
 import { openboardEntries } from '../entries';
+import { exportOpenboard, type ExportTarget } from '../export';
 import { matchTitles, TreeRail } from '../TreeRail';
 import { NewNoteDialog } from './NewNoteDialog';
 import { NoteEditor } from './NoteEditor';
@@ -77,6 +78,11 @@ function withNote(data: ObPublicResponse, note: ObNote): ObPublicResponse {
 
 function Board({ token, data: initial }: { token: string; data: ObPublicResponse }) {
   const [data, setData] = useState(initial);
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  // One export at a time: two automatic downloads at once are often blocked, and a second zip only
+  // doubles the work. The ref closes the gap between the click and the state update.
+  const exportBusy = useRef(false);
   const entries = useMemo(() => openboardEntries(data), [data]);
   const { selected, reading, fitRequest, openNote, onMapSelect, closeReader } = useReading(data);
   const canWrite = data.permission === 'write';
@@ -160,6 +166,25 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
 
   const resolveImage = useCallback((vaultId: string, imageId: string) => publicImageUrl(token, vaultId, imageId), [token]);
 
+  const runExport = useCallback(
+    async (target: ExportTarget) => {
+      if (exportBusy.current) return;
+      exportBusy.current = true;
+      const key = `${target.kind}:${target.id}`;
+      setExporting(key);
+      setExportError(null);
+      try {
+        await exportOpenboard(data, target);
+      } catch {
+        setExportError('Couldn’t make that export. Try again.');
+      } finally {
+        exportBusy.current = false;
+        setExporting(null);
+      }
+    },
+    [data],
+  );
+
   const onSearchKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape' && query) {
       e.preventDefault();
@@ -218,13 +243,29 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
         </div>
       </header>
 
+      {exportError && (
+        <p className="form-error ob-export-error" role="alert">
+          {exportError}
+        </p>
+      )}
+
       {empty ? (
         <div className="ob-empty">
           <p>Nothing is shared on this link yet.</p>
         </div>
       ) : (
         <div className="ob-body">
-          <TreeRail payload={data} selectedId={reading} onSelect={guardedOpen} collapsed={railCollapsed} onToggle={() => setRailCollapsed((c) => !c)} query={query} />
+          <TreeRail
+            payload={data}
+            selectedId={reading}
+            onSelect={guardedOpen}
+            collapsed={railCollapsed}
+            onToggle={() => setRailCollapsed((c) => !c)}
+            query={query}
+            onExportVault={(id) => void runExport({ kind: 'vault', id })}
+            onExportFolder={(id) => void runExport({ kind: 'folder', id })}
+            exporting={exporting}
+          />
           <div className="ob-main">
             <section ref={mapRef} className="map ob-map" aria-label="Concept map" aria-hidden={reading ? true : undefined}>
               <ConceptMap
@@ -247,11 +288,23 @@ function Board({ token, data: initial }: { token: string; data: ObPublicResponse
               onClose={guardedClose}
               centre
               actions={(note) =>
-                canWrite && editing !== note.id ? (
-                  <button type="button" className="btn btn-sm ob-edit" onClick={() => setEditing(note.id)}>
-                    Edit
-                  </button>
-                ) : null
+                editing === note.id ? null : (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={exporting === `note:${note.id}`}
+                      onClick={() => void runExport({ kind: 'note', id: note.id })}
+                    >
+                      {exporting === `note:${note.id}` ? 'Preparing…' : 'Download'}
+                    </button>
+                    {canWrite && (
+                      <button type="button" className="btn btn-sm ob-edit" onClick={() => setEditing(note.id)}>
+                        Edit
+                      </button>
+                    )}
+                  </>
+                )
               }
               body={(note) =>
                 canWrite && editing === note.id ? (

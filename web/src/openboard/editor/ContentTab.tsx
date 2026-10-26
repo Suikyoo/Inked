@@ -5,13 +5,14 @@ import type { ObFolder, ObLink, ObNote, ObPayload } from 'inked-core';
 import { VaultIcon, inkLevelLabel } from '../../brand/VaultIcon';
 import { ColorPicker } from '../../components/ColorPicker';
 import { ConfirmDialog, PromptDialog } from '../../components/Dialog';
-import { ChevronRight, IndexIcon } from '../../components/Icons';
+import { ChevronRight, DownloadIcon, IndexIcon } from '../../components/Icons';
 import { ConceptMap } from '../../map/ConceptMap';
 import { notesInkLevel } from '../../state/vaultStats';
 import { ObApiError, createOwnerFolder, createOwnerNote, createOwnerVault, errorText, ownerImageUrl, previewPayload, saveOwnerNote, unpublish } from '../api';
 import { ObNoteEditor } from '../ObNoteEditor';
 import { ReaderDrawer, useReading } from '../board';
 import { openboardEntries } from '../entries';
+import { exportOpenboard, type ExportTarget } from '../export';
 
 type Kind = 'vault' | 'folder' | 'note';
 interface Target {
@@ -61,6 +62,10 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
   const [editing, setEditing] = useState<string | null>(null);
   /** A pending "New folder" / "New note" prompt, by vault. */
   const [creating, setCreating] = useState<{ kind: 'folder' | 'note'; vaultId: string; parentId: string | null } | null>(null);
+  /** The export key being written (`vault:<id>`, `folder:<id>`, `note:<id>`). */
+  const [exporting, setExporting] = useState<string | null>(null);
+  // One export at a time; the ref closes the gap between the click and the state update.
+  const exportBusy = useRef(false);
   const dirty = useRef(false);
   const onDirtyChange = useCallback((d: boolean) => {
     dirty.current = d;
@@ -72,6 +77,29 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
       return errorText(e);
     },
     [onAuthLost],
+  );
+
+  /**
+   * Exports always read the all-published preview: the tree's `content` carries no bodies, and the
+   * stage's preview may be narrowed to one link while the tree still offers every vault.
+   */
+  const runExport = useCallback(
+    async (target: ExportTarget) => {
+      if (exportBusy.current) return;
+      exportBusy.current = true;
+      const key = `${target.kind}:${target.id}`;
+      setExporting(key);
+      setError(null);
+      try {
+        await exportOpenboard(await previewPayload(), target);
+      } catch (e) {
+        setError(e instanceof ObApiError && e.status === 401 ? fail(e) : 'Couldn’t make that export. Try again.');
+      } finally {
+        exportBusy.current = false;
+        setExporting(null);
+      }
+    },
+    [fail],
   );
 
   // A link deleted meanwhile falls back to everything.
@@ -149,6 +177,8 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
         onUnpublish={setTarget}
         onNewFolder={(vaultId, parentId) => setCreating({ kind: 'folder', vaultId, parentId })}
         onNewNote={(vaultId, parentId) => setCreating({ kind: 'note', vaultId, parentId })}
+        onExport={(target) => void runExport(target)}
+        exporting={exporting}
         newVault={<NewVaultForm used={content.vaults.map((v) => v.color)} onCreated={onChanged} fail={fail} />}
       />
 
@@ -207,9 +237,19 @@ export function ContentTab({ content, links, onChanged, onAuthLost }: ContentTab
             }}
             actions={(note) =>
               editing === note.id ? null : (
-                <button type="button" className="btn btn-sm ob-edit" onClick={() => setEditing(note.id)}>
-                  Edit
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    disabled={exporting === `note:${note.id}`}
+                    onClick={() => void runExport({ kind: 'note', id: note.id })}
+                  >
+                    {exporting === `note:${note.id}` ? 'Preparing…' : 'Download'}
+                  </button>
+                  <button type="button" className="btn btn-sm ob-edit" onClick={() => setEditing(note.id)}>
+                    Edit
+                  </button>
+                </>
               )
             }
             body={(note) =>
@@ -407,6 +447,8 @@ function ContentTree({
   onUnpublish,
   onNewFolder,
   onNewNote,
+  onExport,
+  exporting,
   newVault,
 }: {
   content: ObPayload;
@@ -415,6 +457,8 @@ function ContentTree({
   onUnpublish: (t: Target) => void;
   onNewFolder: (vaultId: string, parentId: string | null) => void;
   onNewNote: (vaultId: string, parentId: string | null) => void;
+  onExport: (t: Extract<ExportTarget, { kind: 'vault' | 'folder' }>) => void;
+  exporting: string | null;
   newVault: ReactElement;
 }) {
   const nativeVaults = useMemo(() => new Set(content.vaults.filter((v) => v.origin === 'native').map((v) => v.id)), [content.vaults]);
@@ -429,6 +473,24 @@ function ContentTree({
       else next.add(id);
       return next;
     });
+
+  /** Download a vault or folder subtree as a zip. */
+  const downloadBtn = (kind: 'vault' | 'folder', id: string, name: string) => {
+    const busy = exporting === `${kind}:${id}`;
+    return (
+      <button
+        type="button"
+        className="obe-add"
+        onClick={() => onExport({ kind, id })}
+        disabled={busy}
+        aria-busy={busy || undefined}
+        aria-label={`Download ${kind} “${name}” as Markdown`}
+        title={`Download ${kind}`}
+      >
+        <DownloadIcon size={12} />
+      </button>
+    );
+  };
 
   /** Unpublish for a published vault's content; Delete for native content, which has no other copy. */
   const unpublishBtn = (vaultId: string, t: Omit<Target, 'native'>) => {
@@ -486,6 +548,7 @@ function ContentTree({
                 </button>
               </>
             )}
+            {downloadBtn('folder', f.id, f.name)}
             {unpublishBtn(f.vaultId, { kind: 'folder', id: f.id, name: f.name, notes: t.counts.get(f.id) ?? 0 })}
           </div>
           {open && <ul className="ob-group">{level(t, f.id)}</ul>}
@@ -533,6 +596,7 @@ function ContentTree({
                     <span className="ob-row-label ob-vault-name">{v.name}</span>
                     <span className="ob-row-count">{count}</span>
                   </button>
+                  {downloadBtn('vault', v.id, v.name)}
                   {unpublishBtn(v.id, { kind: 'vault', id: v.id, name: v.name, notes: count })}
                 </div>
                 {nativeVaults.has(v.id) && (
